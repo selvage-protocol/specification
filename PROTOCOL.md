@@ -611,6 +611,15 @@ so that adding one never has to mean splitting the protocol into a free one and 
   presence alone.
 - An implementation that defines one documents it for its own users. A client must not
   assume any `x.` name exists, and must keep working when one is refused.
+- **An `x.` name can only travel if the implementation lets it.** The wire is open: the server
+  answers any method it does not implement with `unknown_method` (§5), so an extension method is
+  a method like any other. A *client* is the constraint — the reference client's request surface
+  is the handshake, `doc.open` and `doc.close` and nothing else, so it cannot express an `x.`
+  method at all, and an editor adapter behind it has no way to ask for one. An implementation
+  that defines an `x.` method must therefore also expose a way to *send* a method whose params it
+  does not interpret; that is a client API decision and the reference client has not made it.
+  An `x.` *event* needs no such thing, because events travel to a client that has already
+  promised to ignore the ones it does not know.
 
 ## 11. Errors
 
