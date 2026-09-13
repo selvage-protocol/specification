@@ -16,6 +16,12 @@ and that code disagree, the code is wrong.
 `DESIGN.md` at the repository root is the agreed design record. This document is the
 wire-level refinement of §4 of that record. It does not modify it.
 
+**There is no JSON Schema yet.** `DESIGN.md` §7 asks for prose plus a machine-readable
+model, and §13.4 for the schema to be built early because prose drifts; this draft is prose
+alone. The wire types in `impl/crates/protocol` are the closest thing to a schema today, and
+the schema is to be derived from them and from this document rather than the other way
+round. Until it exists, every shape below is normative but nothing checks it for you.
+
 ---
 
 ## 1. Scope
@@ -33,6 +39,13 @@ This draft covers, and only covers:
 
 It does **not** cover, in this slice: persistence, accounts, authentication beyond a room
 token, file access, terminals, rich text, E2EE, or any HTTP API other than `GET /meta`.
+
+Everything outside the core layer is a **named optional profile** (`DESIGN.md` §4.1), and
+one profile name is reserved here so that a later draft can define it without competing for
+the name: **`terminal/1`, shared terminal and process execution.** It is a placeholder and
+nothing else — no methods, no payloads, no behaviour. `DESIGN.md` §4.1 reserves it and §11
+keeps it out of v1; no server advertises it in this slice, and a client that sees it
+advertised is talking to something that is not this draft.
 
 ## 2. Transport
 
@@ -351,6 +364,42 @@ and role. When a peer leaves, its awareness state is dropped locally.
   answer with a Pong (WebSocket libraries do this for you). Protocol-level pings are not
   session messages and are never relayed.
 
+### 9.1 Reconnecting
+
+A dropped connection takes everything that belonged to it: the `peer_id`, the claimed role,
+this connection's document holds and its awareness state. Nothing about a client survives a
+socket, so a reconnecting client is a new peer that has to say who it is again. What it must
+know and do:
+
+- **Reconnect is `session.hello` again**, on a new socket, with the room and token the
+  invite URL carries. There is no resume, no session id and no server-side state to hand
+  back.
+- **The host reclaims; a guest rejoins.** Within `grace_ms` of the host's disconnect, a
+  connection claiming `role: "host"` with the token is seated and the others are told
+  `host.attached` (§9); this is the same path an ordinary join takes, and the reference
+  client exposes it as `reclaim`. A guest rejoins as a guest. Either way the reply is
+  `room.joined` (only a mint produces `room.created`), whose `documents` list is the room's
+  open-document set: a client does **not** have to re-open documents to inherit the room's
+  set, and it should treat that list as the truth rather than its own memory.
+- **What is lost is local.** The client's own open-document set, its selection and its
+  awareness state are gone with the socket and belong to the *new* connection from the
+  moment it is seated: it should re-`doc.open` the documents it still holds open (which is
+  what puts them back in the room's set when nobody else had them), and republish awareness.
+- **Content is not replayed.** A reconnecting client starts with an empty `Y.Doc` and gets
+  the room's history from its peers through the ordinary SyncStep1/SyncStep2 exchange (§7).
+  The server has nothing to replay and keeps nothing.
+- **Refusal means stop.** `room_unknown` means the room is gone for good — the host did not
+  come back inside the grace period — so retrying the same URL cannot help. A client should
+  retry a failed connection with a bounded backoff rather than in a tight loop, and it
+  should tell its user which of these two things happened.
+- **Nothing survives the room.** After `room.gone` there is no room to rejoin, on any URL,
+  with any token (§9).
+
+**Implementation status.** The server implements all of the above and the harness tests the
+host-reclaim path; the reference client has no reconnect logic at all — its engine ends at
+`Disconnected`/`RoomGone` and leaves reconnecting to its caller. That is the first thing a
+plugin needs and the reason this section exists before it is implemented.
+
 ## 10. Version and capability negotiation
 
 - The wire version is `selvage/1` and appears in every text frame as `v`. It must not be
@@ -363,6 +412,21 @@ and role. When a peer leaves, its awareness state is dropped locally.
   in `/meta`, and optionally by the client in `session.hello`. **Unknown capabilities and
   unknown fields are ignored by both sides.** There is no failure mode for an unknown
   capability, and no way for a client to require one — see §12.
+
+### 10.1 Reserved names
+
+`DESIGN.md` §4.7 reserves a namespace for implementation-private and hosted-only messages,
+so that adding one never has to mean splitting the protocol into a free one and a real one.
+
+- **Method names, event names and capability names beginning with `x.`** are reserved for
+  exactly that. None is defined by this document: no `x.` method, no `x.` event, no `x.`
+  capability is part of `selvage/1`.
+- A peer that does not know an `x.` method answers it like any other unknown method, with
+  `unknown_method`; an `x.` event is ignored, like an unknown field; an `x.` capability is
+  advertised and ignored like any other unknown capability. Nothing is negotiated by
+  presence alone.
+- An implementation that defines one documents it for its own users. A client must not
+  assume any `x.` name exists, and must keep working when one is refused.
 
 ## 11. Errors
 
