@@ -202,6 +202,11 @@ without a protocol change.
 
 This is what makes the shared link literal: the host's invite URL **is** the WebSocket URL.
 
+The token is **never echoed after the mint.** `room.created` is the only frame that carries it
+(§6.1) and nothing re-sends it, so a client that might have to reconnect has to keep the token
+it was minted with. A host that did not keep it is in the position of any stranger holding a
+room id: it can be told the room exists, and it cannot be seated in it.
+
 ### `doc.open`
 
 ```json
@@ -437,12 +442,15 @@ know and do:
   invite URL carries. There is no resume, no session id and no server-side state to hand
   back.
 - **The host reclaims; a guest rejoins.** Within `grace_ms` of the host's disconnect, a
-  connection claiming `role: "host"` with the token is seated and the others are told
-  `host.attached` (§9); this is the same path an ordinary join takes, and the reference
-  client exposes it as `reclaim`. A guest rejoins as a guest. Either way the reply is
-  `room.joined` (only a mint produces `room.created`), whose `documents` list is the room's
-  open-document set: a client does **not** have to re-open documents to inherit the room's
-  set, and it should treat that list as the truth rather than its own memory.
+  connection claiming `role: "host"` **with the token** is seated, and the others are told
+  `host.attached` and then `peer.joined` — a reclaiming host is a new peer as well as the new
+  host, so a peer that treats every `peer.joined` as "a guest arrived" is wrong. Reclaiming is
+  the same path an ordinary join takes, and it is only the same path if the reconnecting host
+  kept the token: only `room.created` ever carried it (§5.1). A guest rejoins as a guest.
+  Either way the reply is `room.joined` (only a mint produces `room.created`), whose
+  `documents` list is the room's open-document set: a client does **not** have to re-open
+  documents to inherit the room's set, and it should treat that list as the truth rather than
+  its own memory.
 - **What is lost is local.** The client's own `open_documents` set, its selection and its
   awareness state are gone with the socket and belong to the *new* connection from the
   moment it is seated: it should re-`doc.open` the documents it still holds open (which is
@@ -457,8 +465,9 @@ know and do:
 - **Nothing survives the room.** After `room.gone` there is no room to rejoin, on any URL,
   with any token (§9).
 
-**Implementation status.** The server implements all of the above and the harness tests the
-host-reclaim path; the reference client has no reconnect logic at all — its engine ends at
+**Implementation status.** The server implements all of the above, and the harness tests the
+host-reclaim path with a `reclaim` helper that is a *test* affordance and not part of the
+client's API. The reference client has no reconnect logic at all — its engine ends at
 `Disconnected`/`RoomGone` and leaves reconnecting to its caller. That is the first thing a
 plugin needs and the reason this section exists before it is implemented.
 
