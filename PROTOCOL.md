@@ -419,9 +419,9 @@ y-protocols leaves the awareness state opaque. This implementation's state is:
                 "item": { "client": 5466766094545993, "clock": 13 }, "assoc": 0 } } }
 ```
 
-That is the shape a yjs client produces. A `yrs` client emits the same anchor without the
-`tname`, and both are conforming — see the scope rule below, which is the single detail an
-implementation is most likely to get wrong.
+The shape a yjs client produces is `tname` **and** `item` together; a `yrs` client emits the
+same position as the `item` alone, and both are conforming. See the scope rule below, which is
+the single detail an implementation is most likely to get wrong.
 
 Both fields are optional, and identity is **not** here: a display name travels in the session
 layer (§6.1). A client that understands neither field ignores a state it cannot parse, and
@@ -436,21 +436,38 @@ frame reveals it. So, in `selvage/1`:
 - **`selection.anchor` and `selection.head` are CRDT anchors, never offsets.** Each is an
   object in the format of a yjs `RelativePosition`, carrying a scope, an optional element, and
   an association:
-  - a **scope** — either `tname`, a root type name, which for Selvage is the document path, or
-    `type`, a nested type (never produced by this version). Exactly one of the two.
-  - an optional **`item`** (`{ "client": number, "clock": number }`) naming the element the
-    position sits against. When `item` is present it is **authoritative** for the position and
-    the scope is a check on it; when it is absent the anchor denotes an end of the scope,
-    resolved by `assoc`.
+  - **At least one** of `item`/`tname`/`type` MUST be present, and **at most one *scope***:
+    `tname`, a root type name, which for Selvage is the document path, or `type`, a nested
+    type (never produced by this version) — never both at once. A scope is not required when
+    `item` is there.
+  - **`item`** (`{ "client": number, "clock": number }`) names the element the position sits
+    against. When it is present it is **authoritative** for the position, and a scope beside
+    it is a check on that element rather than a second way of naming the position. When it is
+    absent the anchor denotes an end of the scope, chosen by `assoc`.
   - **`assoc`** — `0` for the element *after* the position, `-1` for the one *before*. It may
     be omitted, and then defaults to `0`.
 
-  A scope and an `item` **co-occur**, and a receiver MUST accept them together. This is not a
-  theoretical allowance: yjs's `createRelativePositionFromTypeIndex` on a root type emits both
-  — verified as `{"tname":"src/main.rs","item":{"client":…,"clock":2},"assoc":0}` — while `yrs`
-  holds one or the other in its `IndexScope` and emits `item` alone. A receiver that insisted
-  on a single member would show no cursor whatever for a peer on the other library, which is
-  precisely the silent cross-implementation failure this section exists to prevent.
+  Three anchors, each conforming, and what each denotes:
+
+  ```
+  // yjs, a caret inside a root type: the scope names the type and `item` the element.
+  { "tname": "src/main.rs", "item": { "client": 5466766094545993, "clock": 11 }, "assoc": 0 }
+
+  // yrs, the same position: the element alone. A receiver MUST resolve the two alike.
+  { "item": { "client": 5466766094545993, "clock": 11 }, "assoc": 0 }
+
+  // either library, a position with no element to name: here the end of the text with
+  // `assoc >= 0`, the start with `assoc < 0`, and anywhere in an empty text.
+  { "tname": "src/main.rs", "assoc": 0 }
+  ```
+
+  The first form is not a theoretical allowance: yjs's `createRelativePositionFromTypeIndex`
+  on a root type emits it — verified as
+  `{"tname":"src/main.rs","item":{"client":…,"clock":2},"assoc":0}` — while `yrs` holds
+  one or the other in its `IndexScope` and emits the second for a position inside a root type
+  and the third for an end of one. A receiver that insisted on a single member, or on a scope,
+  would show no cursor whatever for a peer on the other library, which is precisely the silent
+  cross-implementation failure this section exists to prevent.
 
   **No index is ever carried on the wire.** An anchor stays valid for as long as the CRDT
   remembers the element it names, and the offset it denotes is recomputed by each receiver
