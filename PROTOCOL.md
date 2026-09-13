@@ -176,16 +176,28 @@ This is what makes the shared link literal: the host's invite URL **is** the Web
 ```
 
 `path` is a workspace-relative path; the string must be non-empty, and is otherwise
-unvalidated in this slice (§12, question 8). Adds the path to the room's open-document
-set and replies `{ "result": {} }`. Peers receive a `doc.opened` event (§6.5) naming the
-opening peer. A peer must tolerate the same path being opened by several peers, and by the
-same peer twice.
+unvalidated in this slice (§12, question 8). The connection declares that it holds `path`
+open, and the room's open-document set gains the path if it was not already in it. The
+reply is `{ "result": { "documents": [ … ] } }` — the room's set after the change — so a
+caller is told what its request did instead of assuming it. Every peer in the room,
+including the one that sent the request, then receives a `doc.opened` event (§6.5)
+carrying the same set. A peer must tolerate the same path being opened by several peers,
+and by the same peer twice: holds belong to a connection, and opening a path twice from
+one connection is one hold.
 
 ### `doc.close`
 
-Same shape with `method: "doc.close"`. Removes the path from the room's open-document set
-and announces `doc.closed`. It does not delete content: the `Y.Text` remains in the
-session document, and a later `doc.open` by any peer sees it again.
+Same shape with `method: "doc.close"`. Releases **this connection's** hold on the path.
+The path leaves the room's open-document set only when no other peer still holds it open;
+if another peer has the same document open, the set does not change. The reply is
+`{ "result": { "documents": [ … ] } }`, the room's set after the change, and every peer
+receives a `doc.closed` event carrying it. Closing does not delete content: the `Y.Text`
+remains in the session document, and a later `doc.open` by any peer sees it again.
+
+A connection that disconnects releases its holds without announcing anything, but the
+paths it held stay in the room's set: the set belongs to the room and outlives the peers
+that opened a path, so a host that reconnects during the grace period is told what was in
+play.
 
 ### Unknown methods
 
@@ -202,8 +214,8 @@ All event `params` are flat objects.
 | `room.joined` | `SessionParams` without `token` | reply to `session.hello` that joined one |
 | `peer.joined` | `{ "peer": PeerInfo }` | to existing peers when a connection is seated |
 | `peer.left` | `{ "peer_id": string }` | to remaining peers when a connection ends |
-| `doc.opened` | `{ "peer_id": string, "path": string }` | to peers when a peer opens a document |
-| `doc.closed` | `{ "peer_id": string, "path": string }` | to peers when a peer closes one |
+| `doc.opened` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer opens a document |
+| `doc.closed` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer closes one |
 | `host.detached` | `{ "grace_ms": number }` | to remaining peers when the host's connection ends |
 | `host.attached` | `{ "peer": PeerInfo }` | to remaining peers when a host reclaims the room |
 | `room.gone` | `{ "room_id": string, "reason": string }` | to remaining peers when the room is destroyed |
@@ -418,9 +430,13 @@ agreement.
 9. **Do capabilities ever gate behaviour?** Today they are pure advertisement: unknown ones
    are ignored and a client cannot insist on one. If a profile ever becomes mandatory, the
    spec needs a failure mode other than "unknown is ignored". **Unresolved.**
-10. **Lifecycle of the open-document set.** It belongs to the room, outlives any peer, and
-    survives host detach. Whether it should be per-session, per-peer, or garbage-collected
-    when the last peer closes a path is **unresolved.**
+10. **Lifecycle of the open-document set.** Settled for this draft in §5: the set belongs
+    to the room and outlives any peer, a hold belongs to one connection, and a path leaves
+    the set when the last peer holding it open closes it. Two smaller questions remain
+    **unresolved**: whether a disconnect should drop the paths that only the departing peer
+    held (today it does not, so a path can outlive every peer that opened it), and whether
+    a reconnecting host should re-open its documents explicitly rather than inheriting the
+    set.
 11. **No `session.leave`.** A client leaves by closing the WebSocket. There is no graceful
     goodbye message and no way to detach from a room while keeping the connection.
     **Unresolved**, and cheap to add if a client ever needs it.
