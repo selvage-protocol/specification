@@ -428,10 +428,12 @@ agreement.
     `r-<12 hex>` and 32 hex characters, and treats both as opaque. A spec could pin a
     format (a client may want to validate an invite link before connecting) or leave it
     opaque. **Unresolved.**
-13. **Awareness expiry is implemented for remote states only**, and its 30 s path is not
-    exercised by any test (exercising it costs thirty seconds of CI time). Renewal and
-    expiry values are advertised by the server and taken from it by clients, so a test
-    could instead run the clock fast — **needs a test, not a decision.**
+13. **Awareness expiry applies to remote states only**, and no test runs it at the
+    y-protocols defaults: `crates/harness/tests/awareness.rs` compresses the window to a
+    40 ms renewal and a 250 ms expiry so the check costs no CI time. The 15 s / 30 s pair is
+    advertised, not exercised. A client that never renews is expired by its peers and not by
+    the server — the server keeps no awareness state at all. **Values are unresolved; the
+    mechanism is tested at a compressed scale.**
 14. **HTTP `/meta` is hand-rolled** on the WebSocket listener: no keep-alive, no `HEAD`, no
     routing. Fine for negotiation; it should be replaced, not extended, if a real HTTP
     surface is ever needed. **Unresolved by design.**
