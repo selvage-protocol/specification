@@ -514,7 +514,10 @@ frame reveals it. So, in `selvage/1`:
   caret is an `anchor` and a `head` that resolve to the same index.
 - **A receiver MUST ignore unknown keys**, in the state object and in an anchor object alike,
   so that adding a member is never a protocol break (§4.1). An `assoc` that is neither `0` nor
-  `-1` is normalised to "after" (`>= 0`) or "before" (`< 0`).
+  `-1` is normalised to "after" (`>= 0`) or "before" (`< 0`), and any number is an `assoc`
+  whatever its precision. A member a receiver cannot read *at all* costs **only the selection**:
+  the state still names the document it is about, and a receiver that threw the whole state away
+  would lose the one thing in it that it could read.
 
 Because no offset reaches the wire, the protocol fixes no offset unit. An implementation that
 speaks offsets across an editor-adapter seam (`DESIGN.md` §6) fixes the unit **at that
