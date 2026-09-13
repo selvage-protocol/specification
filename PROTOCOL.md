@@ -411,7 +411,9 @@ Convergence of cursors is peer to peer; the server relays and forgets.
 y-protocols leaves the awareness state opaque. This implementation's state is:
 
 ```json
-{ "path": "src/main.rs", "selection": { "anchor": 11, "head": 13 } }
+{ "path": "src/main.rs",
+  "selection": { "anchor": { "item": { "client": 5466766094545993, "clock": 11 }, "assoc": 0 },
+                 "head":   { "item": { "client": 5466766094545993, "clock": 13 }, "assoc": 0 } } }
 ```
 
 Both fields are optional, and identity is **not** here: a display name travels in the session
@@ -424,21 +426,55 @@ frame reveals it. So, in `selvage/1`:
 
 - **`path` names a document that is in the room's open-document set** (§5). A state that
   names another path is still relayed and may still be displayed; it is not an error.
-- **`selection.anchor` and `selection.head` are offsets in UTF-16 code units.** That is the
-  unit `yjs` counts, the unit an editor's `offsetAt` returns, and the unit `yrs` calls
-  `OffsetKind::Utf16`; a client that counts bytes or Unicode code points puts every cursor
-  after the first character outside the Basic Multilingual Plane somewhere else than its
-  peers do. Both are non-negative integers, and an offset that lands inside a surrogate pair
-  is a state a receiver **must tolerate**, not one it may reject.
-- **`head < anchor` means the selection was made backwards.** A caret is `anchor == head`.
-- **A client SHOULD publish CRDT-relative positions rather than absolute offsets**, because
-  an absolute offset drifts by the length of every edit that lands before it, and two
-  replicas whose documents differ in line endings (§7) compute different offsets for the same
-  character. Nothing about the frame changes: the state is opaque, so an implementation may
-  publish whatever members it likes alongside, and a receiver **must ignore** the ones it does
-  not know. Nothing in `selvage/1` defines such a shape, and this is the reason the offsets
-  above are normative: a client that cannot do better must at least agree with everyone else
-  about what an offset counts.
+- **`selection.anchor` and `selection.head` are CRDT anchors, never offsets.** Each is an
+  object in the format of a yjs `RelativePosition`: exactly one non-null scope — `item`
+  (`{ "client": number, "clock": number }`, naming an element), `tname` (a root type name,
+  which for Selvage is the document path), or `type` (a nested type, never produced by this
+  version) — together with `assoc`, `0` for the element *after* the position and `-1` for the
+  one *before*. `assoc` may be omitted, and then defaults to `0`. **No index is ever carried
+  on the wire.** An anchor stays valid for as long as the CRDT remembers the element it names,
+  and the offset it denotes is recomputed by each receiver against its own replica. That is
+  what makes a cursor survive a concurrent edit: an absolute offset drifts by the length of
+  every edit landing before it, so a 157-character paste above a peer's caret moves that caret
+  157 characters and leaves it somewhere plausible-looking and wrong.
+- **A sender MUST use the `tname` scope for a position that has no element to name** — the end
+  of the text with `assoc >= 0`, the start with `assoc < 0`, and anywhere in an empty text.
+  This is not a degenerate case to be routed around: it is the only encoding that exists for
+  those positions, and it is the one that behaves correctly, because `tname` with `assoc 0`
+  follows appends forever and `tname` with `assoc -1` ignores prepends forever.
+- **A receiver resolves each endpoint against the `Y.Text` named by `path`** and MUST verify
+  the resolved branch is that text:
+  - `item` — the element must be known (the receiver's state vector past it) and must resolve
+    into that text. An element since **deleted resolves** to the surviving boundary; that is a
+    success, not a failure.
+  - `tname` — MUST equal `path`; resolves to the end of the text when `assoc >= 0` and to the
+    start when `assoc < 0`.
+  - `type` — `selvage/1` has no nested types, so a scope resolving anywhere other than the
+    `Y.Text` for `path` **fails**.
+- **If either endpoint fails to resolve, the state carries no selection.** A receiver MUST NOT
+  fall back to an offset, clamp to a guess, or otherwise manufacture a position. Resolution is
+  *deferred*, not part of applying the awareness update: awareness frames and sync frames
+  travel on independent queues, so a receiver that does not yet hold the document keeps the
+  state and retries on the next change or renewal. A receiver MAY keep showing the last
+  position that did resolve for at most one renewal interval, so a transient gap does not blink
+  every cursor away — and MUST stop there, because longer is exactly the drift this shape
+  exists to prevent.
+- **A client MUST republish the same anchors on renewal** (§8.2), rather than recomputing them
+  from an offset that may have shifted underneath it.
+- **`head` resolving before `anchor` means the selection was made backwards**, just as it did
+  when these were integers: direction stays implicit in which endpoint lands further left. A
+  caret is an `anchor` and a `head` that resolve to the same index.
+- **A receiver MUST ignore unknown keys**, in the state object and in an anchor object alike,
+  so that adding a member is never a protocol break (§4.1). An `assoc` that is neither `0` nor
+  `-1` is normalised to "after" (`>= 0`) or "before" (`< 0`).
+
+Because no offset reaches the wire, the protocol fixes no offset unit. An implementation that
+speaks offsets across an editor-adapter seam (`DESIGN.md` §6) fixes the unit **at that
+boundary**, and it MUST be the unit its editor uses, since that is the unit the anchor was
+computed from. VS Code and `yjs` both count UTF-16 code units, so a `yrs` client MUST build its
+document with `OffsetKind::Utf16`: `yrs` defaults to `OffsetKind::Bytes`, under which an anchor
+taken from a non-ASCII document is already wrong before any concurrency is involved. The CRDT
+clock inside an `item` anchor is unaffected by the choice.
 
 ### 8.2 Renewal and expiry
 
@@ -675,13 +711,14 @@ agreement.
    requires concurrent edits from both sides. Enforcing read-only at the server would mean
    parsing CRDT operations, which contradicts payload opacity (§3); it has to be host-side
    or not at all. **Unresolved, and deliberately deferred.**
-4. **Selections are absolute offsets, not CRDT-relative positions.** `DESIGN.md` §4.3 asks
-   for selections anchored to relative positions; `{ "anchor": 11, "head": 13 }` is what is
-   implemented, and it drifts by the length of every edit that lands before it. The unit is no
-   longer part of the gap — `§8.1` now states it, and both implementations count UTF-16 code
-   units — but the drift is: a state that carries a sticky index (`yrs::StickyIndex`, yjs's
-   relative positions) instead of an offset survives a concurrent edit and an offset does
-   not. **Known gap.**
+4. **Selections are CRDT anchors.** `DESIGN.md` §4.3 asks for selections anchored to relative
+   positions, and §8.1 now requires them: an endpoint is a yjs `RelativePosition` object, no
+   index reaches the wire, and offsets are local to a client's adapter seam. What remains open
+   is narrower — which endpoint of a *selection* should associate backwards, so that a
+   concurrent insertion at a selection edge does not extend the selection. Both reference
+   clients publish `assoc: 0` for both endpoints, which extends. Undo interop (yjs's
+   `followUndoneDeletions`, which it recommends leaving `false` for shared positions) is out
+   of scope for `selvage/1`. **The shape is settled; the `assoc` policy is unresolved.**
 5. **Where does an awareness client id belong?** The session layer carries
    `awareness_client_id` so that a cursor can be attributed to a display name without
    putting identity into awareness (§8.4). This is one reading of "identity travels in the
