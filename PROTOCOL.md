@@ -332,9 +332,31 @@ y-protocols leaves the awareness state opaque. This implementation's state is:
 { "path": "src/main.rs", "selection": { "anchor": 11, "head": 13 } }
 ```
 
-Both fields are optional. Identity is **not** here: a display name travels in the session
-layer (§6.1). A client that understands neither field must still relay nothing and simply
-ignore a state it cannot parse.
+Both fields are optional, and identity is **not** here: a display name travels in the session
+layer (§6.1). A client that understands neither field ignores a state it cannot parse, and
+still relays the frame — awareness is opaque to everything but its readers.
+
+The shape is this implementation's, but a *meaning* is not: two clients that disagree about
+what a selection means show each other no cursor, or the wrong one, and nothing about the
+frame reveals it. So, in `selvage/1`:
+
+- **`path` names a document that is in the room's open-document set** (§5). A state that
+  names another path is still relayed and may still be displayed; it is not an error.
+- **`selection.anchor` and `selection.head` are offsets in UTF-16 code units.** That is the
+  unit `yjs` counts, the unit an editor's `offsetAt` returns, and the unit `yrs` calls
+  `OffsetKind::Utf16`; a client that counts bytes or Unicode code points puts every cursor
+  after the first character outside the Basic Multilingual Plane somewhere else than its
+  peers do. Both are non-negative integers, and an offset that lands inside a surrogate pair
+  is a state a receiver **must tolerate**, not one it may reject.
+- **`head < anchor` means the selection was made backwards.** A caret is `anchor == head`.
+- **A client SHOULD publish CRDT-relative positions rather than absolute offsets**, because
+  an absolute offset drifts by the length of every edit that lands before it, and two
+  replicas whose documents differ in line endings (§7) compute different offsets for the same
+  character. Nothing about the frame changes: the state is opaque, so an implementation may
+  publish whatever members it likes alongside, and a receiver **must ignore** the ones it does
+  not know. Nothing in `selvage/1` defines such a shape, and this is the reason the offsets
+  above are normative: a client that cannot do better must at least agree with everyone else
+  about what an offset counts.
 
 ### 8.2 Renewal and expiry
 
@@ -525,11 +547,13 @@ agreement.
    requires concurrent edits from both sides. Enforcing read-only at the server would mean
    parsing CRDT operations, which contradicts payload opacity (§3); it has to be host-side
    or not at all. **Unresolved, and deliberately deferred.**
-4. **Selections are character offsets, not CRDT-relative positions.** `DESIGN.md` §4.3 asks
-   for selections anchored to relative positions. `{ "anchor": 11, "head": 13 }` is what is
-   implemented, which drifts when edits land earlier in the document. The fix is a sticky
-   index (`yrs::StickyIndex` / yjs relative positions) encoded as bytes in the state.
-   **Known gap.**
+4. **Selections are absolute offsets, not CRDT-relative positions.** `DESIGN.md` §4.3 asks
+   for selections anchored to relative positions; `{ "anchor": 11, "head": 13 }` is what is
+   implemented, and it drifts by the length of every edit that lands before it. The unit is no
+   longer part of the gap — `§8.1` now states it, and both implementations count UTF-16 code
+   units — but the drift is: a state that carries a sticky index (`yrs::StickyIndex`, yjs's
+   relative positions) instead of an offset survives a concurrent edit and an offset does
+   not. **Known gap.**
 5. **Where does an awareness client id belong?** The session layer carries
    `awareness_client_id` so that a cursor can be attributed to a display name without
    putting identity into awareness (§8.4). This is one reading of "identity travels in the
