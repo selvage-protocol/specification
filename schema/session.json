@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://selvageprotocol.com/schema/1/session.json",
+  "title": "Selvage Session Protocol `selvage/1` — any text frame",
+  "description": "The umbrella schema: validate any single session text frame against this, in either direction. Members an implementation does not know are tolerated everywhere (spec/CANONICAL.md \u00a73), so no object here forbids one; a vector that must assert an exact member set does that with its own comparison, not with `additionalProperties`. Draft: JSON Schema 2020-12.",
+  "$ref": "#/$defs/frame",
+  "$defs": {
+    "frame": {
+      "description": "A text frame is a request, a response or an event, and nothing else. Bytes that are not one JSON object are `bad_message`, not a frame.",
+      "oneOf": [
+        { "$ref": "https://selvageprotocol.com/schema/1/envelope.json#/$defs/clientMessage" },
+        { "$ref": "https://selvageprotocol.com/schema/1/envelope.json#/$defs/serverMessage" }
+      ]
+    },
+    "request": { "$ref": "https://selvageprotocol.com/schema/1/envelope.json#/$defs/clientMessage" },
+    "serverMessage": { "$ref": "https://selvageprotocol.com/schema/1/envelope.json#/$defs/serverMessage" },
+    "response": { "$ref": "https://selvageprotocol.com/schema/1/envelope.json#/$defs/responseMessage" },
+    "event": { "$ref": "https://selvageprotocol.com/schema/1/envelope.json#/$defs/eventMessage" },
+    "sessionParams": { "$ref": "https://selvageprotocol.com/schema/1/events.json#/$defs/sessionParams" },
+    "peer": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peer" },
+    "meta": { "$ref": "https://selvageprotocol.com/schema/1/meta.json" },
+    "errorObject": { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/errorObject" },
+    "closeCode": { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/closeCode" },
+    "keepalive": { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/keepalive" }
+  }
+}

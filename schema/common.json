@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://selvageprotocol.com/schema/1/common.json",
+  "title": "Selvage Session Protocol — the members every frame shares",
+  "description": "Scalars and small objects of `selvage/1`: the wire version, roles, peer records, document paths, request ids. Valid against spec/PROTOCOL.md §4–§6. Every object here tolerates members it does not know (spec/CANONICAL.md §3), so no schema in this directory forbids one.",
+  "$defs": {
+    "version": {
+      "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/wireVersion",
+      "description": "The `v` member of every text frame: the wire version of the frame's sender. Required, checked on every frame, and refused at the handshake with `unsupported_version` when incompatible."
+    },
+    "requestId": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "A client-assigned request id, unique per connection and never reused for the life of that connection. Bounded at 2^53-1 because a JavaScript receiver cannot hold a larger integer exactly (spec/CANONICAL.md §2.4)."
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "host",
+        "guest"
+      ],
+      "description": "A claimed or assigned role. Minting a room makes a connection its host whatever it claims (§9)."
+    },
+    "peerId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A server-assigned, opaque, room-unique identifier. It does not survive a reconnect: a reconnecting client is a new peer (§9.1). The reference server mints `p-<16 hex>`."
+    },
+    "roomId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "An opaque room identifier. The reference server mints `r-<12 hex>`. A spec may pin a format later; today a client must treat it as opaque (§12.12)."
+    },
+    "token": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The invite token: the permission (§9). Carried in the connection URL by a joiner and echoed exactly once, in `room.created`. The reference server mints 32 hex characters."
+    },
+    "documentPath": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A workspace-relative path, non-empty and otherwise unvalidated in this slice (§12.8). Document identity is the path; it is not encoded inside the CRDT."
+    },
+    "awarenessClientId": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "A y-protocols awareness client id. Supplied by the client in `session.hello` and echoed on its `PeerInfo`, so an editor adapter can join a cursor to a display name without putting identity into awareness (§8.4)."
+    },
+    "peer": {
+      "type": "object",
+      "description": "A participant, as the session layer sees one. Identity is the display name and nothing else.",
+      "required": [
+        "peer_id",
+        "display_name",
+        "role"
+      ],
+      "properties": {
+        "awareness_client_id": {
+          "$ref": "#/$defs/awarenessClientId",
+          "description": "Omitted when the connection did not claim one."
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The only identity in this slice. The client sends it in `session.hello`; the server does not validate it beyond non-empty."
+        },
+        "peer_id": {
+          "$ref": "#/$defs/peerId"
+        },
+        "role": {
+          "$ref": "#/$defs/role"
+        }
+      }
+    },
+    "documentSet": {
+      "type": "object",
+      "description": "The result of `doc.open` and `doc.close`: the room's open-document set after the change, so a caller is told what its request did instead of assuming it.",
+      "required": [
+        "documents"
+      ],
+      "properties": {
+        "documents": {
+          "$ref": "#/$defs/documentList"
+        }
+      }
+    },
+    "documentList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/documentPath"
+      },
+      "description": "A list of document paths, in first-opened order. The room's open-document set and the `documents` member of every event that reports it are the same list."
+    }
+  }
+}

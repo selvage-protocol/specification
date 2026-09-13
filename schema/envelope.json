@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://selvageprotocol.com/schema/1/envelope.json",
+  "title": "Selvage Session Protocol — the session envelope",
+  "description": "Every text frame is one JSON object, and one of three shapes: a request, a response, or an event. Valid against spec/PROTOCOL.md \u00a74. The byte form is spec/CANONICAL.md \u00a72.",
+  "$defs": {
+    "clientMessage": {
+      "title": "request (client \u2192 server)",
+      "description": "A request carries an `id` the server answers with, a `method`, and method-specific `params`. A request without an id is answered with `session.error` code `bad_message`. `params` absent is equivalent to `{}`.",
+      "type": "object",
+      "required": ["v", "id", "method"],
+      "properties": {
+        "id": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/requestId",
+          "description": "Unique per connection. The response carries the same value, so it is the only correlation the wire has."
+        },
+        "method": {
+          "$ref": "https://selvageprotocol.com/schema/1/methods.json#/$defs/anyMethod",
+          "description": "One of the method names of \u00a75, or an `x.`-prefixed name, or any other name at all: an unknown method is answered with `unknown_method` and the connection stays open."
+        },
+        "params": {
+          "$ref": "https://selvageprotocol.com/schema/1/methods.json#/$defs/anyParams"
+        },
+        "v": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/version" }
+      }
+    },
+    "responseMessage": {
+      "title": "response (server \u2192 client)",
+      "description": "Exactly one of `result` or `error` is present, and the response carries the id of the request it answers.",
+      "type": "object",
+      "required": ["v", "id"],
+      "oneOf": [
+        { "required": ["result"] },
+        { "required": ["error"] }
+      ],
+      "properties": {
+        "error": {
+          "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/errorObject",
+          "description": "Present instead of `result`. `code` is machine-readable; `message` is not stable."
+        },
+        "id": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/requestId",
+          "description": "The id of the request being answered."
+        },
+        "result": {
+          "$ref": "https://selvageprotocol.com/schema/1/methods.json#/$defs/anyResult",
+          "description": "An object, `{}` when a method has nothing to return."
+        },
+        "v": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/version" }
+      }
+    },
+    "eventMessage": {
+      "title": "event (server \u2192 client)",
+      "description": "Events carry no `id` and are not responses to anything. An event name a receiver does not know is ignored.",
+      "type": "object",
+      "required": ["v", "event", "params"],
+      "properties": {
+        "event": {
+          "$ref": "https://selvageprotocol.com/schema/1/events.json#/$defs/anyEventName"
+        },
+        "params": {
+          "type": "object",
+          "description": "Flat, and specific to the event. See the `events.json` schemas for the known names."
+        },
+        "v": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/version" }
+      }
+    },
+    "serverMessage": {
+      "description": "A frame from the server: a response to a request, or an event.",
+      "oneOf": [
+        { "$ref": "#/$defs/responseMessage" },
+        { "$ref": "#/$defs/eventMessage" }
+      ]
+    }
+  }
+}

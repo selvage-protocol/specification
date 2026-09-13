@@ -1,0 +1,89 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://selvageprotocol.com/schema/1/negotiation.json",
+  "title": "Selvage Session Protocol — version and capability negotiation",
+  "description": "The parts of `selvage/1` that decide whether two peers can talk at all: the wire version grammar, the compatibility rule, capability names, and the advertised block (`capabilities` plus `keepalive`) that both `GET /meta` and the reply to `session.hello` carry. Valid against spec/PROTOCOL.md §10; the canonical byte form is spec/CANONICAL.md §2.5.",
+  "$defs": {
+    "wireVersion": {
+      "type": "string",
+      "pattern": "^selvage/(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*))?$",
+      "description": "A wire version a receiver must accept as syntactically well formed: `selvage/` then a major, then optionally a minor. Leading zeros are not part of the grammar. The compatibility rule is separate: same major, and while at 0.x also the same minor (§10). `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this implementation's version."
+    },
+    "canonicalWireVersion": {
+      "type": "string",
+      "pattern": "^selvage/(0|[1-9][0-9]*)(\\.[1-9][0-9]*)?$",
+      "description": "A wire version as a conforming producer writes it: `selvage/1` for the version `impl/` speaks, never `selvage/1.0`. The minor is written only when it is not zero, because zero is the default (spec/CANONICAL.md §2.5)."
+    },
+    "capabilityName": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._/-]*$",
+      "description": "A capability name. Unknown names are ignored by both sides and there is no failure mode for one a peer cannot honour (§10, §12.9); there is therefore no schema that says a capability is mandatory."
+    },
+    "reservedCapabilityName": {
+      "type": "string",
+      "pattern": "^x\\.",
+      "description": "A name in the reserved `x.` namespace (§10.1), for implementation-private and hosted-only messages. Nothing in `selvage/1` defines one; a receiver treats it exactly like any other unknown name."
+    },
+    "keepalive": {
+      "type": "object",
+      "description": "The session's clocks, advertised by the server. The advertised values are the session's: a client that substitutes its own disagrees with its peers about when a cursor is stale (§8.2, §9).",
+      "required": [
+        "ping_interval_ms",
+        "awareness_renew_ms",
+        "awareness_expire_ms"
+      ],
+      "properties": {
+        "awareness_expire_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How long a client keeps a remote awareness state it has not seen renewed. A state not renewed inside this window will be forgotten, and the forgetting happens on the renewal tick, so it can arrive up to `awareness_renew_ms` late (§8.2)."
+        },
+        "awareness_renew_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How often a client republishes its own awareness state."
+        },
+        "ping_interval_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "How often the server sends a WebSocket Ping. Protocol-level pings are not session messages and are never relayed (§9)."
+        }
+      }
+    },
+    "advertised": {
+      "description": "What the server advertises about itself, in the same shape in `GET /meta` and in `room.created`/`room.joined`.",
+      "type": "object",
+      "required": [
+        "capabilities",
+        "keepalive"
+      ],
+      "properties": {
+        "capabilities": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/capabilityName"
+          },
+          "description": "Advertised additively. The reference server advertises `y-protocols/1`, `awareness`, `open-document-set` and `host-reclaim`."
+        },
+        "keepalive": {
+          "$ref": "#/$defs/keepalive"
+        }
+      }
+    },
+    "advertisedVersions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/wireVersion"
+      },
+      "description": "The versions a server accepts, in `GET /meta`. Empty is not a valid advertisement: a server that accepts nothing has no reason to answer."
+    },
+    "capabilityList": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/capabilityName"
+      },
+      "description": "An advertised capability list. Advertised additively and read additively: a peer ignores names it does not know, in `/meta` and in the handshake reply."
+    }
+  }
+}

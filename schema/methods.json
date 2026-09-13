@@ -1,0 +1,72 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://selvageprotocol.com/schema/1/methods.json",
+  "title": "Selvage Session Protocol — every method of `selvage/1`",
+  "description": "The three client-to-server methods, with the params each takes and the result each returns. Valid against spec/PROTOCOL.md \u00a75. The mapping is: `session.hello` \u2192 `sessionHelloParams` and no response frame at all (its result is the `room.created`/`room.joined` event); `doc.open` \u2192 `docOpenParams`, result `documentSet`; `doc.close` \u2192 `docCloseParams`, result `documentSet`. An unknown method is answered with an error response and never dropped.",
+  "$defs": {
+    "anyMethod": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A method name: one of the three above, an `x.`-prefixed reserved name (\u00a710.1), or any other string at all. A name the server does not implement is answered with `unknown_method`; it is not a malformed frame."
+    },
+    "knownMethod": {
+      "type": "string",
+      "enum": ["session.hello", "doc.open", "doc.close"],
+      "description": "The method names `selvage/1` defines."
+    },
+    "anyParams": {
+      "type": "object",
+      "description": "Method-specific params. Absent is equivalent to `{}`, and for a method that requires a member both are answered `bad_params`. Params are not `null`: an explicit `null` is a malformed frame (spec/CANONICAL.md \u00a72.6)."
+    },
+    "sessionHelloParams": {
+      "title": "session.hello params",
+      "type": "object",
+      "required": ["display_name"],
+      "properties": {
+        "awareness_client_id": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/awarenessClientId",
+          "description": "The awareness client id this connection will speak with. Omitted means this connection publishes no awareness, and the server then omits `awareness_client_id` from its `PeerInfo`."
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityName" },
+          "description": "What the client believes it has. The server ignores any it does not know."
+        },
+        "client": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Free-form client identification, for diagnostics only."
+        },
+        "display_name": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Non-empty after trimming; the server answers `bad_params` for blank. The only identity in this slice."
+        },
+        "role": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/role",
+          "description": "A claim, not a command: it is honoured only while the room is between host connections, and a connection that mints a room is its host whatever it claims (\u00a79)."
+        }
+      }
+    },
+    "docOpenParams": {
+      "title": "doc.open params",
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath" }
+      }
+    },
+    "docCloseParams": {
+      "title": "doc.close params",
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath" }
+      }
+    },
+    "anyResult": {
+      "description": "Every result `selvage/1` has: the room's open-document set. `session.hello` answers with an event instead of a response, so it has no result here.",
+      "oneOf": [{ "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentSet" }]
+    }
+  }
+}
