@@ -2,7 +2,7 @@
   "id": "010",
   "title": "An awareness exchange: relayed verbatim, and attributed through the session layer",
   "spec": "PROTOCOL.md#84-attributing-a-cursor-to-a-person",
-  "notes": "Awareness is peer to peer and the server relays it uninspected, so the first frame is asserted as exact bytes and the second is decoded with the reference decoder: message type 1, one client (9), clock 1, and the state the peer published. The state's shape (`path` plus `selection`) is this implementation's, and the offsets are UTF-16 code units. Identity is not in the state: `awareness_client_id` on `PeerInfo` is what joins a cursor to a display name.",
+  "notes": "Awareness is peer to peer and the server relays it uninspected, so the first frame is asserted as exact bytes and the second is decoded with the reference decoder: message type 1, one client (9), clock 1, and the state the peer published. The state's shape (`path` plus `selection`) is this implementation's, and each selection endpoint is a CRDT anchor, never an offset (§8.1). Both encodings appear here on purpose: the host publishes the `tname` form, which is the only representation that exists for a caret in an empty text, and the guest publishes the `item` form, naming the element the caret sits before. Because no index reaches the wire, this vector fixes no offset unit — a receiver recomputes the index against its own replica. Identity is not in the state: `awareness_client_id` on `PeerInfo` is what joins a cursor to a display name.",
   "steps": [
     {
       "op": "open",
@@ -42,17 +42,17 @@
     {
       "op": "sendBinary",
       "conn": "host",
-      "hex": "01 3c 01 05 01 38 7b 22 70 61 74 68 22 3a 22 73 72 63 2f 6d 61 69 6e 2e 72 73 22 2c 22 73 65 6c 65 63 74 69 6f 6e 22 3a 7b 22 61 6e 63 68 6f 72 22 3a 30 2c 22 68 65 61 64 22 3a 30 7d 7d"
+      "hex": "01 7c 01 05 01 78 7b 22 70 61 74 68 22 3a 22 73 72 63 2f 6d 61 69 6e 2e 72 73 22 2c 22 73 65 6c 65 63 74 69 6f 6e 22 3a 7b 22 61 6e 63 68 6f 72 22 3a 7b 22 74 6e 61 6d 65 22 3a 22 73 72 63 2f 6d 61 69 6e 2e 72 73 22 2c 22 61 73 73 6f 63 22 3a 30 7d 2c 22 68 65 61 64 22 3a 7b 22 74 6e 61 6d 65 22 3a 22 73 72 63 2f 6d 61 69 6e 2e 72 73 22 2c 22 61 73 73 6f 63 22 3a 30 7d 7d 7d"
     },
     {
       "op": "expectBinary",
       "conn": "guest",
-      "hex": "01 3c 01 05 01 38 7b 22 70 61 74 68 22 3a 22 73 72 63 2f 6d 61 69 6e 2e 72 73 22 2c 22 73 65 6c 65 63 74 69 6f 6e 22 3a 7b 22 61 6e 63 68 6f 72 22 3a 30 2c 22 68 65 61 64 22 3a 30 7d 7d"
+      "hex": "01 7c 01 05 01 78 7b 22 70 61 74 68 22 3a 22 73 72 63 2f 6d 61 69 6e 2e 72 73 22 2c 22 73 65 6c 65 63 74 69 6f 6e 22 3a 7b 22 61 6e 63 68 6f 72 22 3a 7b 22 74 6e 61 6d 65 22 3a 22 73 72 63 2f 6d 61 69 6e 2e 72 73 22 2c 22 61 73 73 6f 63 22 3a 30 7d 2c 22 68 65 61 64 22 3a 7b 22 74 6e 61 6d 65 22 3a 22 73 72 63 2f 6d 61 69 6e 2e 72 73 22 2c 22 61 73 73 6f 63 22 3a 30 7d 7d 7d"
     },
     {
       "op": "sendBinary",
       "conn": "guest",
-      "hex": "01 3c 01 09 01 38 7b 22 70 61 74 68 22 3a 22 73 72 63 2f 6d 61 69 6e 2e 72 73 22 2c 22 73 65 6c 65 63 74 69 6f 6e 22 3a 7b 22 61 6e 63 68 6f 72 22 3a 34 2c 22 68 65 61 64 22 3a 34 7d 7d"
+      "hex": "01 8d 01 01 09 01 88 01 7b 22 70 61 74 68 22 3a 22 73 72 63 2f 6d 61 69 6e 2e 72 73 22 2c 22 73 65 6c 65 63 74 69 6f 6e 22 3a 7b 22 61 6e 63 68 6f 72 22 3a 7b 22 69 74 65 6d 22 3a 7b 22 63 6c 69 65 6e 74 22 3a 39 2c 22 63 6c 6f 63 6b 22 3a 34 7d 2c 22 61 73 73 6f 63 22 3a 30 7d 2c 22 68 65 61 64 22 3a 7b 22 69 74 65 6d 22 3a 7b 22 63 6c 69 65 6e 74 22 3a 39 2c 22 63 6c 6f 63 6b 22 3a 34 7d 2c 22 61 73 73 6f 63 22 3a 30 7d 7d 7d"
     },
     {
       "op": "expectBinary",
@@ -67,8 +67,20 @@
           "state": {
             "path": "src/main.rs",
             "selection": {
-              "anchor": 4,
-              "head": 4
+              "anchor": {
+                "item": {
+                  "client": 9,
+                  "clock": 4
+                },
+                "assoc": 0
+              },
+              "head": {
+                "item": {
+                  "client": 9,
+                  "clock": 4
+                },
+                "assoc": 0
+              }
             }
           }
         }
