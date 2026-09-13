@@ -385,7 +385,10 @@ Machine-readable codes in `error.code` and `session.error.params.code`:
 Close codes live in the private-use range: 4000 `protocol_error`, 4001 `room_unknown`,
 4002 `token_invalid`, 4003 `room_gone`, 4004 `host_present`, 4005 `unsupported_version`.
 A refusal sends `session.error` **and then** a close with the matching code, so a client
-that does not read close frames still learns why.
+that does not read close frames still learns why. A close reason is WebSocket
+control-frame payload, so it is truncated to 123 bytes (RFC 6455 allows 125, two of which
+the code takes) when the message it would carry is longer: the reason is a convenience,
+while the `session.error` before it carries the whole message and has no length limit.
 
 ## 12. Open questions
 
