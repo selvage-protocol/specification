@@ -412,9 +412,16 @@ y-protocols leaves the awareness state opaque. This implementation's state is:
 
 ```json
 { "path": "src/main.rs",
-  "selection": { "anchor": { "item": { "client": 5466766094545993, "clock": 11 }, "assoc": 0 },
-                 "head":   { "item": { "client": 5466766094545993, "clock": 13 }, "assoc": 0 } } }
+  "selection": {
+    "anchor": { "tname": "src/main.rs",
+                "item": { "client": 5466766094545993, "clock": 11 }, "assoc": 0 },
+    "head":   { "tname": "src/main.rs",
+                "item": { "client": 5466766094545993, "clock": 13 }, "assoc": 0 } } }
 ```
+
+That is the shape a yjs client produces. A `yrs` client emits the same anchor without the
+`tname`, and both are conforming — see the scope rule below, which is the single detail an
+implementation is most likely to get wrong.
 
 Both fields are optional, and identity is **not** here: a display name travels in the session
 layer (§6.1). A client that understands neither field ignores a state it cannot parse, and
@@ -443,12 +450,14 @@ frame reveals it. So, in `selvage/1`:
   — verified as `{"tname":"src/main.rs","item":{"client":…,"clock":2},"assoc":0}` — while `yrs`
   holds one or the other in its `IndexScope` and emits `item` alone. A receiver that insisted
   on a single member would show no cursor whatever for a peer on the other library, which is
-  precisely the silent cross-implementation failure this section exists to prevent. **No index
-  is ever carried on the wire.** An anchor stays valid for as long as the CRDT remembers the element it names,
-  and the offset it denotes is recomputed by each receiver against its own replica. That is
-  what makes a cursor survive a concurrent edit: an absolute offset drifts by the length of
-  every edit landing before it, so a 157-character paste above a peer's caret moves that caret
-  157 characters and leaves it somewhere plausible-looking and wrong.
+  precisely the silent cross-implementation failure this section exists to prevent.
+
+  **No index is ever carried on the wire.** An anchor stays valid for as long as the CRDT
+  remembers the element it names, and the offset it denotes is recomputed by each receiver
+  against its own replica. That is what makes a cursor survive a concurrent edit: an absolute
+  offset drifts by the length of every edit landing before it, so a 157-character paste above
+  a peer's caret moves that caret 157 characters and leaves it somewhere plausible-looking and
+  wrong.
 - **A sender MUST omit `item` for a position that has no element to name** — the end of the
   text with `assoc >= 0`, the start with `assoc < 0`, and anywhere in an empty text. The anchor
   is then its scope and `assoc` alone. This is not a degenerate case to be routed around: it is
