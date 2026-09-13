@@ -69,12 +69,32 @@ advertised is talking to something that is not this draft.
   ```
 
   A client **should** read `/meta` before connecting when it can, to fail fast on an
-  incompatible server. Other paths return `404`; the negotiation endpoint does not
-  support keep-alive, `HEAD`, or any method other than `GET` in this slice.
+  incompatible server. Other paths return `404`; the negotiation endpoint does not support
+  keep-alive, and **the request method is not inspected at all**: `GET`, `POST` and
+  `HEAD /meta` all answer `200` with the same body. Answering `HEAD` with a body is a
+  deviation from RFC 9110, and it is one of the reasons this endpoint should be replaced
+  rather than extended if a real HTTP surface is ever needed (§12, question 14).
 
 - **Frame types.** Text frames carry the JSON session envelope (§4–§6). Binary frames
   carry y-protocols payloads (§7, §8). The server routes binary frames by room membership
   and never decodes them.
+
+### 2.1 Limits
+
+What the reference server bounds, and what it deliberately leaves unbounded. None of these
+is negotiated; an implementation is free to differ as long as it documents its numbers.
+
+| limit | reference value | what happens when it is reached |
+|---|---|---|
+| HTTP request head | 16 KiB, and 5 s to arrive | the connection is closed without a response |
+| `session.hello` after the upgrade | 10 s | `hello_required`, then close 4000 |
+| WebSocket ping | every 30 s | the server pings; it never closes a connection for silence |
+| outbound queue, per connection | unlimited | a peer that stops reading is not disconnected |
+| connections | unlimited | no cap, no idle reaper, no per-source rate limit |
+
+The two unbounded rows are a v1 posture, not a promise: a server on the public internet
+needs a cap, an idle deadline and a rate limit, and a spec that other implementations
+follow should name all three.
 
 ## 3. Layering and opacity
 
@@ -280,6 +300,12 @@ Follows `y-protocols/PROTOCOL.md`. `yrs` is byte-compatible; this implementation
 
   `varUint` is LEB128; `varUint8Array` is a `varUint` byte length followed by the bytes.
   The sync payloads are yjs v1 encodings.
+- **A frame may hold several messages.** The body above is one message, and a binary frame
+  is a *stream* of them, one after another, with no count and no terminator: a receiver
+  reads messages until the frame ends. `yrs`'s `MessageReader` does exactly that, so a
+  frame carrying an update followed by an awareness state is valid and must be handled in
+  full. The reference client happens to send one message per frame; that is an
+  implementation choice, not a rule of the wire format.
 
 - **Who sends what.** Each client, immediately after `room.joined`/`room.created`, sends a
   SyncStep1 with its state vector. Every peer that receives a SyncStep1 replies with a
@@ -312,12 +338,23 @@ ignore a state it cannot parse.
 
 ### 8.2 Renewal and expiry
 
-- A client renews its own state every `keepalive.awareness_renew_ms` (15 s) by republishing
-  it with a newer awareness clock.
-- A client drops a *remote* state it has not seen for `keepalive.awareness_expire_ms` (30 s).
+- **The server advertises the session's awareness clock and the client runs on it.** The
+  `keepalive` object in `room.created`/`room.joined` (and in `/meta`, §2) is the authority:
+  a client that substitutes its own numbers disagrees with its peers about when a cursor is
+  stale. A client renews its own state every `keepalive.awareness_renew_ms` (15 s) by
+  republishing it with a newer awareness clock.
+- A client drops a *remote* state it has not seen for `keepalive.awareness_expire_ms`
+  (30 s). Expiry is checked on the renewal tick, so a state is forgotten at the first tick
+  after `last_updated + awareness_expire_ms`, which is **within
+  `awareness_expire_ms + awareness_renew_ms`** (45 s at the advertised defaults) and not
+  exactly at the expiry value.
 - The server does not track awareness and does not expire it. A client alone in a room
   therefore never churns: it never receives an echo of its own awareness, and never expires
   itself.
+- This expiry is deliberately loose, because the alternative — a timer per remote state —
+  is what the y-protocols renewal tick exists to avoid. A client that needs the tighter
+  bound is free to check more often; the wire contract is only that a state not renewed
+  inside `awareness_expire_ms` **will** be forgotten.
 
 ### 8.3 Discovery
 
@@ -362,7 +399,10 @@ and role. When a peer leaves, its awareness state is dropped locally.
 - A guest disconnecting produces `peer.left` and nothing else.
 - Keepalive: the server sends a WebSocket Ping every `ping_interval_ms` (30 s). Clients must
   answer with a Pong (WebSocket libraries do this for you). Protocol-level pings are not
-  session messages and are never relayed.
+  session messages and are never relayed. The same `keepalive` object carries the awareness
+  window that clients run on (§8.2): the server's numbers are the session's. A client may
+  override them for its own process, but that is a local choice, not a protocol one, and it
+  makes the peer disagree with everyone else about when a cursor has gone stale.
 
 ### 9.1 Reconnecting
 
@@ -381,7 +421,7 @@ know and do:
   `room.joined` (only a mint produces `room.created`), whose `documents` list is the room's
   open-document set: a client does **not** have to re-open documents to inherit the room's
   set, and it should treat that list as the truth rather than its own memory.
-- **What is lost is local.** The client's own open-document set, its selection and its
+- **What is lost is local.** The client's own `open_documents` set, its selection and its
   awareness state are gone with the socket and belong to the *new* connection from the
   moment it is seated: it should re-`doc.open` the documents it still holds open (which is
   what puts them back in the room's set when nobody else had them), and republish awareness.
@@ -407,7 +447,10 @@ plugin needs and the reason this section exists before it is implemented.
   `unsupported_version` (close code 4005). Version is also checked on every later request;
   an incompatible one is answered with an error and the connection is closed.
 - **Compatibility rule** (`DESIGN.md` §4.6): same major, and while at `0.x` also the same
-  minor. `selvage/1` therefore accepts only `selvage/1`.
+  minor. This implementation is at `selvage/1`, so the rule in force is *same major* alone:
+  every `selvage/1.x` is accepted, including `selvage/1.9` and the bare `selvage/1`, whose
+  minor defaults to `0`. `selvage/2` and anything that is not a `selvage/<number>[.<number>]`
+  string are refused. The minor becomes decisive only when the major reaches `0`.
 - Capabilities are advertised additively by the server in `room.created`/`room.joined` and
   in `/meta`, and optionally by the client in `session.hello`. **Unknown capabilities and
   unknown fields are ignored by both sides.** There is no failure mode for an unknown
@@ -435,9 +478,9 @@ Machine-readable codes in `error.code` and `session.error.params.code`:
 | code | meaning | closes the connection? |
 |---|---|---|
 | `unknown_method` | no such method | no |
-| `bad_message` | not a session envelope / no `id` / undecodable | no |
+| `bad_message` | not a session envelope / no `id` / undecodable | no when seated; **yes, 4000** during the handshake |
 | `bad_params` | method params missing or malformed | no |
-| `hello_required` | first frame is not `session.hello`, or none arrived in time | yes, 4000 |
+| `hello_required` | the first frame was a text frame that is not `session.hello`, or no frame arrived in time | yes, 4000 |
 | `unsupported_version` | version refused | yes, 4005 |
 | `room_unknown` | no such room (never minted, or destroyed) | yes, 4001 |
 | `token_invalid` | room present, token absent or wrong | yes, 4002 |
@@ -453,6 +496,12 @@ that does not read close frames still learns why. A close reason is WebSocket
 control-frame payload, so it is truncated to 123 bytes (RFC 6455 allows 125, two of which
 the code takes) when the message it would carry is longer: the reason is a convenience,
 while the `session.error` before it carries the whole message and has no length limit.
+
+Before the handshake completes, **every fault closes the connection**: the server is not
+seated with a peer yet and has nothing to keep open. A first frame that is not a text
+frame — a binary frame, say — is reported as `bad_message` and the connection closes with
+4000, not `hello_required`: what was wrong is the *shape* of the frame, and the client is
+told the same code it would get for an unparsable envelope.
 
 ## 12. Open questions
 
@@ -516,12 +565,12 @@ agreement.
     `r-<12 hex>` and 32 hex characters, and treats both as opaque. A spec could pin a
     format (a client may want to validate an invite link before connecting) or leave it
     opaque. **Unresolved.**
-13. **Awareness expiry applies to remote states only**, and no test runs it at the
-    y-protocols defaults: `crates/harness/tests/awareness.rs` compresses the window to a
-    40 ms renewal and a 250 ms expiry so the check costs no CI time. The 15 s / 30 s pair is
-    advertised, not exercised. A client that never renews is expired by its peers and not by
-    the server — the server keeps no awareness state at all. **Values are unresolved; the
-    mechanism is tested at a compressed scale.**
+13. **Awareness expiry applies to remote states only.** A client that never renews is
+    expired by its peers and not by the server — the server keeps no awareness state at all.
+    The 15 s / 30 s pair is advertised, not exercised: the tests compress the window (a
+    40 ms renewal and a 250 ms expiry) so the check costs no CI time, once on the client's
+    own clock and once on the clock the server advertises (§8.2). **Values are unresolved**;
+    the mechanism and the authority are settled and tested at a compressed scale.
 14. **HTTP `/meta` is hand-rolled** on the WebSocket listener: no keep-alive, no `HEAD`, no
     routing. Fine for negotiation; it should be replaced, not extended, if a real HTTP
     surface is ever needed. **Unresolved by design.**
