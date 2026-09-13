@@ -142,6 +142,19 @@ once decoded. Client behaviour — renewal, expiry, reconnection, the adapter se
 `impl/crates/harness/tests/`. The cases they do not reach are listed at the end of
 `PROTOCOL.md` §12, and a second implementation will find more.
 
+## `vectors/anchors/`
+
+The one artifact here that is not a replayable transcript. A transcript is one server's bytes;
+what `vector 010` cannot show is whether *two different libraries* agree about the shape of the
+member inside those bytes, because a vector only ever decodes it with the library that wrote it.
+So `vectors/anchors/` holds one document and one caret, written the way each of the two
+ecosystems' libraries writes it — the yjs shape, which names the scope beside the element, and
+the `yrs` shape, which names the element alone — together with the document both anchors are
+taken from. `impl/crates/harness/tests/crossing/` and `clients/vscode/test/crossing.test.ts`
+rebuild each half from the real library and then resolve the *other* half, so a shape that one
+side stops accepting is a red test on both sides rather than a peer that silently shows no
+cursor. The file's own `notes` member says the same thing next to the data.
+
 ## Licence
 
 The prose, the canonicalisation rule, the schemas and the vectors are **CC-BY 4.0**, per
