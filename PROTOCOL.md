@@ -481,6 +481,14 @@ frame reveals it. So, in `selvage/1`:
   the only encoding that exists for those positions, and it is the one that behaves correctly,
   because `tname` with `assoc 0` follows appends forever and `tname` with `assoc -1` ignores
   prepends forever.
+- **A sender MUST NOT publish a selection it cannot anchor.** If the `Y.Text` named by `path`
+  is not in the sender's replica, or an endpoint is past that text's end, the state carries
+  `path` and no `selection` at all. Falling back to the scope-only form instead would be
+  inventing an end of text: the resulting state is byte-identical to a genuine caret at the
+  end, so every peer resolves a position the sender never meant and nothing on the wire can
+  say so. This is reachable without trying — a client that publishes presence when it joins,
+  or when a document it has open is not in its replica yet, has nothing to anchor against
+  until the sync frame arrives.
 - **A receiver resolves each endpoint against the `Y.Text` named by `path`** and MUST verify
   the resolved branch is that text:
   - **`item` present** — the element must be known (the receiver's state vector past it) and
