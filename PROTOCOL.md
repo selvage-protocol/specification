@@ -69,9 +69,23 @@ advertised is talking to something that is not this draft.
   ```
 
   A client **should** read `/meta` before connecting when it can, to fail fast on an
-  incompatible server. Other paths return `404`; the negotiation endpoint does not support
-  keep-alive, and **the request method is not inspected at all**: `GET`, `POST` and
-  `HEAD /meta` all answer `200` with the same body. Answering `HEAD` with a body is a
+  incompatible server. Reading it has three outcomes, and they are not the same outcome:
+
+  - **Reachable and compatible** — `wire_versions` holds a version the client can speak:
+    connect. The advertised `keepalive` may be adopted at once, without waiting for the
+    handshake, since `/meta` and the handshake reply advertise the same thing (§8.2, §10).
+  - **Reachable and incompatible** — no version in the list: **do not connect**. This is a
+    refusal a retry cannot change, and it is reported as `unsupported_version` (§10) before a
+    socket is opened at all.
+  - **Unreachable** — connection refused, a timeout, a body that is not the object §2 shows:
+    **connect anyway**. `/meta` is a convenience, and the handshake decides; a client that treats
+    an unreachable `/meta` as a refusal cannot reach a server behind a proxy that does not
+    forward it, and the spec already treats unknown members and unknown capabilities as
+    ignorable, not fatal.
+
+  Other paths return `404`; the negotiation endpoint does not support keep-alive, and **the
+  request method is not inspected at all**: `GET`, `POST` and `HEAD /meta` all answer `200`
+  with the same body. Answering `HEAD` with a body is a
   deviation from RFC 9110, and it is one of the reasons this endpoint should be replaced
   rather than extended if a real HTTP surface is ever needed (§12, question 14).
 
@@ -95,6 +109,18 @@ is negotiated; an implementation is free to differ as long as it documents its n
 The two unbounded rows are a v1 posture, not a promise: a server on the public internet
 needs a cap, an idle deadline and a rate limit, and a spec that other implementations
 follow should name all three.
+
+The table is the server's side. A client has the mirror image of the same problem, and two of its
+bounds matter to a peer:
+
+- **An outbound bound.** A client that writes faster than the server reads is buffering for it,
+  and the socket's own backpressure moves the queue into the client's memory rather than
+  removing it. A client **must** bound what it holds — by failing the session, or by not
+  committing a CRDT transaction until there is room — because a y-protocols delta is not
+  regenerable once it has been produced. The reference client queues without limit, which is the
+  same v1 posture as the two rows above.
+- **A per-request bound.** Every request is answered or it is not, and a client must not wait for
+  ever: see the obligations on the request side at the end of §5.
 
 ## 3. Layering and opacity
 
