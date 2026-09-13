@@ -211,7 +211,12 @@ implementation), closes the connection.
 The room to join, and its token, are carried in the connection URL, not here (§5.1).
 
 The reply is a single `room.created` or `room.joined` event (§6.1, §6.2). Refusals are a
-`session.error` event followed by a WebSocket close with the matching code (§11).
+`session.error` event followed by a WebSocket close with the matching code (§11). A `session.hello`
+whose params object cannot be read is refused as `bad_message` — including one with no
+`display_name`, which is a parse failure for a shape whose only required member it is — while a
+well-formed hello whose `display_name` is blank is `bad_params`. The distinction is parse failure
+against semantic failure, and both are reachable here, before the handshake completes, where
+every fault closes the connection (§11).
 `session.hello` sent a second time on the same connection is an error, code
 `already_seated`.
 
@@ -262,6 +267,27 @@ A connection that disconnects releases its holds without announcing anything, bu
 paths it held stay in the room's set: the set belongs to the room and outlives the peers
 that opened a path, so a host that reconnects during the grace period is told what was in
 play.
+
+### What a client owes a request
+
+Three obligations on the request side, none of which changes the wire:
+
+- **Every request is answered, and the wait has to be bounded.** `doc.open` and `doc.close` are
+  answered with a result or an error, and nothing obliges a server to answer promptly. The
+  reference client has no per-request timeout: a server that holds the socket open and never
+  replies leaves the caller waiting without end. A client **should** bound the wait, and the
+  bound cannot be a protocol number — it has to be at least a round trip on the connection in
+  use, and less than "for ever".
+- **A socket that drops fails every request in flight.** When the connection ends, whether the
+  client asked for it or not, each outstanding request **must** be failed locally: no answer can
+  arrive on a socket that is gone, and a caller left holding a request that never completes
+  cannot tell that from a slow server. Whether the server applied a request it never answered is
+  not knowable and must not be guessed; for the two methods in `selvage/1` it does not matter,
+  because both are idempotent — a hold is a set, and a second `doc.open` for a path already held
+  changes nothing.
+- **A request id is not reused on a connection.** The id is the only correlation the wire has,
+  and a client that reuses one cannot tell a late answer from a current one. A new connection may
+  count from the beginning again, because it is a new connection: nothing survives it (§9.1).
 
 ### Unknown methods
 
