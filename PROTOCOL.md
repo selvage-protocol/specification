@@ -445,7 +445,8 @@ frame reveals it. So, in `selvage/1`:
     it is a check on that element rather than a second way of naming the position. When it is
     absent the anchor denotes an end of the scope, chosen by `assoc`.
   - **`assoc`** — `0` for the element *after* the position, `-1` for the one *before*. It may
-    be omitted, and then defaults to `0`.
+    be omitted, and then defaults to `0`. Both reference clients publish `0` for both
+    endpoints of a selection; §12.4 records why, and what it costs.
 
   Three anchors, each conforming, and what each denotes:
 
@@ -760,12 +761,18 @@ agreement.
    or not at all. **Unresolved, and deliberately deferred.**
 4. **Selections are CRDT anchors.** `DESIGN.md` §4.3 asks for selections anchored to relative
    positions, and §8.1 now requires them: an endpoint is a yjs `RelativePosition` object, no
-   index reaches the wire, and offsets are local to a client's adapter seam. What remains open
-   is narrower — which endpoint of a *selection* should associate backwards, so that a
-   concurrent insertion at a selection edge does not extend the selection. Both reference
-   clients publish `assoc: 0` for both endpoints, which extends. Undo interop (yjs's
-   `followUndoneDeletions`, which it recommends leaving `false` for shared positions) is out
-   of scope for `selvage/1`. **The shape is settled; the `assoc` policy is unresolved.**
+   index reaches the wire, and offsets are local to a client's adapter seam.
+   **Decided: both endpoints are published with `assoc: 0`.** `0` is yjs's own default and
+   what `y-protocols` awareness carries, and `-1` would change what the scope-only anchor
+   means: at the end of a text a caret is a scope with no element, and `assoc: 0` makes it
+   follow every append forever, while `-1` binds it to the last character and would leave a
+   caret behind when a peer appends. The trade being accepted is that an insertion landing
+   exactly on the selection's **right** edge **extends** the selection — the endpoint is bound
+   to the element after it, so the inserted text falls inside — while an insertion on the
+   **left** edge leaves the selection outside it, since the same rule binds that endpoint
+   forward too. A receiver that wants the other policy on one edge must publish `-1` for it
+   itself; nothing about the shape prevents that. Undo interop (yjs's `followUndoneDeletions`,
+   which it recommends leaving `false` for shared positions) is out of scope for `selvage/1`.
 5. **Where does an awareness client id belong?** The session layer carries
    `awareness_client_id` so that a cursor can be attributed to a display name without
    putting identity into awareness (§8.4). This is one reading of "identity travels in the
