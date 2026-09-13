@@ -85,9 +85,9 @@ advertised is talking to something that is not this draft.
 
   Other paths return `404`; the negotiation endpoint does not support keep-alive, and **the
   request method is not inspected at all**: `GET`, `POST` and `HEAD /meta` all answer `200`
-  with the same body. Answering `HEAD` with a body is a
-  deviation from RFC 9110, and it is one of the reasons this endpoint should be replaced
-  rather than extended if a real HTTP surface is ever needed (§12, question 14).
+  with the same body. Answering `HEAD` with a body is a deviation from RFC 9110, and it is one
+  of the reasons this endpoint should be replaced rather than extended if a real HTTP surface
+  is ever needed (§12, question 14).
 
 - **Frame types.** Text frames carry the JSON session envelope (§4–§6). Binary frames
   carry y-protocols payloads (§7, §8). The server routes binary frames by room membership
