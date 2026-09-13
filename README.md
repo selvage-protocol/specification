@@ -157,7 +157,8 @@ cursor. The file's own `notes` member says the same thing next to the data.
 
 ## Licence
 
-The prose, the canonicalisation rule, the schemas and the vectors are **CC-BY 4.0**, per
-`DESIGN.md` §7. The code that runs them — `schema/validate.py` and everything under `impl/` — is
-**MIT OR Apache-2.0**, the repository's licence for code. There is no separate licence file in
-this directory; the repository's root files govern.
+The prose, the canonicalisation rule, the schemas and the vectors are **CC-BY 4.0**
+([`LICENSE`](LICENSE)), as `DESIGN.md` §7 asks; the tooling — `schema/validate.py` — is **MIT OR
+Apache-2.0** ([`LICENSE-MIT`](LICENSE-MIT), [`LICENSE-APACHE`](LICENSE-APACHE)), the same pair the
+reference server carries for its code. Reuse the specification with attribution, and the tooling
+under either licence.
