@@ -274,8 +274,9 @@ Three obligations on the request side, none of which changes the wire:
 
 - **Every request is answered, and the wait has to be bounded.** `doc.open` and `doc.close` are
   answered with a result or an error, and nothing obliges a server to answer promptly. The
-  reference client has no per-request timeout: a server that holds the socket open and never
-  replies leaves the caller waiting without end. A client **should** bound the wait, and the
+  Rust client has no per-request timeout, so a server that holds the socket open and never
+  replies leaves its caller waiting without end; the TypeScript client bounds the wait at ten
+  seconds. A client **should** bound the wait, and the
   bound cannot be a protocol number — it has to be at least a round trip on the connection in
   use, and less than "for ever".
 - **A socket that drops fails every request in flight.** When the connection ends, whether the
@@ -664,9 +665,9 @@ know and do:
 
 **Implementation status.** The server implements all of the above, and the harness tests the
 host-reclaim path with a `reclaim` helper that is a *test* affordance and not part of the
-client's API. The reference client has no reconnect logic at all — its engine ends at
-`Disconnected`/`RoomGone` and leaves reconnecting to its caller. That is the first thing a
-plugin needs and the reason this section exists before it is implemented.
+client's API. The Rust client has no reconnect logic — its engine ends at
+`Disconnected`/`RoomGone` and leaves reconnecting to its caller. The TypeScript client
+implements the bounded policy above.
 
 ## 10. Version and capability negotiation
 
@@ -773,7 +774,7 @@ agreement.
    exactly on the selection's **right** edge **extends** the selection — the endpoint is bound
    to the element after it, so the inserted text falls inside — while an insertion on the
    **left** edge leaves the selection outside it, since the same rule binds that endpoint
-   forward too. A receiver that wants the other policy on one edge must publish `-1` for it
+   forward too. A publisher that wants the other policy on one edge must publish `-1` for it
    itself; nothing about the shape prevents that. Undo interop (yjs's `followUndoneDeletions`,
    which it recommends leaving `false` for shared positions) is out of scope for `selvage/1`.
 5. **Where does an awareness client id belong?** The session layer carries
