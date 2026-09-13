@@ -370,6 +370,15 @@ frame reveals it. So, in `selvage/1`:
   a client that substitutes its own numbers disagrees with its peers about when a cursor is
   stale. A client renews its own state every `keepalive.awareness_renew_ms` (15 s) by
   republishing it with a newer awareness clock.
+- **Those numbers are the only clock, and they are not necessarily 15 s and 30 s.** They are the
+  reference's defaults, not the protocol's values; an implementation may advertise anything
+  positive, and the conformance harness advertises 40 ms and 250 ms so that expiry can be tested
+  in under a second. Nothing may hardcode the defaults, and a client built on a library that
+  runs an awareness clock of its own — `y-protocols`' `Awareness` installs a 15 s/30 s
+  `setInterval` when it is constructed — **must stop that tick** and drive renewal and expiry
+  from the advertised values instead. A client that leaves both running has two clocks that
+  disagree: a cursor expires at the wrong moment, or a test waits fifteen seconds for a state
+  the server said went stale in a quarter of one.
 - A client drops a *remote* state it has not seen for `keepalive.awareness_expire_ms`
   (30 s). Expiry is checked on the renewal tick, so a state is forgotten at the first tick
   after `last_updated + awareness_expire_ms`, which is **within
