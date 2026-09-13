@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://selvageprotocol.com/schema/1/meta.json",
   "title": "Selvage Session Protocol — the `GET /meta` negotiation body",
-  "description": "The body `GET /meta` answers with, on the same listener as the session WebSocket. It is JSON but not a session frame: no `v`, no envelope, no `id`. Valid against spec/PROTOCOL.md \u00a72.",
+  "description": "The body `GET /meta` answers with, on the same listener as the session WebSocket. It is JSON but not a session frame: no `v`, no envelope, no `id`. Valid against PROTOCOL.md \u00a72.",
   "type": "object",
   "required": ["server", "wire_versions", "capabilities", "keepalive", "roles"],
   "properties": {

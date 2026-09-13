@@ -166,8 +166,9 @@ version the client can speak **is** a failure, and it is a failure before the so
   server.
 - [`vectors/`](vectors/) carries transcripts of real bytes, each labelled with the wire version and
   the SJ-C version it was recorded under. Each frame in a transcript is in canonical form, and a
-  test in `impl/` asserts that the reference implementation produces and accepts exactly those
-  bytes. A conformance runner for another implementation compares canonical forms rather than
-  bytes if it prefers; the vectors are byte-exact so that it can.
+  test in the [reference server](https://github.com/selvage-protocol/reference_server) asserts that
+  it produces and accepts exactly those bytes. A conformance runner for another implementation
+  compares canonical forms rather than bytes if it prefers; the vectors are byte-exact so that it
+  can.
 - A second implementation that emits SJ-C bytes for the same members emits **the same bytes** as
   the reference server. That is the whole purpose of this document.

@@ -1,26 +1,29 @@
 # Selvage Session Protocol — wire draft
 
-**Status: DRAFT, implementation-led.** This document describes exactly what
-`impl/` in this repository does today, at wire version `selvage/1`. It is written from
-running code, not from intent: every JSON shape below was observed on the wire of the
-integration tests in `impl/crates/harness/tests/`, and the binary framing is described as
-`yrs` implements `y-protocols`. Nothing here is ratified, and the section
-[Open questions](#12-open-questions) lists what had to be decided in the absence of a
-settled design.
+**Status: DRAFT, implementation-led.** This document describes exactly what the reference server
+[`selvage-protocol/reference_server`](https://github.com/selvage-protocol/reference_server) does
+today, at wire version `selvage/1`. It is written from running code, not from intent: every JSON
+shape below was observed on the wire of the integration tests in
+[`crates/harness/tests/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests),
+and the binary framing is described as `yrs` implements `y-protocols`. Nothing here is ratified,
+and the section [Open questions](#12-open-questions) lists what had to be decided in the absence
+of a settled design.
 
 If you are writing a second, independent client, this document plus
 [`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md)
-should be sufficient; the Rust in `impl/` is not required reading, and where this document
-and that code disagree, the code is wrong.
+should be sufficient; the Rust in the reference server is not required reading, and where
+this document and that code disagree, the code is wrong.
 
-`DESIGN.md` at the repository root is the agreed design record. This document is the
+The agreed design record is
+`DESIGN.md`, in the
+`notes` repository; every `DESIGN.md` reference below means that file. This document is the
 wire-level refinement of §4 of that record. It does not modify it.
 
-**There is no JSON Schema yet.** `DESIGN.md` §7 asks for prose plus a machine-readable
-model, and §13.4 for the schema to be built early because prose drifts; this draft is prose
-alone. The wire types in `impl/crates/protocol` are the closest thing to a schema today, and
-the schema is to be derived from them and from this document rather than the other way
-round. Until it exists, every shape below is normative but nothing checks it for you.
+**The machine-readable model is [`schema/`](schema/)**, alongside this document: JSON Schema
+2020-12, one file per concern, with every frame of every vector checked against it by
+`schema/validate.py`. `DESIGN.md` §7 asks for prose plus a machine-readable model, and §13.4
+for the schema to be built early because prose drifts; the schema here is derived from this
+document and from the reference implementation's wire types, not the other way round.
 
 ---
 
@@ -826,5 +829,7 @@ agreement.
     profile, is **unresolved.**
 16. **The second client implementation is not written.** `DESIGN.md` §14.2 defers the
     decision whether the conformance harness's second client should be an independent
-    implementation. This draft exists so that it can be: everything in `impl/crates/protocol`
-    and `impl/crates/client` is meant to be replaceable without touching the server.
+    implementation. This draft exists so that it can be: everything in the reference server's
+    [`crates/protocol`](https://github.com/selvage-protocol/reference_server/tree/main/crates/protocol)
+    and [`crates/client`](https://github.com/selvage-protocol/reference_server/tree/main/crates/client)
+    is meant to be replaceable without touching the server.

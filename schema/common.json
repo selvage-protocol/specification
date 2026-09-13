@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://selvageprotocol.com/schema/1/common.json",
   "title": "Selvage Session Protocol — the members every frame shares",
-  "description": "Scalars and small objects of `selvage/1`: the wire version, roles, peer records, document paths, request ids. Valid against spec/PROTOCOL.md §4–§6. Every object here tolerates members it does not know (spec/CANONICAL.md §3), so no schema in this directory forbids one.",
+  "description": "Scalars and small objects of `selvage/1`: the wire version, roles, peer records, document paths, request ids. Valid against PROTOCOL.md §4–§6. Every object here tolerates members it does not know (CANONICAL.md §3), so no schema in this directory forbids one.",
   "$defs": {
     "version": {
       "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/wireVersion",
@@ -12,7 +12,7 @@
       "type": "integer",
       "minimum": 0,
       "maximum": 9007199254740991,
-      "description": "A client-assigned request id, unique per connection and never reused for the life of that connection. Bounded at 2^53-1 because a JavaScript receiver cannot hold a larger integer exactly (spec/CANONICAL.md §2.4)."
+      "description": "A client-assigned request id, unique per connection and never reused for the life of that connection. Bounded at 2^53-1 because a JavaScript receiver cannot hold a larger integer exactly (CANONICAL.md §2.4)."
     },
     "role": {
       "type": "string",

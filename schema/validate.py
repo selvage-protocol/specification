@@ -2,13 +2,16 @@
 """Validates the Selvage schemas, and the vectors against them.
 
 Every schema in this directory is checked as a JSON Schema 2020-12 schema. Then every frame
-in `spec/vectors/*.json` is checked against it: a text frame against `session.json` and
+in `vectors/*.json` is checked against it: a text frame against `session.json` and
 against the params schema of the method or event it names, an `expectBody` against
 `meta.json`, and every expected WebSocket close against the error vocabulary.
 
-Run it with a JSON Schema implementation available, e.g.:
+Run it with a JSON Schema implementation available, from the repository root:
 
-    nix-shell -p python3Packages.jsonschema --run 'python3 spec/schema/validate.py'
+    pip install jsonschema referencing
+    python3 schema/validate.py
+
+or, without pip: `nix-shell -p python3Packages.jsonschema --run 'python3 schema/validate.py'`.
 
 Vector placeholders (`$room`, `$message`, ...) are strings by construction — a vector never
 uses one where the schema requires a number — so they validate as ordinary strings.

@@ -1,4 +1,11 @@
-# The Selvage Session Protocol artifacts
+# The Selvage Session Protocol specification
+
+This repository is the specification for **Selvage**, a collaborative live-coding protocol, and
+is written to be implemented on its own. The reference implementation lives in
+[`selvage-protocol/reference_server`](https://github.com/selvage-protocol/reference_server); the
+design record and the working notes are in
+`selvage-protocol/notes`, and the editor client
+in [`selvage-protocol/vscode_client`](https://github.com/selvage-protocol/vscode_client).
 
 Four things live here, and they are meant to be read together:
 
@@ -7,12 +14,14 @@ Four things live here, and they are meant to be read together:
 | [`PROTOCOL.md`](PROTOCOL.md) | The prose specification. What the members mean, and why. |
 | [`CANONICAL.md`](CANONICAL.md) | **SJ-C 1** — the canonical byte form of a session text frame. |
 | [`schema/`](schema/) | The machine-readable model: JSON Schema 2020-12, one file per concern, plus `validate.py`. |
-| [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by `impl/crates/harness/tests/vectors.rs`. |
+| [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by the reference server's [`crates/harness/tests/vectors.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors.rs). |
 
 The prose is the specification; the other three are what an independent implementation can
-*check itself against* without reading the Rust. `DESIGN.md` §7 asks for "CC-BY prose plus JSON
-Schema" and §13.4 for the machine-readable model to be built early because prose drifts. This
-directory is that, plus the two things prose alone cannot carry: a byte-level rule and a suite.
+*check itself against* without reading the Rust.
+`DESIGN.md` §7 asks for
+"CC-BY prose plus JSON Schema" and §13.4 for the machine-readable model to be built early because
+prose drifts. This repository is that, plus the two things prose alone cannot carry: a byte-level
+rule and a suite.
 
 ## Why each one exists
 
@@ -26,7 +35,7 @@ directory is that, plus the two things prose alone cannot carry: a byte-level ru
   prose *described* correctly and the code did not implement — a faithful port of the prose would
   have reproduced the bug. A transcript that asserts the intended semantics catches that; a
   transcript that asserts only what the current code does cannot. Every vector is a real exchange
-  against the reference server, recorded byte for byte, and the test in `impl/` replays it.
+  against the reference server, recorded byte for byte, and that server's own test replays it.
 
 ## Versioning
 
@@ -53,7 +62,8 @@ minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this ver
 The schemas are checked as schemas, and every frame in every vector is checked against them:
 
 ```
-nix-shell -p python3Packages.jsonschema --run 'python3 spec/schema/validate.py'
+pip install jsonschema referencing     # or: nix-shell -p python3Packages.jsonschema
+python3 schema/validate.py
 ```
 
 It prints one line per schema, a count of the frames it checked, and `result OK`. It checks:
@@ -72,11 +82,12 @@ carries `"refused": true`, and its params are not schema-checked.
 ## Adding a vector
 
 1. **Start the server the vector needs** and record what it actually says. The reference bytes
-   for the binary frames are produced by `impl/crates/harness/tests/vectors/runner.rs`'s
-   siblings: build the document you want with a *fixed* client id (`yrs::Doc::with_options` with
+   for the binary frames are produced by the reference server's
+   [`crates/harness/tests/vectors/runner.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors/runner.rs)
+   and its siblings: build the document you want with a *fixed* client id (`yrs::Doc::with_options` with
    `client_id` set), and print the frames. A payload with a random client id in it is not a
    vector, it is a flaky test.
-2. **Write the file** as `spec/vectors/NNN-<slug>.json`, where `NNN` is the next free number.
+2. **Write the file** as `vectors/NNN-<slug>.json`, where `NNN` is the next free number.
    The members are:
 
    ```json
@@ -118,7 +129,8 @@ carries `"refused": true`, and its params are not schema-checked.
    matches anything and is never remembered: use it for the members the prose calls unstable,
    such as `error.message` and the `reason` of `room.gone`. Two connections that mint two
    different rooms need two different placeholder names.
-5. **Run it**: `nix-shell -p cargo rustc --run 'cd impl && cargo test -p selvage-harness --test vectors'`.
+5. **Run it** in a [`reference_server`](https://github.com/selvage-protocol/reference_server)
+   checkout: `cargo test -p selvage-harness --test vectors` (its flake provides `cargo`).
    Then run the schema validator, which checks the vector's shape as well as its frames.
 
 Four comparison rules are worth knowing before writing one, because they are what the runner
@@ -139,8 +151,9 @@ enforces:
 They are not a conformance suite for a *client*. Every `expect` is the server speaking, and the
 only client-side claims they make are about the bytes a peer receives and what those bytes mean
 once decoded. Client behaviour — renewal, expiry, reconnection, the adapter seam — is tested in
-`impl/crates/harness/tests/`. The cases they do not reach are listed at the end of
-`PROTOCOL.md` §12, and a second implementation will find more.
+the reference server's [`crates/harness/tests/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests).
+The cases they do not reach are listed at the end of `PROTOCOL.md` §12, and a second
+implementation will find more.
 
 ## `vectors/anchors/`
 
@@ -150,7 +163,8 @@ member inside those bytes, because a vector only ever decodes it with the librar
 So `vectors/anchors/` holds one document and one caret, written the way each of the two
 ecosystems' libraries writes it — the yjs shape, which names the scope beside the element, and
 the `yrs` shape, which names the element alone — together with the document both anchors are
-taken from. `impl/crates/harness/tests/crossing/` and `clients/vscode/test/crossing.test.ts`
+taken from. [`crates/harness/tests/crossing/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests/crossing)
+and [`test/crossing.test.ts`](https://github.com/selvage-protocol/vscode_client/blob/main/test/crossing.test.ts)
 rebuild each half from the real library and then resolve the *other* half, so a shape that one
 side stops accepting is a red test on both sides rather than a peer that silently shows no
 cursor. The file's own `notes` member says the same thing next to the data.

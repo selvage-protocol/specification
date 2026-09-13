@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://selvageprotocol.com/schema/1/negotiation.json",
   "title": "Selvage Session Protocol — version and capability negotiation",
-  "description": "The parts of `selvage/1` that decide whether two peers can talk at all: the wire version grammar, the compatibility rule, capability names, and the advertised block (`capabilities` plus `keepalive`) that both `GET /meta` and the reply to `session.hello` carry. Valid against spec/PROTOCOL.md §10; the canonical byte form is spec/CANONICAL.md §2.5.",
+  "description": "The parts of `selvage/1` that decide whether two peers can talk at all: the wire version grammar, the compatibility rule, capability names, and the advertised block (`capabilities` plus `keepalive`) that both `GET /meta` and the reply to `session.hello` carry. Valid against PROTOCOL.md §10; the canonical byte form is CANONICAL.md §2.5.",
   "$defs": {
     "wireVersion": {
       "type": "string",
@@ -12,7 +12,7 @@
     "canonicalWireVersion": {
       "type": "string",
       "pattern": "^selvage/(0|[1-9][0-9]*)(\\.[1-9][0-9]*)?$",
-      "description": "A wire version as a conforming producer writes it: `selvage/1` for the version `impl/` speaks, never `selvage/1.0`. The minor is written only when it is not zero, because zero is the default (spec/CANONICAL.md §2.5)."
+      "description": "A wire version as a conforming producer writes it: `selvage/1` for the version the reference server speaks, never `selvage/1.0`. The minor is written only when it is not zero, because zero is the default (CANONICAL.md §2.5)."
     },
     "capabilityName": {
       "type": "string",

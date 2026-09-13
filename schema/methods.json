@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://selvageprotocol.com/schema/1/methods.json",
   "title": "Selvage Session Protocol — every method of `selvage/1`",
-  "description": "The three client-to-server methods, with the params each takes and the result each returns. Valid against spec/PROTOCOL.md \u00a75. The mapping is: `session.hello` \u2192 `sessionHelloParams` and no response frame at all (its result is the `room.created`/`room.joined` event); `doc.open` \u2192 `docOpenParams`, result `documentSet`; `doc.close` \u2192 `docCloseParams`, result `documentSet`. An unknown method is answered with an error response and never dropped.",
+  "description": "The three client-to-server methods, with the params each takes and the result each returns. Valid against PROTOCOL.md \u00a75. The mapping is: `session.hello` \u2192 `sessionHelloParams` and no response frame at all (its result is the `room.created`/`room.joined` event); `doc.open` \u2192 `docOpenParams`, result `documentSet`; `doc.close` \u2192 `docCloseParams`, result `documentSet`. An unknown method is answered with an error response and never dropped.",
   "$defs": {
     "anyMethod": {
       "type": "string",
@@ -16,7 +16,7 @@
     },
     "anyParams": {
       "type": "object",
-      "description": "Method-specific params. Absent is equivalent to `{}`, and for a method that requires a member both are answered `bad_params`. Params are not `null`: an explicit `null` is a malformed frame (spec/CANONICAL.md \u00a72.6)."
+      "description": "Method-specific params. Absent is equivalent to `{}`, and for a method that requires a member both are answered `bad_params`. Params are not `null`: an explicit `null` is a malformed frame (CANONICAL.md \u00a72.6)."
     },
     "sessionHelloParams": {
       "title": "session.hello params",

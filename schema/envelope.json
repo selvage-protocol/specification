@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://selvageprotocol.com/schema/1/envelope.json",
   "title": "Selvage Session Protocol — the session envelope",
-  "description": "Every text frame is one JSON object, and one of three shapes: a request, a response, or an event. Valid against spec/PROTOCOL.md \u00a74. The byte form is spec/CANONICAL.md \u00a72.",
+  "description": "Every text frame is one JSON object, and one of three shapes: a request, a response, or an event. Valid against PROTOCOL.md \u00a74. The byte form is CANONICAL.md \u00a72.",
   "$defs": {
     "clientMessage": {
       "title": "request (client \u2192 server)",
