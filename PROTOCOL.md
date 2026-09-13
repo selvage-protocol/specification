@@ -427,29 +427,42 @@ frame reveals it. So, in `selvage/1`:
 - **`path` names a document that is in the room's open-document set** (§5). A state that
   names another path is still relayed and may still be displayed; it is not an error.
 - **`selection.anchor` and `selection.head` are CRDT anchors, never offsets.** Each is an
-  object in the format of a yjs `RelativePosition`: exactly one non-null scope — `item`
-  (`{ "client": number, "clock": number }`, naming an element), `tname` (a root type name,
-  which for Selvage is the document path), or `type` (a nested type, never produced by this
-  version) — together with `assoc`, `0` for the element *after* the position and `-1` for the
-  one *before*. `assoc` may be omitted, and then defaults to `0`. **No index is ever carried
-  on the wire.** An anchor stays valid for as long as the CRDT remembers the element it names,
+  object in the format of a yjs `RelativePosition`, carrying a scope, an optional element, and
+  an association:
+  - a **scope** — either `tname`, a root type name, which for Selvage is the document path, or
+    `type`, a nested type (never produced by this version). Exactly one of the two.
+  - an optional **`item`** (`{ "client": number, "clock": number }`) naming the element the
+    position sits against. When `item` is present it is **authoritative** for the position and
+    the scope is a check on it; when it is absent the anchor denotes an end of the scope,
+    resolved by `assoc`.
+  - **`assoc`** — `0` for the element *after* the position, `-1` for the one *before*. It may
+    be omitted, and then defaults to `0`.
+
+  A scope and an `item` **co-occur**, and a receiver MUST accept them together. This is not a
+  theoretical allowance: yjs's `createRelativePositionFromTypeIndex` on a root type emits both
+  — verified as `{"tname":"src/main.rs","item":{"client":…,"clock":2},"assoc":0}` — while `yrs`
+  holds one or the other in its `IndexScope` and emits `item` alone. A receiver that insisted
+  on a single member would show no cursor whatever for a peer on the other library, which is
+  precisely the silent cross-implementation failure this section exists to prevent. **No index
+  is ever carried on the wire.** An anchor stays valid for as long as the CRDT remembers the element it names,
   and the offset it denotes is recomputed by each receiver against its own replica. That is
   what makes a cursor survive a concurrent edit: an absolute offset drifts by the length of
   every edit landing before it, so a 157-character paste above a peer's caret moves that caret
   157 characters and leaves it somewhere plausible-looking and wrong.
-- **A sender MUST use the `tname` scope for a position that has no element to name** — the end
-  of the text with `assoc >= 0`, the start with `assoc < 0`, and anywhere in an empty text.
-  This is not a degenerate case to be routed around: it is the only encoding that exists for
-  those positions, and it is the one that behaves correctly, because `tname` with `assoc 0`
-  follows appends forever and `tname` with `assoc -1` ignores prepends forever.
+- **A sender MUST omit `item` for a position that has no element to name** — the end of the
+  text with `assoc >= 0`, the start with `assoc < 0`, and anywhere in an empty text. The anchor
+  is then its scope and `assoc` alone. This is not a degenerate case to be routed around: it is
+  the only encoding that exists for those positions, and it is the one that behaves correctly,
+  because `tname` with `assoc 0` follows appends forever and `tname` with `assoc -1` ignores
+  prepends forever.
 - **A receiver resolves each endpoint against the `Y.Text` named by `path`** and MUST verify
   the resolved branch is that text:
-  - `item` — the element must be known (the receiver's state vector past it) and must resolve
-    into that text. An element since **deleted resolves** to the surviving boundary; that is a
-    success, not a failure.
-  - `tname` — MUST equal `path`; resolves to the end of the text when `assoc >= 0` and to the
-    start when `assoc < 0`.
-  - `type` — `selvage/1` has no nested types, so a scope resolving anywhere other than the
+  - **`item` present** — the element must be known (the receiver's state vector past it) and
+    must resolve into that text; an accompanying `tname` MUST equal `path`. An element since
+    **deleted resolves** to the surviving boundary; that is a success, not a failure.
+  - **`item` absent, `tname`** — MUST equal `path`; resolves to the end of the text when
+    `assoc >= 0` and to the start when `assoc < 0`.
+  - **`type`** — `selvage/1` has no nested types, so a scope resolving anywhere other than the
     `Y.Text` for `path` **fails**.
 - **If either endpoint fails to resolve, the state carries no selection.** A receiver MUST NOT
   fall back to an offset, clamp to a guess, or otherwise manufacture a position. Resolution is
