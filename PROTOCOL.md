@@ -144,7 +144,7 @@ implementation), closes the connection.
 | param                  | type   | required | meaning |
 |------------------------|--------|----------|---------|
 | `display_name`         | string | yes      | non-empty; the only identity in this slice |
-| `role`                 | string | no       | `"host"` or `"guest"`; defaults to `"host"` when the URL carries no room, `"guest"` otherwise |
+| `role`                 | string | no       | `"host"` or `"guest"`; a claim, not a command: see §9 |
 | `awareness_client_id`  | number | no       | the y-protocols awareness client id this connection will speak with; see §8.4 |
 | `capabilities`         | array  | no       | capabilities the client believes it has; the server ignores any it does not know |
 | `client`               | string | no       | free-form client identification for diagnostics |
@@ -327,7 +327,12 @@ and role. When a peer leaves, its awareness state is dropped locally.
 ## 9. Rooms and the lifecycle
 
 - A room is minted by a connection that arrives without `room` in its URL; that connection
-  is the **host**. Guests join with the room id and token.
+  is the **host**. Guests join with the room id and token. A connection that mints a room
+  is its host whatever it claims in `session.hello`: minting *is* hosting, so a claimed
+  `"guest"` role on a minting connection is ignored — the alternative, refusal with
+  `bad_params`, would leave a token holder unable to host the room it just created, and the
+  alternative of honouring the claim would produce a room with no host whose real host is
+  then refused it with `host_present`.
 - The **token is the permission** (`DESIGN.md` §5). Any holder may join; there is no
   per-join approval. The token is secret: it is in the invite URL and nothing else.
 - **Exactly one host connection at a time.** A joining connection that claims
