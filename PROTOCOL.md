@@ -14,10 +14,9 @@ If you are writing a second, independent client, this document plus
 should be sufficient; the Rust in the reference server is not required reading, and where
 this document and that code disagree, the code is wrong.
 
-The agreed design record is
-`DESIGN.md`, in the
-`notes` repository; every `DESIGN.md` reference below means that file. This document is the
-wire-level refinement of §4 of that record. It does not modify it.
+The agreed design record is `DESIGN.md`, which is not published; every `DESIGN.md` reference
+below means that document. This document is the wire-level refinement of §4 of that record. It
+does not modify it.
 
 **The machine-readable model is [`schema/`](schema/)**, alongside this document: JSON Schema
 2020-12, one file per concern, with every frame of every vector checked against it by

@@ -2,10 +2,10 @@
 
 This repository is the specification for **Selvage**, a collaborative live-coding protocol, and
 is written to be implemented on its own. The reference implementation lives in
-[`selvage-protocol/reference_server`](https://github.com/selvage-protocol/reference_server); the
-design record and the working notes are in
-`selvage-protocol/notes`, and the editor client
-in [`selvage-protocol/vscode_client`](https://github.com/selvage-protocol/vscode_client).
+[`selvage-protocol/reference_server`](https://github.com/selvage-protocol/reference_server), and
+the editor client in
+[`selvage-protocol/vscode_client`](https://github.com/selvage-protocol/vscode_client). The design
+record, `DESIGN.md`, is not published; it is cited below by section.
 
 Four things live here, and they are meant to be read together:
 
