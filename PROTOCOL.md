@@ -324,6 +324,31 @@ Follows `y-protocols/PROTOCOL.md`. `yrs` is byte-compatible; this implementation
   queue). yjs convergence does not require one, but an editor adapter must not assume
   ordering between documents or between peers.
 
+### Document content: line endings and the trailing newline
+
+The protocol never carries a document's text as text: it carries CRDT operations, and whatever
+an adapter wrote is what the `Y.Text` holds, byte for byte. So two clients that disagree about
+how a document is *written* do not disagree about the protocol — they edit each other's buffer
+for ever, and neither converges. What a client's content must be, and all that is required:
+
+- **LF is what the CRDT holds.** A client writes `\n` into the `Y.Text` and restores the
+  document's own convention when it *renders*, never writing the restored text back. A CRLF
+  adapter and an LF adapter that both enforce their convention rewrite each other's text on every
+  pass; the CRDT ends up with whichever wrote last, and the other client's offsets then address
+  the wrong character.
+- **There is no trailing-newline invariant.** No part of `selvage/1` adds, removes, or requires a
+  final newline, and two adapters that each "ensure" one — the shape of a format-on-change
+  feature — edit each other's document indefinitely. An editor that wants the invariant owns it
+  in exactly one place, and must not treat its own application of it as a local edit.
+- **The line convention changes what an offset means.** A rendered CRLF document is one byte
+  longer per line than the CRDT's text, so an adapter that publishes absolute offsets has to
+  convert them, and an adapter that publishes relative positions (§8.1) does not. This is the
+  second reason to prefer relative positions, after concurrent editing itself.
+
+None of this is a new field or a method: it is a statement about what a client writes into its
+replica, and it is normative because a client that ignores it converges on a document its peer is
+not looking at.
+
 ## 8. Awareness
 
 Awareness uses the y-protocols awareness format, inside `message_type = 1` frames.
