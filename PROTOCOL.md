@@ -467,10 +467,25 @@ know and do:
   client id whose state was removed and drop the next publish from it — `yrs` 0.27.4 keeps that
   tombstone — and a client whose first republish is dropped looks, to every peer, like a
   participant with no cursor at all.
-- **Refusal means stop.** `room_unknown` means the room is gone for good — the host did not
-  come back inside the grace period — so retrying the same URL cannot help. A client should
-  retry a failed connection with a bounded backoff rather than in a tight loop, and it
-  should tell its user which of these two things happened.
+- **A refusal means stop; a drop means try again.** `room_unknown`, `token_invalid`,
+  `host_present`, `room_gone` and `unsupported_version` refuse for a reason a retry cannot
+  change — a room that is gone is gone for good, and the host did not come back inside the
+  grace period — so a client **must** stop and say why rather than reconnect into the same
+  refusal. Every other loss of the socket is **recoverable**, and a client **should** re-hello
+  with a bounded backoff rather than in a tight loop.
+- **The numbers are the reference's, not the protocol's.** The reference client retries a
+  *recovered* connection with 500 ms doubling to a 10 s ceiling, five attempts, and it does not
+  retry the **first** connection at all: a failure before a session ever existed is reported to
+  whoever asked for one, not retried behind its back. What `selvage/1` asks for is only that a
+  retry is bounded, that giving up is a decision a caller can observe, and that a refusal is
+  never retried.
+- **A client must be able to tell its user which of the two happened, and the event vocabulary
+  cannot express it today.** A refusal reaches an adapter as `session.error` (§6) and then, if
+  the server closed the connection, as `disconnected`. A recoverable drop the client is
+  retrying produces **no event at all** in the reference client, and one that gave up produces
+  `disconnected` — the same event an orderly close produces. An adapter that wants to show
+  "reconnecting…" has to infer it from the silence. **Known gap**, and the fix is an event, not
+  a wire change.
 - **Nothing survives the room.** After `room.gone` there is no room to rejoin, on any URL,
   with any token (§9).
 
