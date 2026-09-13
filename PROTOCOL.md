@@ -455,9 +455,18 @@ know and do:
   awareness state are gone with the socket and belong to the *new* connection from the
   moment it is seated: it should re-`doc.open` the documents it still holds open (which is
   what puts them back in the room's set when nobody else had them), and republish awareness.
-- **Content is not replayed.** A reconnecting client starts with an empty `Y.Doc` and gets
-  the room's history from its peers through the ordinary SyncStep1/SyncStep2 exchange (§7).
-  The server has nothing to replay and keeps nothing.
+- **The server replays nothing.** It holds no CRDT (§3), so it has no document to hand back and
+  no history to replay: a reconnecting client gets the room's content from its peers through
+  the ordinary SyncStep1/SyncStep2 exchange, exactly as a first-time joiner does (§7). Whether
+  the client kept its own `Y.Doc` across the drop or starts from an empty one is a local
+  decision and both work — a replica that kept its history asks for the delta it missed, and an
+  empty one is brought up to date from scratch. A client must not conclude that the room is
+  empty because it is: the server will not correct that, and its peers only send what a
+  SyncStep1 asks for.
+- **A reconnecting client SHOULD use a fresh awareness client id.** A library may remember a
+  client id whose state was removed and drop the next publish from it — `yrs` 0.27.4 keeps that
+  tombstone — and a client whose first republish is dropped looks, to every peer, like a
+  participant with no cursor at all.
 - **Refusal means stop.** `room_unknown` means the room is gone for good — the host did not
   come back inside the grace period — so retrying the same URL cannot help. A client should
   retry a failed connection with a bounded backoff rather than in a tight loop, and it
