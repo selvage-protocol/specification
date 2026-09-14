@@ -3,7 +3,7 @@
 transcript held.
 
 CI cannot build a `selvaged`, so `python3 schema/validate.py` and
-`run_vectors.py --schema-only` never reach `matches`, `matches_peers`, `expected_bytes`,
+`run_vectors.py --schema-only` never reach `matches`, `matches_unordered`, `expected_bytes`,
 `check_text` or `check_frame_spec` — a byte comparison that does not run cannot fail, and
 a byte comparison that cannot fail is not a check. These cases drive all five, in both
 directions: every rule is given a pair that must match and a pair that must not.
@@ -29,7 +29,7 @@ from run_vectors import (  # noqa: E402
     check_text,
     expected_bytes,
     matches,
-    matches_peers,
+    matches_unordered,
 )
 
 VECTOR_DIR = pathlib.Path(__file__).resolve().parent.parent / "vectors"
@@ -91,16 +91,16 @@ class TestPeers(unittest.TestCase):
             {"display_name": "Ada", "peer_id": "p-1", "role": "host"},
         ]
         bindings = Bindings()
-        matches_peers([first, second], wire, bindings)
+        matches_unordered([first, second], wire, bindings)
         self.assertEqual(bindings.named["$host_peer"], "p-1")
         self.assertEqual(bindings.named["$guest_peer"], "p-2")
 
     def test_a_missing_or_extra_peer_does_not_match(self) -> None:
         one = [{"display_name": "Ada", "peer_id": "$p", "role": "host"}]
         with self.assertRaises(Mismatch):
-            matches_peers(one, [], Bindings())
+            matches_unordered(one, [], Bindings())
         with self.assertRaises(Mismatch):
-            matches_peers(
+            matches_unordered(
                 one,
                 [
                     {"display_name": "Ada", "peer_id": "p-1", "role": "host"},
@@ -113,11 +113,70 @@ class TestPeers(unittest.TestCase):
         want = [{"display_name": "Ada", "peer_id": "$p", "role": "host"}]
         have = [{"display_name": "Ada", "role": "host"}]
         with self.assertRaises(Mismatch):
-            matches_peers(want, have, Bindings())
+            matches_unordered(want, have, Bindings())
+
+    def test_a_string_array_in_another_order_is_the_same_array(self) -> None:
+        # The prose promises no order for `capabilities` either, and it is built from a
+        # constant here and from whatever an implementation holds elsewhere.
+        want = ["y-protocols/1", "awareness", "host-reclaim"]
+        matches_unordered(
+            list(want), ["host-reclaim", "y-protocols/1", "awareness"], Bindings()
+        )
+        with self.assertRaises(Mismatch):
+            matches_unordered(list(want), ["y-protocols/1", "awareness"], Bindings())
+
+    def test_a_placeholder_bound_before_a_reordered_array_survives(self) -> None:
+        # The re-order rebuilds this array's placeholders in the wire's order, and the
+        # byte comparison writes the whole frame from all of them: the ones bound before
+        # the array must not be dropped on the way.
+        expected = canonical(
+            {
+                "event": "room.joined",
+                "params": {
+                    "a_peer": "$first",
+                    "peers": [
+                        {"display_name": "Ada", "peer_id": "$host_peer", "role": "host"},
+                        {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"},
+                    ],
+                },
+                "v": "selvage/1",
+            }
+        )
+        actual = canonical(
+            {
+                "event": "room.joined",
+                "params": {
+                    "a_peer": "p-9",
+                    "peers": [
+                        {"display_name": "Bob", "peer_id": "p-2", "role": "guest"},
+                        {"display_name": "Ada", "peer_id": "p-1", "role": "host"},
+                    ],
+                },
+                "v": "selvage/1",
+            }
+        )
+        check_text(actual, expected, Bindings())
+
+    def test_a_documents_array_is_compared_in_order(self) -> None:
+        # `PROTOCOL.md` §6.2 promises `documents` first-opened order, so the comparison must
+        # hold the wire to it rather than treat it as a set.
+        bindings = Bindings()
+        matches(
+            {"documents": ["a.rs", "b.rs"]},
+            {"documents": ["a.rs", "b.rs"]},
+            bindings,
+        )
+        with self.assertRaises(Mismatch):
+            matches(
+                {"documents": ["a.rs", "b.rs"]},
+                {"documents": ["b.rs", "a.rs"]},
+                Bindings(),
+            )
 
     def test_a_peers_array_in_another_order_is_the_same_frame(self) -> None:
-        # The server builds `peers` from a hash map, so its order is not stable. The byte
-        # comparison has to see the frame the wire sent, not the order the vector chose.
+        # The server's order is not something the vector can name. The byte comparison has
+        # to see the frame the wire sent, not the order the vector chose (`CANONICAL.md`
+        # §2.7).
         ada = {"display_name": "Ada", "peer_id": "$host_peer", "role": "host"}
         bob = {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"}
         expected = canonical(
@@ -162,6 +221,49 @@ class TestPeers(unittest.TestCase):
         )
         with self.assertRaises(Mismatch):
             check_text(other, expected, Bindings())
+
+
+    def test_a_reordered_capabilities_array_is_the_same_frame(self) -> None:
+        expected = canonical(
+            {
+                "event": "room.joined",
+                "params": {
+                    "capabilities": ["y-protocols/1", "awareness"],
+                    "room_id": "$room",
+                },
+                "v": "selvage/1",
+            }
+        )
+        actual = canonical(
+            {
+                "event": "room.joined",
+                "params": {
+                    "capabilities": ["awareness", "y-protocols/1"],
+                    "room_id": "r-1",
+                },
+                "v": "selvage/1",
+            }
+        )
+        check_text(actual, expected, Bindings())
+
+    def test_a_reordered_documents_array_is_not_the_same_frame(self) -> None:
+        # `documents` is the one array whose order the prose promises.
+        expected = canonical(
+            {
+                "event": "doc.opened",
+                "params": {"documents": ["a.rs", "b.rs"], "path": "a.rs"},
+                "v": "selvage/1",
+            }
+        )
+        actual = canonical(
+            {
+                "event": "doc.opened",
+                "params": {"documents": ["b.rs", "a.rs"], "path": "a.rs"},
+                "v": "selvage/1",
+            }
+        )
+        with self.assertRaises(Mismatch):
+            check_text(actual, expected, Bindings())
 
 
 class TestExpectedBytes(unittest.TestCase):

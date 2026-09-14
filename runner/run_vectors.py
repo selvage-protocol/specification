@@ -62,6 +62,10 @@ SERVER_ENV = "SELVAGE_SELVAGED"
 DEFAULT_GRACE_MS = 30_000
 FRAME_TIMEOUT = 10.0
 ANY = "$_"
+# The members whose prose promises no order: a comparison matches each as a multiset and
+# reconciles the order before the bytes are built (`CANONICAL.md` §2.7). `documents` is not
+# here — PROTOCOL.md §6.2 promises it first-opened order, and the comparison holds it to that.
+UNORDERED = frozenset({"peers", "capabilities", "wire_versions", "roles"})
 # The byte form of `CANONICAL.md`: ascending member names, no whitespace, and no `\u`
 # escape for a printable character.
 CANONICAL = {"sort_keys": True, "separators": (",", ":"), "ensure_ascii": False}
@@ -131,8 +135,8 @@ def matches(expected: object, actual: object, bindings: Bindings) -> None:
         for member, value in expected.items():
             if member not in actual:
                 raise Mismatch(f"missing member `{member}` in {json.dumps(actual)}")
-            if member == "peers":
-                matches_peers(value, actual[member], bindings)
+            if member in UNORDERED:
+                matches_unordered(value, actual[member], bindings)
             else:
                 matches(value, actual[member], bindings)
         for member in actual:
@@ -155,22 +159,26 @@ def matches(expected: object, actual: object, bindings: Bindings) -> None:
         )
 
 
-def matches_peers(want: object, have: object, bindings: Bindings) -> None:
-    """Peers are compared as a set: the protocol promises no order for them.
+def matches_unordered(want: object, have: object, bindings: Bindings) -> None:
+    """Matches an array the prose leaves unordered: as a multiset, then in the wire's order.
 
-    The vector's list is then put into the order the wire sent, because the byte
-    comparison after this one would otherwise see the order and reject a frame that is
-    the same frame: `peers` is the one array whose order is not part of any claim, and the
-    server's order is not stable between runs.
+    The members are matched first, each against a distinct member of the wire, so the frame
+    is checked member by member. The vector's list is then put into the order the wire sent,
+    because the byte comparison after this one would otherwise see the order and reject a
+    frame that is the same frame: for these arrays the order is not part of any claim, and
+    the server's order is not something the vector can name.
     """
     if not isinstance(want, list) or not isinstance(have, list):
-        raise Mismatch(f"expected a list of peers, the wire has {json.dumps(have)}")
+        raise Mismatch(f"expected a list, the wire has {json.dumps(have)}")
+    # The placeholders already bound before this array; the re-order below rebuilds only the
+    # ones this array contributes, and it must not drop the ones in front of it.
+    base = len(bindings.matched)
     if len(want) != len(have):
         raise Mismatch(
-            f"expected {len(want)} peers, the wire has {len(have)}"
+            f"expected {len(want)} members, the wire has {len(have)}"
         )
     used = [False] * len(have)
-    # Where each of the vector's peers was found on the wire.
+    # Where each of the vector's members was found on the wire.
     at: list[int] = []
     for value in want:
         found: tuple[int, Bindings] | None = None
@@ -185,7 +193,9 @@ def matches_peers(want: object, have: object, bindings: Bindings) -> None:
             found = (index, trial)
             break
         if found is None:
-            raise Mismatch(f"no peer in {json.dumps(have)} matches {json.dumps(value)}")
+            raise Mismatch(
+                f"no member in {json.dumps(have)} matches {json.dumps(value)}"
+            )
         index, trial = found
         used[index] = True
         at.append(index)
@@ -195,9 +205,10 @@ def matches_peers(want: object, have: object, bindings: Bindings) -> None:
     order = sorted(range(len(want)), key=at.__getitem__)
     if order != list(range(len(want))):
         want[:] = [want[position] for position in order]
-        # Bind again, in the order the frame will be written in.
+        # Bind again, in the order the frame will be written in. The placeholders bound
+        # before this array are kept; only this array's are rebuilt.
         trial = bindings.clone()
-        trial.matched.clear()
+        del trial.matched[base:]
         matches(want, have, trial)
         bindings.named = trial.named
         bindings.matched = trial.matched
