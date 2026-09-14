@@ -1,11 +1,11 @@
-# Canonical form for session frames — SJ-C 1
+# Canonical form for session frames — SJ-C/1
 
 **Status: DRAFT.** This document fixes the *byte* form of the JSON session frames that
 [`PROTOCOL.md`](PROTOCOL.md) §4–§6, §10 describe, so that two independent implementations can
 compare and produce the same bytes. `PROTOCOL.md` says what the members mean; this says how they
 are written.
 
-It is versioned with the prose it belongs to: this is **SJ-C 1**, the canonical form for wire
+It is versioned with the prose it belongs to: this is **SJ-C/1**, the canonical form for wire
 version `selvage/1`. A future wire version that changes a frame's members changes this document's
 version at the same time, and [`vectors/`](vectors/) records which of the two each transcript is
 valid against.
@@ -62,11 +62,16 @@ it adds no new obligation to either of the two implementations that exist.
 
 ### 2.4 Numbers
 
-A member whose type is `number` in `PROTOCOL.md` is a **non-negative integer** and is written in
-plain decimal: no `+`, no leading zero, no fraction, no exponent, no `-0`. `1.0` and `1e2` are
-not SJ-C, even though they are the same number; a producer **must not** emit them and the
-reference server answers one with `bad_message` because its `id` and `*_ms` members are unsigned
-integers.
+A member whose type in `PROTOCOL.md` is a count — `id`, `*_ms`, and the `awareness_client_id`
+of a `PeerInfo` — is a **non-negative integer** and is written in plain decimal: no `+`, no
+leading zero, no fraction, no exponent, no `-0`. `1.0` and `1e2` are not SJ-C, even though they
+are the same number; a producer **must not** emit them and the reference server answers one with
+`bad_message` because its types for those members are unsigned integers.
+
+`assoc` is the one signed number `PROTOCOL.md` names, and it is not a count: §8.1 gives it the
+values `0` (the element *after* the position), `-1` (the element *before* it) and absent (the
+same as `0`). A producer that wants the other policy on one edge of a selection writes `-1` for
+it, and the rule above — a rule about counts — does not forbid that.
 
 `id` and `awareness_client_id` **must not exceed 2 53 − 1** (9007199254740991). Above that a
 JavaScript receiver (`JSON.parse` → IEEE 754 double) cannot hold the value and would answer the
@@ -132,7 +137,8 @@ dropped, because silence is how version skew becomes a timeout.
 
 - A text frame that is not one JSON object — an array, a bare string, a number, or bytes that are
   not JSON at all: `bad_message`.
-- A frame with no `v`, or an incompatible `v`: `unsupported_version` (§10).
+- A frame with no `v`: `bad_message`, because it is not a session envelope at all (§10). A
+  frame with an incompatible `v`: `unsupported_version` (§10).
 - A request with no `id`: `bad_message` (§4.1).
 - A first frame that is not `session.hello`, and any first frame that is not a text frame:
   `hello_required` and `bad_message` respectively (§5, §11).
