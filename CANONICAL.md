@@ -98,6 +98,31 @@ that `PROTOCOL.md` types as an object, array, string or number is a malformed fr
 reference server answers `bad_message` or `bad_params` depending on where it appears. In
 particular `"params": null` is not the same as an absent `params`.
 
+### 2.7 Array order
+
+An array's order is part of what a frame *says* only where `PROTOCOL.md` promises one. Exactly
+one array is in that position: `documents`, "the room's open-document set, in first-opened
+order" (§6.2), which a comparison holds to that order.
+
+Every other array this protocol defines — `peers` ("No order is promised for it", §6.2),
+`capabilities` (§2, §6.2, §10), `wire_versions` and `roles` (§2) — is a **set**, and there is
+no order to write it in that follows from its members. There is no analogue of §2.1 here:
+member names give an object a total order that is a function of its members, and an array of
+`PeerInfo` has no such name. Sorting `peers` by `peer_id` does not help either, because a
+`peer_id` is minted by the server and a vector that claims a frame cannot contain the value
+it will be.
+
+So a producer writes these arrays in whatever order it holds them, and two consequences
+follow:
+
+- **A receiver must not depend on the order.** §4's rule for an object is a rule for an array
+  whose order the prose does not promise.
+- **A comparison must not depend on it either.** A conformance comparison matches such an
+  array as a multiset and brings the two sides into one order before it compares bytes, so a
+  frame that lists the same members in a different order is the same frame. The vectors in
+  [`vectors/`](vectors/) are byte-exact about such a frame's members and not about the order
+  of one of these arrays.
+
 ## 3. Unknown members: dropped
 
 A member that the receiver's implementation does not know is **dropped**, never preserved and
@@ -118,6 +143,9 @@ unknown member back, which §4.1 forbids in effect by making every frame's membe
 
 - **Any member order** and any insignificant whitespace: this is the whole point of §2, and a
   receiver that compares frames byte for byte is wrong, not the peer that sent them.
+- **Any order of an array `PROTOCOL.md` does not order.** `peers`, `capabilities`,
+  `wire_versions` and `roles` are sets (§2.7); their order is not a claim, and a receiver that
+  reads one into one is wrong, not the peer that wrote them.
 - **Members it does not know**, at any depth, in either direction (§3).
 - **Event names it does not know**: ignored, like an unknown member.
 - **Capability names it does not know**: ignored, in `/meta` and in the `capabilities` member.
@@ -173,8 +201,9 @@ version the client can speak **is** a failure, and it is a failure before the so
 - [`vectors/`](vectors/) carries transcripts of real bytes, each labelled with the wire version and
   the SJ-C version it was recorded under. Each frame in a transcript is in canonical form, and a
   test in the [reference server](https://github.com/selvage-protocol/reference_server) asserts that
-  it produces and accepts exactly those bytes. A conformance runner for another implementation
-  compares canonical forms rather than bytes if it prefers; the vectors are byte-exact so that it
-  can.
+  it produces and accepts exactly those bytes — the bytes of §2, and for an array §2.7 leaves
+  unordered, the multiset of its members rather than the order they arrived in. A conformance
+  runner for another implementation compares canonical forms rather than bytes if it prefers;
+  the vectors are byte-exact so that it can.
 - A second implementation that emits SJ-C bytes for the same members emits **the same bytes** as
   the reference server. That is the whole purpose of this document.

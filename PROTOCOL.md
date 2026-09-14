@@ -79,7 +79,9 @@ advertised is talking to something that is not this draft.
   | `roles` | array of string | the roles this server seats; `["host", "guest"]` in this draft (§9) |
 
   Unknown members are ignored, like an unknown member anywhere else. What a client needs is
-  `wire_versions`; the rest it reads for a better default before the handshake answers.
+  `wire_versions`; the rest it reads for a better default before the handshake answers. The
+  three arrays are sets: like `peers` (§6.2), their order is not significant and a client must
+  not depend on it (`CANONICAL.md` §2.7).
 
   A client **should** read `/meta` before connecting when it can, to fail fast on an
   incompatible server. Reading it has three outcomes, and they are not the same outcome:
@@ -360,6 +362,8 @@ All event `params` are flat objects.
 - `peers` lists the peers already in the room, excluding `self`. No order is promised for it,
   and a receiver must not depend on one.
 - `documents` is the room's open-document set, in first-opened order.
+- `capabilities` is a set, like `peers`: no order is promised for it, and a receiver must not
+  depend on one. `documents` is the only array in this frame whose order means anything.
 - The response is guaranteed to be the first frame on the connection after the handshake,
   before any relayed payload or other event.
 
@@ -741,7 +745,8 @@ therefore never mistaken for the peer it replaces.
 - Capabilities are advertised additively by the server in `room.created`/`room.joined` and
   in `/meta`, and optionally by the client in `session.hello`. **Unknown capabilities and
   unknown fields are ignored by both sides.** There is no failure mode for an unknown
-  capability, and no way for a client to require one — see §12.
+  capability, and no way for a client to require one — see §12. A `capabilities` array is a
+  set: no order is promised for it, in any of the three places it appears.
 
 ### 10.1 Reserved names
 
