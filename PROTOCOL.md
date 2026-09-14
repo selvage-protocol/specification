@@ -107,6 +107,14 @@ is negotiated; an implementation is free to differ as long as it documents its n
 | WebSocket ping | every 30 s | the server pings; it never closes a connection for silence |
 | outbound queue, per connection | unlimited | a peer that stops reading is not disconnected |
 | connections | unlimited | no cap, no idle reaper, no per-source rate limit |
+| inbound WebSocket frame | 16 MiB | the connection ends the way a dropped socket ends: no `session.error`, no session close code |
+| inbound WebSocket message | 64 MiB | the same |
+
+The last two are not this server's numbers: it never configures a message-size limit, so what
+it enforces is the default of the WebSocket library it uses — 16 MiB for one frame, 64 MiB for
+one message — and a dependency bump can move both. A frame over the limit is a transport
+failure and not a session fault, so nothing on the wire explains it: the room learns of the
+connection the way it learns of any other drop (`peer.left`, §6, §9).
 
 The two unbounded rows are a v1 posture, not a promise: a server on the public internet
 needs a cap, an idle deadline and a rate limit, and a spec that other implementations
