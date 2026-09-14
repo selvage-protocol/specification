@@ -7,17 +7,20 @@ the editor client in
 [`selvage-protocol/vscode_client`](https://github.com/selvage-protocol/vscode_client). The design
 record, `DESIGN.md`, is not published; it is cited below by section.
 
-Five things live here, and they are meant to be read together:
+Six things live here, and they are meant to be read together. The first is the specification; the
+rest are what an independent implementation can *check itself against* — and read, where the first
+is silent — without reading the Rust.
 
 | Path | What it is |
 |---|---|
-| [`PROTOCOL.md`](PROTOCOL.md) | The prose specification. What the members mean, and why. |
-| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1** — the canonical byte form of a session text frame. |
+| [`PROTOCOL.md`](PROTOCOL.md) | **The specification.** What the members mean, and what a conforming peer must, should or may do. §1.1 says which sentences bind a reader and what conformance is. |
+| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1** — the canonical byte form of a session text frame. Normative for the bytes. |
 | [`schema/`](schema/) | The machine-readable model: JSON Schema 2020-12, one file per concern, plus `validate.py`. |
 | [`runner/`](runner/) | The language-neutral replay: `run_vectors.py` starts a server and replays every transcript against it, with no Rust toolchain. |
 | [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by the reference server's [`crates/harness/tests/vectors.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors.rs) and by `runner/`. |
+| [`NOTES.md`](NOTES.md) | **Informative.** What the implementations do where `PROTOCOL.md` does not bind them, the decisions this draft had to make, and what is still open. Nothing there is a requirement. |
 
-The prose is the specification; the other four are what an independent implementation can
+`PROTOCOL.md` is the specification; the other four are what an independent implementation can
 *check itself against* without reading the Rust.
 `DESIGN.md` §7 asks for
 "CC-BY prose plus JSON Schema" and §13.4 for the machine-readable model to be built early because
@@ -41,6 +44,10 @@ rule and a suite.
   `runner/run_vectors.py` reads the same JSON, opens a WebSocket to a server it starts itself, and
   compares the bytes, so a second implementation in any language can be held to the transcripts
   without reading `reference_server/`.
+- **The notes** exist because a specification has to be able to say what is settled and what is
+  not without either pretending an undecided question is a rule or leaving a reader to infer one
+  from an implementation. They are kept apart from `PROTOCOL.md` so that nothing in the
+  specification has to be read twice to find out whether it binds.
 
 ## Versioning
 
@@ -221,7 +228,7 @@ They are not a conformance suite for a *client*. Every `expect` is the server sp
 only client-side claims they make are about the bytes a peer receives and what those bytes mean
 once decoded. Client behaviour — renewal, expiry, reconnection, the adapter seam — is tested in
 the reference server's [`crates/harness/tests/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests).
-The cases they do not reach are listed at the end of `PROTOCOL.md` §12, and a second
+The cases they do not reach are listed in [`NOTES.md`](NOTES.md) §B, and a second
 implementation will find more.
 
 ## `vectors/anchors/`
