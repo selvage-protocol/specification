@@ -1,0 +1,6 @@
+# The validator's bytecode cache.
+__pycache__/
+*.pyc
+
+# Scratch space for tools that default to a temp directory. Never the RAM disk.
+/.tmp
