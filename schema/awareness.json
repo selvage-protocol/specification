@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://selvageprotocol.com/schema/1/awareness.json",
+  "title": "Selvage Session Protocol — the awareness state and its anchors",
+  "description": "The state carried inside a `message_type = 1` frame, which y-protocols leaves opaque: `{ path, selection }`, and each selection endpoint a yjs `RelativePosition` anchor. Valid against PROTOCOL.md §8.1. A binary frame is relayed unchanged and is not canonicalised (CANONICAL.md §6), so nothing here says how a state is written, only what a receiver may read.",
+  "$defs": {
+    "anchorItem": {
+      "type": "object",
+      "description": "The element a position sits against: a CRDT item, named by the client that made it and the clock of the change. When it is present it is authoritative for the position, and a scope beside it is a check on the element rather than a second way of naming the position (§8.1).",
+      "required": [
+        "client",
+        "clock"
+      ],
+      "properties": {
+        "client": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The CRDT client id that created the item. This is a y-protocols number inside the payload, not the session's `awareness_client_id`."
+        },
+        "clock": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "The item's clock in that client's sequence. The CRDT clock is unaffected by the offset unit an adapter chooses (§8.1)."
+        }
+      }
+    },
+    "anchor": {
+      "type": "object",
+      "description": "A yjs `RelativePosition`: a scope, an optional element, and an association. At least one of `item`/`tname`/`type` is present, and at most one scope. A receiver resolves it against the `Y.Text` named by the state's `path`, and a state whose endpoint does not resolve carries no selection rather than a guessed position (§8.1).",
+      "anyOf": [
+        { "required": ["item"] },
+        { "required": ["tname"] },
+        { "required": ["type"] }
+      ],
+      "not": { "required": ["tname", "type"] },
+      "properties": {
+        "assoc": {
+          "type": "number",
+          "description": "`0` for the element after the position, `-1` for the one before. Omitted means `0`. A receiver normalises any other number by sign, and any number is an `assoc` whatever its precision (§8.1, §12.4)."
+        },
+        "item": {
+          "$ref": "#/$defs/anchorItem"
+        },
+        "tname": {
+          "type": "string",
+          "minLength": 1,
+          "description": "A root type name, which for Selvage is the document path. `tname` with no `item` denotes an end of that text, chosen by `assoc`: the end when `assoc >= 0`, the start when it is negative."
+        },
+        "type": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath",
+          "description": "A nested type name. `selvage/1` produces none, so a scope resolving anywhere other than the `Y.Text` for `path` fails to resolve."
+        }
+      }
+    },
+    "selection": {
+      "type": "object",
+      "description": "The two endpoints an editor selection has. `head` resolving before `anchor` means the selection was made backwards: direction stays implicit in which endpoint lands further left, and a caret is two endpoints that resolve to the same index (§8.1).",
+      "required": [
+        "anchor",
+        "head"
+      ],
+      "properties": {
+        "anchor": {
+          "$ref": "#/$defs/anchor"
+        },
+        "head": {
+          "$ref": "#/$defs/anchor"
+        }
+      }
+    },
+    "state": {
+      "type": "object",
+      "description": "One awareness state, keyed on the wire by the client id that published it. A state with `path` and no `selection` says only which document the peer is in — the encoding for a selection the sender could not anchor (§8.1). Identity is not here: a display name travels in the session layer (§8.4).",
+      "required": [
+        "path"
+      ],
+      "properties": {
+        "path": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath",
+          "description": "The document the state is about. It normally names a path in the room's open-document set; a state naming another path is still relayed and may still be displayed, because the set is shared and is not the sender's to guarantee (§8.1)."
+        },
+        "selection": {
+          "$ref": "#/$defs/selection"
+        }
+      }
+    }
+  }
+}
