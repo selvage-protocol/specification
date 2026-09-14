@@ -363,8 +363,8 @@ Follows `y-protocols/PROTOCOL.md`. `yrs` is byte-compatible; this implementation
   |---|---|---|
   | 0 | sync | `varUint(sync_type)` then `varUint8Array(payload)`; `sync_type` is 0 = SyncStep1 (state vector), 1 = SyncStep2 (update), 2 = Update |
   | 1 | awareness | `varUint8Array(awareness update)` |
-  | 2 | auth | unused in this slice (there is no per-join approval) |
-  | 3 | awareness query | valid but unused; see §8.3 |
+  | 2 | auth | not sent by this implementation: there is no per-join approval. A receiver that gets one reads it and ignores it (§8.3) |
+  | 3 | awareness query | not sent by this implementation, but a client **answers** one it receives with its own states (§8.3) |
 
   `varUint` is LEB128; `varUint8Array` is a `varUint` byte length followed by the bytes.
   The sync payloads are yjs v1 encodings.
@@ -575,8 +575,11 @@ There is no awareness handshake in this slice:
 2. Each of those peers republishes its own current awareness state.
 3. The newcomer publishes its own state as soon as it is seated.
 
-`message_type = 3` (awareness query) and the `handle_awareness_query` reply are part of
-y-protocols and a client should tolerate them, but this implementation does not use them.
+`message_type = 3` (awareness query) and its reply are part of y-protocols. Neither reference
+client sends one — the three steps above are the whole discovery story — but a client that
+receives one **answers** it with every awareness state it holds, so it is a frame to handle and
+not one to drop. A `message_type = 2` (auth) message is read and ignored: this slice has no
+per-join approval for a denial to be about.
 
 ### 8.4 Attributing a cursor to a person
 
@@ -834,8 +837,9 @@ agreement.
 14. **HTTP `/meta` is hand-rolled** on the WebSocket listener: no keep-alive, no `HEAD`, no
     routing. Fine for negotiation; it should be replaced, not extended, if a real HTTP
     surface is ever needed. **Unresolved by design.**
-15. **`y-protocols` message types 2 (auth) and 3 (awareness query)** are accepted and
-    unused. Whether `selvage/1` should *forbid* them, or keep them available for a future
+15. **`y-protocols` message types 2 (auth) and 3 (awareness query)** are never sent by this
+    implementation — a query a client receives is answered, and an auth message is ignored
+    (§8.3). Whether `selvage/1` should *forbid* them, or keep them available for a future
     profile, is **unresolved.**
 16. **The second client implementation is not written.** `DESIGN.md` §14.2 defers the
     decision whether the conformance harness's second client should be an independent
