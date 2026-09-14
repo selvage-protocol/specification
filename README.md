@@ -67,7 +67,7 @@ minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this ver
 The schemas are checked as schemas, and every frame in every vector is checked against them:
 
 ```
-pip install jsonschema referencing     # or: nix-shell -p python3Packages.jsonschema
+pip install jsonschema referencing     # or: nix develop  (the same package, pinned)
 python3 schema/validate.py
 ```
 
@@ -104,7 +104,7 @@ It needs Python 3 and two packages:
 
 ```
 pip install websockets jsonschema referencing
-# or: nix-shell -p python3Packages.websockets python3Packages.jsonschema python3Packages.referencing
+# or: nix develop, in this repository, for the same three packages at the pins the workflow installs
 ```
 
 and a `selvaged`, which is not part of this repository:

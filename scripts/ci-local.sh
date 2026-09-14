@@ -9,12 +9,17 @@
 #
 # Keep this in step with the workflow — it runs the same commands, so that a red job is found
 # here rather than on a runner. `lint` catches unknown actions, bad expressions and shell
-# mistakes statically; the workflow has no actionlint step of its own, so that one is local-only
-# and needs `nix`.
+# mistakes statically; the workflow has no actionlint step of its own, so that one is local-only.
 #
-# The workflow installs its three pinned Python dependencies into the runner's Python; this
-# machine's `python3` has none of them, so `validate` keeps a virtualenv under `.tmp/venv` and
-# installs those same pins into it. Run `scripts/ci-local.sh validate` once with the network up.
+# `validate` is `nix build .#checks.<system>.{schemas,runner,yprotocols}`, one check per step.
+# `flake.nix` supplies the pinned Python and the three packages the workflow installs with pip —
+# at the versions that workflow pins — so this needs no virtualenv, no `pip` and no network. Each
+# check's store path is the report of the command it ran, which is what is printed here: a check
+# that had to be built says nothing until it is done, and a cached one still says what it found.
+# A failure exits this script with the check's own report, which nix prints as the log tail.
+#
+# The checks read the files git tracks, so a file that is new and unstaged is invisible to them:
+# `git add` a vector or a schema before expecting the pinned counts to move.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -25,28 +30,27 @@ cd "$repo_root"
 export TMPDIR="$repo_root/.tmp"
 mkdir -p "$TMPDIR"
 
+# The system this host evaluates for; the flake has checks for each of flake-utils' four.
+system=$(nix eval --raw --impure --expr builtins.currentSystem)
+
 say() { printf '\n=== %s ===\n' "$*"; }
 
-python="$repo_root/.tmp/venv/bin/python"
+check() {
+  local name=$1 description=$2 out
+  say "validate: $description"
+  out=$(nix build ".#checks.${system}.${name}" --no-link --print-out-paths)
+  cat "$out"
+}
 
 job_validate() {
-  say "validate: the validator's dependencies"
-  if [ ! -x "$python" ]; then
-    python3 -m venv "$repo_root/.tmp/venv"
-  fi
-  "$python" -m pip install --quiet --disable-pip-version-check \
-    jsonschema==4.26.0 referencing==0.37.0 websockets==16.1
-  say "validate: the schemas and the vectors"
-  "$python" schema/validate.py
-  say "validate: the runner's comparison code"
-  "$python" runner/test_runner.py
-  say "validate: the binary decoder"
-  "$python" runner/test_yprotocols.py
+  check schemas "the schemas and the vectors"
+  check runner "the runner's comparison code"
+  check yprotocols "the binary decoder"
 }
 
 job_lint() {
   say "lint: actionlint over the workflows"
-  nix shell nixpkgs#actionlint -c actionlint
+  nix develop . -c actionlint
 }
 
 case "${1:-all}" in
