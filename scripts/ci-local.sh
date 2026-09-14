@@ -3,7 +3,7 @@
 # Runs the steps of .github/workflows/validate.yml on this machine, without containers (this
 # host has no Docker or Podman, so `act` cannot run here).
 #
-#   scripts/ci-local.sh validate  # the `schemas` job: the schemas, the vectors' frame half, the decoder
+#   scripts/ci-local.sh validate  # the `schemas` job: the schemas, the vectors, the runner, the decoder
 #   scripts/ci-local.sh lint      # actionlint over the workflow files
 #   scripts/ci-local.sh all       # lint + validate
 #
@@ -38,8 +38,8 @@ job_validate() {
     jsonschema==4.26.0 referencing==0.37.0 websockets==16.1
   say "validate: the schemas and the vectors"
   "$python" schema/validate.py
-  say "validate: the vectors' frame half"
-  "$python" runner/run_vectors.py --schema-only
+  say "validate: the runner's comparison code"
+  "$python" runner/test_runner.py
   say "validate: the binary decoder"
   "$python" runner/test_yprotocols.py
 }
