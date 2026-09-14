@@ -1,0 +1,299 @@
+#!/usr/bin/env python3
+"""Checks the replay's comparison code without a server: the layer that decides whether a
+transcript held.
+
+CI cannot build a `selvaged`, so `python3 schema/validate.py` and
+`run_vectors.py --schema-only` never reach `matches`, `matches_peers`, `expected_bytes`,
+`check_text` or `check_frame_spec` — a byte comparison that does not run cannot fail, and
+a byte comparison that cannot fail is not a check. These cases drive all five, in both
+directions: every rule is given a pair that must match and a pair that must not.
+
+They need no server and no `websockets`: `run_vectors` imports what it can and its
+comparison functions are pure.
+"""
+
+from __future__ import annotations
+
+import json
+import pathlib
+import sys
+import unittest
+
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+
+import run_vectors  # noqa: E402
+from run_vectors import (  # noqa: E402
+    Bindings,
+    Mismatch,
+    check_frame_spec,
+    check_text,
+    expected_bytes,
+    matches,
+    matches_peers,
+)
+
+VECTOR_DIR = pathlib.Path(__file__).resolve().parent.parent / "vectors"
+
+
+def canonical(value: object) -> str:
+    """A frame in the byte form of `CANONICAL.md`, which is what a vector carries."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+
+
+def hex_bytes(text: str) -> bytes:
+    return bytes(int(byte, 16) for byte in text.split())
+
+
+def vector(vector_id: str) -> dict:
+    for path in sorted(VECTOR_DIR.glob("*.json")):
+        document = json.loads(path.read_text())
+        if document["id"] == vector_id:
+            return document
+    raise AssertionError(f"no vector {vector_id}")
+
+
+class TestMatches(unittest.TestCase):
+    def test_a_placeholder_binds_and_must_hold(self) -> None:
+        bindings = Bindings()
+        matches({"room_id": "$room"}, {"room_id": "r-1"}, bindings)
+        matches({"room_id": "$room"}, {"room_id": "r-1"}, bindings)
+        with self.assertRaises(Mismatch):
+            matches({"room_id": "$room"}, {"room_id": "r-2"}, bindings)
+
+    def test_any_placeholder_matches_without_binding(self) -> None:
+        bindings = Bindings()
+        matches({"message": "$_"}, {"message": "one"}, bindings)
+        matches({"message": "$_"}, {"message": "another"}, bindings)
+
+    def test_a_placeholder_against_a_number_is_not_a_binding(self) -> None:
+        with self.assertRaises(Mismatch):
+            matches({"id": "$id"}, {"id": 1}, Bindings())
+
+    def test_the_member_set_is_exact_in_both_directions(self) -> None:
+        with self.assertRaises(Mismatch):
+            matches({"a": 1}, {"a": 1, "b": 2}, Bindings())
+        with self.assertRaises(Mismatch):
+            matches({"a": 1, "b": 2}, {"a": 1}, Bindings())
+
+    def test_a_value_of_the_wrong_type_does_not_match(self) -> None:
+        with self.assertRaises(Mismatch):
+            matches({"a": 1}, {"a": "1"}, Bindings())
+        with self.assertRaises(Mismatch):
+            matches({"a": True}, {"a": 1}, Bindings())
+
+
+class TestPeers(unittest.TestCase):
+    def test_peers_are_compared_as_a_set(self) -> None:
+        first = {"display_name": "Ada", "peer_id": "$host_peer", "role": "host"}
+        second = {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"}
+        wire = [
+            {"display_name": "Bob", "peer_id": "p-2", "role": "guest"},
+            {"display_name": "Ada", "peer_id": "p-1", "role": "host"},
+        ]
+        bindings = Bindings()
+        matches_peers([first, second], wire, bindings)
+        self.assertEqual(bindings.named["$host_peer"], "p-1")
+        self.assertEqual(bindings.named["$guest_peer"], "p-2")
+
+    def test_a_missing_or_extra_peer_does_not_match(self) -> None:
+        one = [{"display_name": "Ada", "peer_id": "$p", "role": "host"}]
+        with self.assertRaises(Mismatch):
+            matches_peers(one, [], Bindings())
+        with self.assertRaises(Mismatch):
+            matches_peers(
+                one,
+                [
+                    {"display_name": "Ada", "peer_id": "p-1", "role": "host"},
+                    {"display_name": "Bob", "peer_id": "p-2", "role": "guest"},
+                ],
+                Bindings(),
+            )
+
+    def test_a_peer_with_the_wrong_members_does_not_match(self) -> None:
+        want = [{"display_name": "Ada", "peer_id": "$p", "role": "host"}]
+        have = [{"display_name": "Ada", "role": "host"}]
+        with self.assertRaises(Mismatch):
+            matches_peers(want, have, Bindings())
+
+    def test_a_peers_array_in_another_order_is_the_same_frame(self) -> None:
+        # The server builds `peers` from a hash map, so its order is not stable. The byte
+        # comparison has to see the frame the wire sent, not the order the vector chose.
+        ada = {"display_name": "Ada", "peer_id": "$host_peer", "role": "host"}
+        bob = {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"}
+        expected = canonical(
+            {"event": "room.joined", "params": {"peers": [ada, bob], "room_id": "$room"}, "v": "selvage/1"}
+        )
+        actual = canonical(
+            {
+                "event": "room.joined",
+                "params": {
+                    "peers": [
+                        {"display_name": "Bob", "peer_id": "p-2", "role": "guest"},
+                        {"display_name": "Ada", "peer_id": "p-1", "role": "host"},
+                    ],
+                    "room_id": "r-1",
+                },
+                "v": "selvage/1",
+            }
+        )
+        bindings = Bindings()
+        check_text(actual, expected, bindings)
+        self.assertEqual(bindings.named["$host_peer"], "p-1")
+        self.assertEqual(bindings.named["$guest_peer"], "p-2")
+
+    def test_a_reordered_peers_array_is_still_checked_member_by_member(self) -> None:
+        ada = {"display_name": "Ada", "peer_id": "$host_peer", "role": "host"}
+        bob = {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"}
+        expected = canonical(
+            {"event": "room.joined", "params": {"peers": [ada, bob], "room_id": "$room"}, "v": "selvage/1"}
+        )
+        other = canonical(
+            {
+                "event": "room.joined",
+                "params": {
+                    "peers": [
+                        {"display_name": "Mallory", "peer_id": "p-2", "role": "guest"},
+                        {"display_name": "Ada", "peer_id": "p-1", "role": "host"},
+                    ],
+                    "room_id": "r-1",
+                },
+                "v": "selvage/1",
+            }
+        )
+        with self.assertRaises(Mismatch):
+            check_text(other, expected, Bindings())
+
+
+class TestExpectedBytes(unittest.TestCase):
+    def test_placeholders_are_replaced_in_order(self) -> None:
+        text = '{"a":"$x","b":["$y"]}'
+        self.assertEqual(
+            expected_bytes(text, ["1", "2"]),
+            '{"a":"1","b":["2"]}',
+        )
+
+    def test_a_matched_value_is_written_as_a_json_string(self) -> None:
+        self.assertEqual(expected_bytes('"$x"', ['a"b']), '"a\\"b"')
+
+    def test_an_unclosed_placeholder_is_an_error(self) -> None:
+        with self.assertRaises(Mismatch):
+            expected_bytes('{"a":"$x}', ["1"])
+
+    def test_a_placeholder_with_no_matched_value_is_an_error(self) -> None:
+        with self.assertRaises(Mismatch):
+            expected_bytes('{"a":"$x","b":"$y"}', ["1"])
+
+
+class TestCheckText(unittest.TestCase):
+    def test_a_canonical_frame_matches_and_binds_for_the_next_one(self) -> None:
+        bindings = Bindings()
+        first = canonical(
+            {"event": "room.created", "params": {"room_id": "$room", "token": "$token"}, "v": "selvage/1"}
+        )
+        check_text(
+            canonical(
+                {"event": "room.created", "params": {"room_id": "r-1", "token": "t-1"}, "v": "selvage/1"}
+            ),
+            first,
+            bindings,
+        )
+        second = canonical({"event": "room.joined", "params": {"room_id": "$room"}, "v": "selvage/1"})
+        check_text(
+            canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/1"}),
+            second,
+            bindings,
+        )
+        with self.assertRaises(Mismatch):
+            check_text(
+                canonical({"event": "room.joined", "params": {"room_id": "r-2"}, "v": "selvage/1"}),
+                second,
+                bindings,
+            )
+
+    def test_a_frame_that_is_not_the_claimed_bytes_fails(self) -> None:
+        expected = canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/1"})
+        # The same members, in the order the tables list them rather than sorted.
+        reordered = '{"v":"selvage/1","event":"room.joined","params":{"room_id":"r-1"}}'
+        with self.assertRaises(Mismatch) as caught:
+            check_text(reordered, expected, Bindings())
+        self.assertIn("canonical bytes", str(caught.exception))
+
+    def test_insignificant_whitespace_is_still_a_byte_difference(self) -> None:
+        expected = canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/1"})
+        spaced = expected.replace(":", ": ")
+        with self.assertRaises(Mismatch):
+            check_text(spaced, expected, Bindings())
+
+    def test_a_number_that_is_only_equal_by_value_fails_the_bytes(self) -> None:
+        # `1.0` == `1` in every JSON reader, and `CANONICAL.md` §2.4 forbids it on the
+        # wire: the structural comparison cannot see this, the byte comparison can.
+        with self.assertRaises(Mismatch):
+            check_text('{"id":1.0,"result":{},"v":"selvage/1"}', canonical({"id": 1, "result": {}, "v": "selvage/1"}), Bindings())
+
+    def test_a_missing_member_names_it(self) -> None:
+        with self.assertRaises(Mismatch) as caught:
+            check_text(
+                canonical({"event": "room.gone", "params": {"room_id": "r-1"}, "v": "selvage/1"}),
+                canonical({"event": "room.gone", "params": {"reason": "x", "room_id": "$r"}, "v": "selvage/1"}),
+                Bindings(),
+            )
+        self.assertIn("reason", str(caught.exception))
+
+
+class TestCheckFrameSpec(unittest.TestCase):
+    def test_vector_010_descriptions_match_the_sent_bytes(self) -> None:
+        sent: str | None = None
+        checked = 0
+        for step in vector("010")["steps"]:
+            if step["op"] == "sendBinary":
+                sent = step["hex"]
+            if step["op"] == "expectBinary" and "frame" in step:
+                self.assertIsNotNone(sent, "a frame description before any send")
+                check_frame_spec(step["frame"], hex_bytes(sent))
+                checked += 1
+        self.assertEqual(checked, 2, "vector 010 describes two frames")
+
+    def test_the_wrong_sync_type_is_a_mismatch(self) -> None:
+        # Vector 009's first frame is a SyncStep1 with an empty state vector.
+        frame = next(
+            step["hex"]
+            for step in vector("009")["steps"]
+            if step["op"] == "sendBinary" and step["hex"] == "00 00 01 00"
+        )
+        check_frame_spec({"message_type": 0, "sync_type": 0}, hex_bytes(frame))
+        with self.assertRaises(Mismatch):
+            check_frame_spec({"message_type": 0, "sync_type": 1}, hex_bytes(frame))
+
+    def test_an_awareness_frame_without_a_spec_is_a_mismatch(self) -> None:
+        step = next(
+            step
+            for step in vector("010")["steps"]
+            if step["op"] == "sendBinary" and "hex" in step
+        )
+        with self.assertRaises(Mismatch) as caught:
+            check_frame_spec({"message_type": 1}, hex_bytes(step["hex"]))
+        self.assertIn("awareness", str(caught.exception))
+
+
+class TestEveryFrameDescription(unittest.TestCase):
+    """Every `frame` description in the corpus has to be usable against the bytes."""
+
+    def test_each_description_decodes_the_last_sent_frame(self) -> None:
+        checked = 0
+        for path in sorted(VECTOR_DIR.glob("*.json")):
+            sent: str | None = None
+            for step in json.loads(path.read_text())["steps"]:
+                if step["op"] == "sendBinary" and "hex" in step:
+                    sent = step["hex"]
+                if step["op"] in ("expectBinary", "sendBinary") and "frame" in step:
+                    self.assertIsNotNone(
+                        sent,
+                        f"{path.name}: a frame description with no sent bytes to check",
+                    )
+                    check_frame_spec(step["frame"], hex_bytes(sent))
+                    checked += 1
+        self.assertGreater(checked, 0, "no vector describes a binary frame")
+
+
+if __name__ == "__main__":
+    unittest.main()
