@@ -205,8 +205,10 @@ enforces:
 - **Member sets are exact, in both directions.** A frame with a member the vector does not
   mention fails. A version-locked vector is checking that nothing was silently added or renamed,
   so an implementation that adds a member to a `selvage/1` frame has broken this version.
-- **`peers` is compared as a set.** The protocol promises no order for it, so the comparison
-  puts the vector's peers into the order the wire sent before it compares the bytes.
+- **`peers`, `capabilities`, `wire_versions` and `roles` are compared as sets.** The protocol
+  promises no order for them (`CANONICAL.md` §2.7), so the comparison matches them as multisets
+  and puts the vector's into the order the wire sent before it compares the bytes. `documents`
+  is not one of them: §6.2 promises it first-opened order, and the comparison holds it to that.
 - **The bytes are compared, not just the parsed JSON.** The vector's frame is written in the
   canonical form of `CANONICAL.md`, the reference server produces exactly those bytes, and a
   failure prints both.
