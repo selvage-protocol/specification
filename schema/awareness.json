@@ -36,7 +36,7 @@
       "properties": {
         "assoc": {
           "type": "number",
-          "description": "`0` for the element after the position, `-1` for the one before. Omitted means `0`. A receiver normalises any other number by sign, and any number is an `assoc` whatever its precision (§8.1, §12.4)."
+          "description": "`0` for the element after the position, `-1` for the one before. Omitted means `0`. A receiver normalises any other number by sign, and any number is an `assoc` whatever its precision (§8.1, §12, item 4)."
         },
         "item": {
           "$ref": "#/$defs/anchorItem"
