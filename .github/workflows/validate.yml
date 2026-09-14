@@ -34,13 +34,14 @@ jobs:
       - name: validate the schemas and the vectors
         run: python3 schema/validate.py
 
-      # The runner has two halves. The frame half needs no server and runs here; the
-      # replay half spawns a `selvaged`, and `reference_server` is private, so this job
-      # cannot check it out or build one. The wire half of the suite — 87 frame
-      # comparisons across the twelve transcripts — is therefore NOT covered by CI.
-      # Run `python3 runner/run_vectors.py` with SELVAGE_SELVAGED set to cover it.
-      - name: replay the vectors' frame half
-        run: python3 runner/run_vectors.py --schema-only
+      # `schema/validate.py` checks the frame bytes a vector *claims*; the runner is the
+      # code that checks them against a server. Only the second half needs a `selvaged`,
+      # and `reference_server` is private, so the replay itself cannot run here — but the
+      # comparison it is built on can, and it is tested in both directions, because a
+      # comparison that cannot fail is not a check. Run `python3 runner/run_vectors.py`
+      # with SELVAGE_SELVAGED set to replay the wire.
+      - name: check the runner's comparison code
+        run: python3 runner/test_runner.py
 
       - name: check the binary decoder
         run: python3 runner/test_yprotocols.py
