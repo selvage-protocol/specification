@@ -52,7 +52,8 @@ The implementations this document describes:
   §5 only says SHOULD.
 - **The outbound queue is unbounded.** `engine.rs` queues frames in a `VecDeque` and drains them
   when the socket is writable; a peer that reads slowly grows it without limit. `PROTOCOL.md` §2.1
-  states the client-side bound as a SHOULD for exactly this reason.
+  therefore states the client-side bound as a SHOULD, and that level is a settled decision rather
+  than an oversight (`B.20`).
 - A reconnecting client seeds a **new `Y.Doc`** carrying the outgoing replica's state on every
   handshake, so it never reuses an awareness client id.
 - The client's request surface is the handshake, `doc.open` and `doc.close`; see `A.4`.
@@ -226,3 +227,16 @@ unless the server configures it explicitly. **Unresolved.**
 **B.19 Where the reference client's request surface ends.** See `A.4`: the client can express
 `session.hello`, `doc.open` and `doc.close` and nothing else, so no `x.` method can be sent through
 it. **Unresolved**, and a client-API decision rather than a wire one.
+
+**B.20 A client's outbound bound is a SHOULD, deliberately.** `PROTOCOL.md` §2.1 asks a client to
+bound what it holds rather than queue without limit, and states it as a SHOULD. **Decided**: the
+level stays a SHOULD. All three implementations queue without bound — a `VecDeque` drained only
+when the socket is writable in the Rust client (`crates/client/src/engine.rs`), a `QueuedFrame[]`
+drained when the socket opens in the TypeScript engine, and the Neovim companion's byte-identical
+vendored copy of it — so a MUST here would be a rule all three violate, and a rule no
+implementation honours teaches a reader to distrust the rest. Raising the level is not a wording
+change: it means bounding all three clients *and* deciding what a client does when it reaches the
+bound — fail the session, or stop committing CRDT transactions until there is room — which is a
+wire-visible decision this draft does not take. It becomes a MUST when those two things exist:
+every conforming client bounds what it holds, and the specification states the observable
+consequence at the bound.
