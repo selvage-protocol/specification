@@ -40,7 +40,8 @@
     "documentPath": {
       "type": "string",
       "minLength": 1,
-      "description": "A workspace-relative path, non-empty and otherwise unvalidated in this slice (§12.8). Document identity is the path; it is not encoded inside the CRDT."
+      "pattern": "\\S",
+      "description": "A workspace-relative path: non-empty after trimming, and otherwise unvalidated in this slice (§12.8). The reference server answers `bad_params` for a blank one, and `doc.open` and `doc.close` carry the same field. Document identity is the path; it is not encoded inside the CRDT."
     },
     "awarenessClientId": {
       "type": "integer",
