@@ -26,9 +26,9 @@
         ]);
 
         # One check per step of `scripts/ci-local.sh validate`, so a failure names the step that
-        # failed. The store path of a check is the command's own output: `tee $out` means a
-        # cached check can still be read instead of printing nothing, which is what makes the
-        # local gate able to show what the runner prints.
+        # failed. The command's output goes to stderr as the build runs; `$out` gets one stable
+        # line, because the runner prints per-test timings and a derivation whose output differs
+        # from build to build is one `nix build --rebuild` rightly calls non-deterministic.
         mkCheck = name: command:
           pkgs.runCommand "specification-${name}" {
             nativeBuildInputs = [python];
@@ -37,9 +37,15 @@
             # The source tree is the store's, which is read-only; a bytecode cache belongs
             # neither there nor in the copy of it a sandbox would make.
             export PYTHONDONTWRITEBYTECODE=1
-            # Without this the `tee` would swallow a failing command and the check would pass.
-            set -o pipefail
-            ${command} 2>&1 | tee $out
+            log=$TMPDIR/${name}.log
+            if ${command} >$log 2>&1; then
+              cat $log >&2
+              echo "${name}: passed" >$out
+            else
+              cat $log >&2
+              echo "${name}: FAILED" >$out
+              exit 1
+            fi
           '';
       in {
         devShells.default = pkgs.mkShell {
