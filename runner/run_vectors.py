@@ -62,7 +62,9 @@ SERVER_ENV = "SELVAGE_SELVAGED"
 DEFAULT_GRACE_MS = 30_000
 FRAME_TIMEOUT = 10.0
 ANY = "$_"
-
+# The byte form of `CANONICAL.md`: ascending member names, no whitespace, and no `\u`
+# escape for a printable character.
+CANONICAL = {"sort_keys": True, "separators": (",", ":"), "ensure_ascii": False}
 
 class Mismatch(Exception):
     """A frame, a status or a replica does not hold what the vector claims."""
@@ -154,7 +156,13 @@ def matches(expected: object, actual: object, bindings: Bindings) -> None:
 
 
 def matches_peers(want: object, have: object, bindings: Bindings) -> None:
-    """Peers are compared as a set: the protocol promises no order for them."""
+    """Peers are compared as a set: the protocol promises no order for them.
+
+    The vector's list is then put into the order the wire sent, because the byte
+    comparison after this one would otherwise see the order and reject a frame that is
+    the same frame: `peers` is the one array whose order is not part of any claim, and the
+    server's order is not stable between runs.
+    """
     if not isinstance(want, list) or not isinstance(have, list):
         raise Mismatch(f"expected a list of peers, the wire has {json.dumps(have)}")
     if len(want) != len(have):
@@ -162,6 +170,8 @@ def matches_peers(want: object, have: object, bindings: Bindings) -> None:
             f"expected {len(want)} peers, the wire has {len(have)}"
         )
     used = [False] * len(have)
+    # Where each of the vector's peers was found on the wire.
+    at: list[int] = []
     for value in want:
         found: tuple[int, Bindings] | None = None
         for index, candidate in enumerate(have):
@@ -178,8 +188,24 @@ def matches_peers(want: object, have: object, bindings: Bindings) -> None:
             raise Mismatch(f"no peer in {json.dumps(have)} matches {json.dumps(value)}")
         index, trial = found
         used[index] = True
+        at.append(index)
         bindings.named = trial.named
         bindings.matched = trial.matched
+
+    order = sorted(range(len(want)), key=at.__getitem__)
+    if order != list(range(len(want))):
+        want[:] = [want[position] for position in order]
+        # Bind again, in the order the frame will be written in.
+        trial = bindings.clone()
+        trial.matched.clear()
+        matches(want, have, trial)
+        bindings.named = trial.named
+        bindings.matched = trial.matched
+
+
+def canonical_text(value: object) -> str:
+    """The value in the byte form a conforming frame is written in."""
+    return json.dumps(value, **CANONICAL)
 
 
 def expected_bytes(text: str, matched: list[str]) -> str:
@@ -215,6 +241,15 @@ def check_text(actual: str, expected: str, bindings: Bindings) -> None:
         have = json.loads(actual)
     except json.JSONDecodeError as error:
         raise Mismatch(f"the wire frame is not JSON: {error}: {actual}") from error
+    # The vector's own bytes are checked before matching, which may reorder a `peers`
+    # array: a vector's claim about the wire is only readable if the vector is written the
+    # way a frame is written (CANONICAL.md §2).
+    form = canonical_text(want)
+    if form != expected:
+        raise Mismatch(
+            "the vector frame is not in the canonical form of CANONICAL.md \u00a72:\n"
+            f"  vector: {expected}\n  form:   {form}"
+        )
     trial = bindings.clone()
     trial.matched.clear()
     try:
@@ -223,7 +258,10 @@ def check_text(actual: str, expected: str, bindings: Bindings) -> None:
         raise Mismatch(
             f"frame does not match:\n  vector: {expected}\n  wire:   {actual}\n  {problem}"
         ) from problem
-    wanted = expected_bytes(expected, trial.matched)
+    # Matching puts a `peers` array into the wire's order; the frame is then written the
+    # way the wire wrote it, so the bytes compared are the ones that frame has and not the
+    # order the vector happened to list its peers in.
+    wanted = expected_bytes(canonical_text(want), trial.matched)
     bindings.named = trial.named
     bindings.matched = trial.matched
     if actual != wanted:
