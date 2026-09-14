@@ -1,0 +1,7 @@
+{
+  "id": "999-probe",
+  "title": "deliberate CI probe: this vector is invalid on purpose",
+  "steps": [
+    { "op": "no-such-operation", "conn": "nobody" }
+  ]
+}
