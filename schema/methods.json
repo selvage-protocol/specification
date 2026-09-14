@@ -40,8 +40,9 @@
         "display_name": {
           "type": "string",
           "minLength": 1,
+          "maxLength": 32,
           "pattern": "\\S",
-          "description": "Non-empty after trimming; the server answers `bad_params` for blank. The only identity in this slice."
+          "description": "Non-empty after trimming and at most 32 UTF-16 code units (PROTOCOL.md \u00a75), so an astral character costs two; `maxLength` counts Unicode code points, so an implementation that enforces the protocol's bound counts UTF-16 code units itself. The server answers `bad_params` for a blank or longer name, and never truncates one. The only identity in this slice."
         },
         "role": {
           "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/role",

@@ -123,6 +123,15 @@ follow:
   [`vectors/`](vectors/) are byte-exact about such a frame's members and not about the order
   of one of these arrays.
 
+### 2.8 String length
+
+SJ-C fixes a string's bytes, not its length: a value longer than a receiver's bound is still
+canonical, and a receiver that refuses it refuses the value, not the encoding. `selvage/1` has one
+such bound — a `display_name` is at most 32 **UTF-16 code units** (`PROTOCOL.md` §5) — counted in
+the unit a JavaScript string's `.length` reports and the unit §8.1 of that document counts offsets
+in, so an astral character costs two. A name over the bound is refused `bad_params`, the code a
+blank one gets; it is not a canonical-form fault, and the frame is not `bad_message`.
+
 ## 3. Unknown members: dropped
 
 A member that the receiver's implementation does not know is **dropped**, never preserved and

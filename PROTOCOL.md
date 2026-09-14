@@ -306,7 +306,7 @@ complete the handshake within the server's hello timeout (§2.1), closes the con
 
 | param                  | type   | required | meaning |
 |------------------------|--------|----------|---------|
-| `display_name`         | string | yes      | non-blank; the only identity in this slice |
+| `display_name`         | string | yes      | non-blank and at most 32 UTF-16 code units (below); the only identity in this slice |
 | `role`                 | string | no       | `"host"` or `"guest"`; a claim, not a command: see §9 |
 | `awareness_client_id`  | number | no       | the y-protocols awareness client id this connection will speak with; see §8.4 |
 | `capabilities`         | array  | no       | capabilities the client believes it has; the server ignores any it does not know |
@@ -314,14 +314,27 @@ complete the handshake within the server's hello timeout (§2.1), closes the con
 
 The room to join, and its token, are carried in the connection URL, not here (§5.1).
 
+`display_name` is the only identity in this slice and the peer's to choose: a client sends what
+its person typed. Every client draws that string somewhere, and an unbounded one covers the
+screen, so the protocol bounds it. A `display_name` **MUST NOT** exceed **32 UTF-16 code units**,
+counted in UTF-16 code units — the length of a JavaScript string, so an astral character (a
+surrogate pair) costs two — not in bytes and not in code points. A server **MUST** refuse a
+`session.hello` whose `display_name` is longer than that with `bad_params` and then close
+**4000**, the refusal a blank one already gets (§11); it **MUST NOT** accept the name, and it
+**MUST NOT** truncate it, because a displayed name is then not the name its owner chose. The same
+string is the field a client sends, the `PeerInfo` a server stores and echoes, and the `self` and
+`peers` of `room.created` and `room.joined` (§6.1, §6.2): one bound, wherever it appears. A client
+**SHOULD** check the bound before sending, so that its person is asked for a shorter name rather
+than refused after typing it.
+
 The reply is a single `room.created` or `room.joined` event (§6.1, §6.2), and it is guaranteed to
 be the first frame on the connection after the handshake, before any relayed payload or other
 event. Refusals are a `session.error` event followed by a WebSocket close with the matching code
 (§11). A `session.hello` whose params object cannot be read is refused as `bad_message` —
 including one with no `display_name`, which is a parse failure for a shape whose only required
-member it is — while a well-formed hello whose `display_name` is blank is `bad_params`. The
-distinction is parse failure against semantic failure, and both are reachable here, before the
-handshake completes, where every fault closes the connection (§11).
+member it is — while a well-formed hello whose `display_name` is blank or over-long is
+`bad_params`. The distinction is parse failure against semantic failure, and both are reachable
+here, before the handshake completes, where every fault closes the connection (§11).
 
 `session.hello` sent a second time on the same connection is an error response, code
 `already_seated`, and the connection stays open.
@@ -843,6 +856,7 @@ what goes out.
 | unseated | a first frame that is binary, unparsable, or an envelope with no `id` | closed | `session.error{bad_message}`, close 4000 |
 | unseated | `session.hello` whose params do not parse, including no `display_name` | closed | `session.error{bad_message}`, close 4000 |
 | unseated | `session.hello` whose `display_name` is blank | closed | `session.error{bad_params}`, close 4000 |
+| unseated | `session.hello` whose `display_name` is over 32 UTF-16 code units | closed | `session.error{bad_params}`, close 4000 |
 | unseated | `session.hello` with an incompatible `v` | closed | `session.error{unsupported_version}`, close 4005 |
 | unseated | a join naming a room that does not exist | closed | `session.error{room_unknown}`, close 4001 |
 | unseated | a join whose token is absent or wrong | closed | `session.error{token_invalid}`, close 4002 |
@@ -954,7 +968,7 @@ same vocabulary is used in both, and the state a connection is in decides what a
 |---|---|---|---|
 | `unknown_method` | no such method | — (a non-hello first method is `hello_required`) | error response; the connection stays open |
 | `bad_message` | not a session envelope / no `id` / undecodable | refusal: `session.error`, then close **4000** | `session.error`; the connection stays open |
-| `bad_params` | method params missing or malformed | refusal for a blank `display_name`: `session.error`, then close **4000** | error response; the connection stays open |
+| `bad_params` | method params missing or malformed | refusal for a blank or over-long `display_name`: `session.error`, then close **4000** | error response; the connection stays open |
 | `hello_required` | the first text frame was not `session.hello`, or none arrived in time | refusal: `session.error`, then close **4000** | — |
 | `unsupported_version` | version refused | refusal: `session.error`, then close **4005** | the error response to the offending request, then close **4005** |
 | `room_unknown` | no such room (never minted, or destroyed) | refusal: `session.error`, then close **4001** | — |

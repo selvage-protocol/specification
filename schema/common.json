@@ -65,7 +65,8 @@
         "display_name": {
           "type": "string",
           "minLength": 1,
-          "description": "The only identity in this slice. The client sends it in `session.hello`; the server does not validate it beyond non-empty."
+          "maxLength": 32,
+          "description": "The only identity in this slice, sent by its owner in `session.hello` and echoed here. At most 32 UTF-16 code units (PROTOCOL.md §5), so an astral character costs two; `maxLength` counts Unicode code points, where an astral character costs one, so an implementation that enforces the protocol's bound counts UTF-16 code units itself. The server answers `bad_params` for a longer name and never truncates one."
         },
         "peer_id": {
           "$ref": "#/$defs/peerId"
