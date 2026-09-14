@@ -36,7 +36,7 @@ and byte order.
 > **Why not the order of the tables in `PROTOCOL.md`?** Because the tables are prose, and a
 > second implementation reads them; sorting is a rule that cannot be misread. The reference server
 > arrived at sorted order for every nested object by accident — `serde_json::Value` maps are
-> `BTreeMap`s — while its envelope and `/meta` did not sort.
+> `BTreeMap`s — while its envelope and `/meta` did not yet sort.
 
 ### 2.2 Whitespace
 
@@ -126,14 +126,16 @@ follow:
 ## 3. Unknown members: dropped
 
 A member that the receiver's implementation does not know is **dropped**, never preserved and
-never rejected. All three implementations that exist in this repository do exactly that, because
-all three deserialize into a fixed set of named members (`serde` and a plain object read, both of
-which ignore the rest), and the server never copies a client's object into a frame it sends:
-`PeerInfo` and the session params are built member by member.
+never rejected. All three implementations in this project do exactly that, because all three
+deserialize into a fixed set of named members (`serde` and a plain object read, both of which
+ignore the rest), and the server never copies a client's object into a frame it sends: `PeerInfo`
+and the session params are built member by member.
 
-Dropping is what makes `PROTOCOL.md` §4.1's promise true — "adding a field is never a protocol
-break" — and it is why the vectors in [`vectors/`](vectors/) can assert the *exact* member set of
-a frame: a version-locked vector is checking that no member has been silently added or renamed.
+Dropping is what makes `PROTOCOL.md` §4.1's promise true — a receiver that keeps working when a
+*later* version adds a member — and it is why the vectors in [`vectors/`](vectors/) can assert the
+*exact* member set of a frame: a version-locked vector is checking that no member has been silently
+added or renamed. Within `selvage/1` the member set of every frame is fixed; tolerance is what
+makes the transition to `selvage/2` soft, not a licence to add one now.
 
 A receiver that preserves unknown members has not been asked to, but is not conformant with this
 document: preservation is untestable (nothing observable differs) except when a peer echoes the
