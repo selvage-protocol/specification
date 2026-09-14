@@ -124,8 +124,10 @@ python3 runner/run_vectors.py
 It prints one line per vector and ends with `18 files, 552 frame checks, 18 vectors passed,
 0 failed`, and exits non-zero if any vector fails. `SELVAGE_VECTORS=DIR` reads the
 transcripts from another directory — replaying a corrupt *copy* is how a failure is shown to
-be caught — and both halves honour it. `--schema-only` is exactly `python3
-schema/validate.py` and starts no server.
+be caught — and both halves honour it. The counts `schema/validate.py` pins are this
+repository's, so the schema half fails on a directory that does not hold them rather than
+checking less of it quietly; the replay itself checks whatever it finds. `--schema-only` is
+exactly `python3 schema/validate.py` and starts no server.
 
 A `selvaged` must accept `--room-grace-ms MS`. The grace period is per-vector
 (`vectors/012` waits out 400 ms, `vectors/011` four seconds), and a runner that spawns the
