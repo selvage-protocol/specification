@@ -17,7 +17,7 @@
     "capabilityName": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._/-]*$",
-      "description": "A capability name. Unknown names are ignored by both sides and there is no failure mode for one a peer cannot honour (§10, §12.9); there is therefore no schema that says a capability is mandatory."
+      "description": "A capability name. Unknown names are ignored by both sides and there is no failure mode for one a peer cannot honour (§10, §12, item 9); there is therefore no schema that says a capability is mandatory."
     },
     "keepalive": {
       "type": "object",

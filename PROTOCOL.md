@@ -70,6 +70,17 @@ advertised is talking to something that is not this draft.
   }
   ```
 
+  | member | type | meaning |
+  |---|---|---|
+  | `server` | string | free-form identification, e.g. `selvaged/0.1.0`. For diagnostics only, and not stable |
+  | `wire_versions` | array of string | the wire versions this server accepts (§10). A client that can speak none of them must not open the socket |
+  | `capabilities` | array of string | what the server believes it has; the same list the handshake reply advertises (§10) |
+  | `keepalive` | object | the session's clocks — `ping_interval_ms`, `awareness_renew_ms`, `awareness_expire_ms` — which are the ones the handshake reply carries too (§8.2) |
+  | `roles` | array of string | the roles this server seats; `["host", "guest"]` in this draft (§9) |
+
+  Unknown members are ignored, like an unknown member anywhere else. What a client needs is
+  `wire_versions`; the rest it reads for a better default before the handshake answers.
+
   A client **should** read `/meta` before connecting when it can, to fail fast on an
   incompatible server. Reading it has three outcomes, and they are not the same outcome:
 
@@ -89,7 +100,7 @@ advertised is talking to something that is not this draft.
   request method is not inspected at all**: `GET`, `POST` and `HEAD /meta` all answer `200`
   with the same body. Answering `HEAD` with a body is a deviation from RFC 9110, and it is one
   of the reasons this endpoint should be replaced rather than extended if a real HTTP surface
-  is ever needed (§12, question 14).
+  is ever needed (§12, item 14).
 
 - **Frame types.** Text frames carry the JSON session envelope (§4–§6). Binary frames
   carry y-protocols payloads (§7, §8). The server routes binary frames by room membership
@@ -159,8 +170,10 @@ present.
 | `method` | string | yes      | see §5                                               |
 | `params` | object | no       | method-specific; absent is equivalent to `{}`         |
 
-**Unknown fields are ignored** — clients and servers must tolerate them, so that adding a
-field is never a protocol break. Unknown *capabilities* are likewise ignored (§10).
+**Unknown fields are ignored** — clients and servers must tolerate them, so that a *later*
+version can add a field without breaking a receiver. Within `selvage/1` the member set of every
+frame is fixed, and that is what lets a vector assert an exact one (`CANONICAL.md` §3). Unknown
+*capabilities* are likewise ignored (§10).
 
 A request without `id` produces a `session.error` event (§6) with code `bad_message`.
 
@@ -254,12 +267,12 @@ room id: it can be told the room exists, and it cannot be seated in it.
 { "v": "selvage/1", "id": 2, "method": "doc.open", "params": { "path": "src/main.rs" } }
 ```
 
-`path` is a workspace-relative path; the string must be non-empty, and is otherwise
-unvalidated in this slice (§12, question 8). The connection declares that it holds `path`
-open, and the room's open-document set gains the path if it was not already in it. The
-reply is `{ "result": { "documents": [ … ] } }` — the room's set after the change — so a
+`path` is a workspace-relative path; it must not be blank — a path of spaces is `bad_params`,
+and a path is otherwise unvalidated in this slice (§12, item 8). The connection declares that it
+holds `path` open, and the room's open-document set gains the path if it was not already in it.
+The reply is `{ "result": { "documents": [ … ] } }` — the room's set after the change — so a
 caller is told what its request did instead of assuming it. Every peer in the room,
-including the one that sent the request, then receives a `doc.opened` event (§6.5)
+including the one that sent the request, then receives a `doc.opened` event (§6)
 carrying the same set. A peer must tolerate the same path being opened by several peers,
 and by the same peer twice: holds belong to a connection, and opening a path twice from
 one connection is one hold.
@@ -478,7 +491,10 @@ frame reveals it. So, in `selvage/1`:
     absent the anchor denotes an end of the scope, chosen by `assoc`.
   - **`assoc`** — `0` for the element *after* the position, `-1` for the one *before*. It may
     be omitted, and then defaults to `0`. Both reference clients publish `0` for both
-    endpoints of a selection; §12.4 records why, and what it costs.
+    endpoints of a selection; §12, item 4 records why, and what it costs.
+  - **The two shapes that name one element denote the same position.** A receiver MUST resolve
+    `tname` beside `item` and `item` alone alike: which of the two a peer writes depends on its
+    library, not on what the position means.
 
   Three anchors, each conforming, and what each denotes:
 
@@ -486,7 +502,7 @@ frame reveals it. So, in `selvage/1`:
   // yjs, a caret inside a root type: the scope names the type and `item` the element.
   { "tname": "src/main.rs", "item": { "client": 5466766094545993, "clock": 11 }, "assoc": 0 }
 
-  // yrs, the same position: the element alone. A receiver MUST resolve the two alike.
+  // yrs, the same position: the element alone.
   { "item": { "client": 5466766094545993, "clock": 11 }, "assoc": 0 }
 
   // either library, a position with no element to name: here the end of the text with
@@ -676,10 +692,12 @@ know and do:
   tombstone — and a client whose first republish is dropped looks, to every peer, like a
   participant with no cursor at all.
 - **A refusal means stop; a drop means try again.** `room_unknown`, `token_invalid`,
-  `host_present`, `room_gone` and `unsupported_version` refuse for a reason a retry cannot
-  change — a room that is gone is gone for good, and the host did not come back inside the
-  grace period — so a client **must** stop and say why rather than reconnect into the same
-  refusal. Every other loss of the socket is **recoverable**, and a client **should** re-hello
+  `host_present` and `unsupported_version` refuse for a reason a retry cannot change — a room
+  that is gone is gone for good, and the host did not come back inside the grace period — so a
+  client **must** stop and say why rather than reconnect into the same refusal. A room destroyed
+  under a *seated* connection is not a refusal a client could have avoided: it learns of it as
+  the `room.gone` event and close 4003 (§6, §11), which is an ending and not a retry. Every
+  other loss of the socket is **recoverable**, and a client **should** re-hello
   with a bounded backoff rather than in a tight loop.
 - **The numbers are the reference's, not the protocol's.** The reference client retries a
   *recovered* connection with 500 ms doubling to a 10 s ceiling, five attempts, and it does not
@@ -751,7 +769,7 @@ so that adding one never has to mean splitting the protocol into a free one and 
 
 ## 11. Errors
 
-Machine-readable codes in `error.code` and `session.error.params.code`:
+Codes carried in `error.code` on a response and in `session.error.params.code` on an event:
 
 | code | meaning | closes the connection? |
 |---|---|---|
@@ -762,12 +780,13 @@ Machine-readable codes in `error.code` and `session.error.params.code`:
 | `unsupported_version` | version refused | yes, 4005 |
 | `room_unknown` | no such room (never minted, or destroyed) | yes, 4001 |
 | `token_invalid` | room present, token absent or wrong | yes, 4002 |
-| `room_gone` | the room was destroyed under a seated connection | yes, 4003 |
+| `room_gone` | the room was destroyed under a seated connection. The frame that announces it is the `room.gone` **event** (§6), and a later join is `room_unknown` | yes, 4003 |
 | `host_present` | a host is already connected | yes, 4004 |
 | `already_seated` | `session.hello` sent twice | no |
 | `doc_not_open` | reserved; not produced by this slice | — |
 
-Close codes live in the private-use range: 4000 `protocol_error`, 4001 `room_unknown`,
+The table above is the frame vocabulary. The *close* vocabulary is separate, and lives in the
+private-use range: 4000 `protocol_error`, 4001 `room_unknown`,
 4002 `token_invalid`, 4003 `room_gone`, 4004 `host_present`, 4005 `unsupported_version`.
 A refusal sends `session.error` **and then** a close with the matching code, so a client
 that does not read close frames still learns why. A close reason is WebSocket
