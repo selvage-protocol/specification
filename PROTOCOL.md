@@ -197,7 +197,8 @@ its policy, not a peer's contract. Four consequences do bind a peer.
   faster than its peer reads is buffering in its own memory: the socket's backpressure does not
   remove the queue, it moves it. A y-protocols delta cannot be regenerated once it has been
   produced, so a client **SHOULD** bound what it holds — by failing the session, or by not
-  committing a CRDT transaction until there is room — rather than queue without limit.
+  committing a CRDT transaction until there is room — rather than queue without limit. The level
+  is a settled decision rather than an oversight ([`NOTES.md`](NOTES.md) §B.20).
 
 The reference server's numbers, for a reader who needs to know what to expect in practice
 *(informative)*:
