@@ -339,11 +339,14 @@ attach its own parameters without a protocol change. Which of the two cases a UR
 
 - **A `room` without a `token`**, or with a token that is not the room's, is a `token_invalid`
   refusal.
-- **A `token` with no `room`** mints a new room and discards the token: a connection whose URL
-  names no room cannot join one, and the token has nothing to be checked against. A truncated
-  invite link — `room` lost to a chat client, a proxy, or a copy-paste, `token` surviving — is
-  therefore a *new, empty room* whose host is whoever sent it, and nothing on the wire says so.
-  [`NOTES.md`](NOTES.md) §B.17 records what that costs and the alternative.
+- **A `token` with no `room`** is a connection claiming to host, and the server **MUST** mint a
+  room for it, seat the connection as that room's host, and discard the token: `room` alone
+  decides which case a URL is, so the token has nothing to be checked against and nothing to join.
+  The handshake reply is `room.created` carrying the new room's token (§6.1). A truncated
+  invite link — `room` lost to a chat client, a proxy, or a copy-paste, `token` surviving —
+  therefore opens a *new, empty room* whose host is whoever sent it, and nothing on the wire says
+  so. That is the accepted cost of the rule; [`NOTES.md`](NOTES.md) §B.17 records why the
+  alternative was rejected.
 
 This is what makes the shared link literal: the host's invite URL **is** the WebSocket URL.
 
