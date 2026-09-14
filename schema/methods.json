@@ -66,8 +66,8 @@
       }
     },
     "anyResult": {
-      "description": "Every result `selvage/1` has: the room's open-document set. `session.hello` answers with an event instead of a response, so it has no result here.",
-      "oneOf": [{ "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentSet" }]
+      "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentSet",
+      "description": "Every result `selvage/1` has: the room's open-document set. `session.hello` answers with an event instead of a response, so it has no result here."
     }
   }
 }

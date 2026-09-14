@@ -26,30 +26,6 @@
       "enum": [4000, 4001, 4002, 4003, 4004, 4005],
       "description": "WebSocket close codes, in the private-use range: 4000 protocol_error, 4001 room_unknown, 4002 token_invalid, 4003 room_gone, 4004 host_present, 4005 unsupported_version."
     },
-    "fatalCode": {
-      "type": "string",
-      "enum": [
-        "unsupported_version",
-        "room_unknown",
-        "token_invalid",
-        "room_gone",
-        "host_present"
-      ],
-      "description": "A code that closes the connection: `session.error` first, then a close carrying the matching code, so a client that does not read close frames still learns why."
-    },
-    "closeForCode": {
-      "description": "The close code the server pairs with a fatal error code. The other codes leave the connection open.",
-      "oneOf": [
-        { "properties": { "code": { "const": "unsupported_version" }, "close": { "const": 4005 } } },
-        { "properties": { "code": { "const": "room_unknown" }, "close": { "const": 4001 } } },
-        { "properties": { "code": { "const": "token_invalid" }, "close": { "const": 4002 } } },
-        { "properties": { "code": { "const": "room_gone" }, "close": { "const": 4003 } } },
-        { "properties": { "code": { "const": "host_present" }, "close": { "const": 4004 } } },
-        { "properties": { "code": { "const": "bad_message" }, "close": { "const": 4000 } } },
-        { "properties": { "code": { "const": "hello_required" }, "close": { "const": 4000 } } }
-      ],
-      "required": ["code", "close"]
-    },
     "errorObject": {
       "type": "object",
       "description": "`error` on a response (\u00a74.2) and `params` on a `session.error` event (\u00a76) are the same shape. `message` is human-readable and explicitly not stable, so nothing may depend on it.",

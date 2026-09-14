@@ -16,7 +16,6 @@
     "serverMessage": { "$ref": "https://selvageprotocol.com/schema/1/envelope.json#/$defs/serverMessage" },
     "response": { "$ref": "https://selvageprotocol.com/schema/1/envelope.json#/$defs/responseMessage" },
     "event": { "$ref": "https://selvageprotocol.com/schema/1/envelope.json#/$defs/eventMessage" },
-    "sessionParams": { "$ref": "https://selvageprotocol.com/schema/1/events.json#/$defs/sessionParams" },
     "peer": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peer" },
     "meta": { "$ref": "https://selvageprotocol.com/schema/1/meta.json" },
     "errorObject": { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/errorObject" },
