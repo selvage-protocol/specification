@@ -19,11 +19,6 @@
       "pattern": "^[a-z0-9][a-z0-9._/-]*$",
       "description": "A capability name. Unknown names are ignored by both sides and there is no failure mode for one a peer cannot honour (§10, §12.9); there is therefore no schema that says a capability is mandatory."
     },
-    "reservedCapabilityName": {
-      "type": "string",
-      "pattern": "^x\\.",
-      "description": "A name in the reserved `x.` namespace (§10.1), for implementation-private and hosted-only messages. Nothing in `selvage/1` defines one; a receiver treats it exactly like any other unknown name."
-    },
     "keepalive": {
       "type": "object",
       "description": "The session's clocks, advertised by the server. The advertised values are the session's: a client that substitutes its own disagrees with its peers about when a cursor is stale (§8.2, §9).",
@@ -47,26 +42,6 @@
           "type": "integer",
           "minimum": 1,
           "description": "How often the server sends a WebSocket Ping. Protocol-level pings are not session messages and are never relayed (§9)."
-        }
-      }
-    },
-    "advertised": {
-      "description": "What the server advertises about itself, in the same shape in `GET /meta` and in `room.created`/`room.joined`.",
-      "type": "object",
-      "required": [
-        "capabilities",
-        "keepalive"
-      ],
-      "properties": {
-        "capabilities": {
-          "type": "array",
-          "items": {
-            "$ref": "#/$defs/capabilityName"
-          },
-          "description": "Advertised additively. The reference server advertises `y-protocols/1`, `awareness`, `open-document-set` and `host-reclaim`."
-        },
-        "keepalive": {
-          "$ref": "#/$defs/keepalive"
         }
       }
     },

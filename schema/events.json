@@ -14,30 +14,6 @@
       "minLength": 1,
       "description": "An event name. The ten below are defined by `selvage/1`; any other, including every `x.`-prefixed name, is ignored rather than refused (contrast `unknown_method`)."
     },
-    "sessionParams": {
-      "title": "room.created / room.joined params",
-      "description": "The reply to `session.hello`, and the first frame on a connection after it, before any relayed payload or other event. `room.created` carries `token` and `room.joined` does not: the token is echoed exactly once, to the connection that minted the room, and never after that.",
-      "type": "object",
-      "required": ["room_id", "self", "peers", "documents", "capabilities", "keepalive"],
-      "properties": {
-        "capabilities": { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityList" },
-        "documents": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentList",
-          "description": "The room's open-document set, in first-opened order. It is the room's, not this connection's, so a joiner inherits paths no connected peer holds and must treat this list as the truth."
-        },
-        "keepalive": { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/keepalive" },
-        "peers": { "$ref": "#/$defs/peerList" },
-        "room_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/roomId" },
-        "self": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peer",
-          "description": "This connection's own peer record."
-        },
-        "token": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/token",
-          "description": "Present only in `room.created`. A host that reconnects needs it and nothing re-sends it, so a client that may reclaim must keep it (\u00a79.1)."
-        }
-      }
-    },
     "roomCreated": {
       "description": "`room.created`: the reply to a `session.hello` that minted a room. The minting connection is the host and is told the invite token here and nowhere else.",
       "type": "object",
@@ -49,7 +25,10 @@
         "peers": { "$ref": "#/$defs/peerList" },
         "room_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/roomId" },
         "self": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peer" },
-        "token": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/token" }
+        "token": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/token",
+          "description": "Present only here: the token is echoed exactly once, to the connection that minted the room, and a host that may reclaim must keep it (\u00a79.1)."
+        }
       }
     },
     "roomJoined": {
@@ -147,21 +126,6 @@
         "code": { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/errorCode" },
         "message": { "type": "string", "minLength": 1 }
       }
-    },
-    "anyEvent": {
-      "description": "Any event `selvage/1` defines. The envelope's `event` member is the discriminator, and JSON Schema cannot see it, so this is an `anyOf`; a validator that wants the one true branch looks the name up in the table above.",
-      "anyOf": [
-        { "$ref": "#/$defs/roomCreated" },
-        { "$ref": "#/$defs/roomJoined" },
-        { "$ref": "#/$defs/peerJoined" },
-        { "$ref": "#/$defs/peerLeft" },
-        { "$ref": "#/$defs/docOpened" },
-        { "$ref": "#/$defs/docClosed" },
-        { "$ref": "#/$defs/hostDetached" },
-        { "$ref": "#/$defs/hostAttached" },
-        { "$ref": "#/$defs/roomGone" },
-        { "$ref": "#/$defs/sessionError" }
-      ]
     }
   }
 }
