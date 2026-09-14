@@ -12,7 +12,7 @@ Five things live here, and they are meant to be read together:
 | Path | What it is |
 |---|---|
 | [`PROTOCOL.md`](PROTOCOL.md) | The prose specification. What the members mean, and why. |
-| [`CANONICAL.md`](CANONICAL.md) | **SJ-C 1** — the canonical byte form of a session text frame. |
+| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1** — the canonical byte form of a session text frame. |
 | [`schema/`](schema/) | The machine-readable model: JSON Schema 2020-12, one file per concern, plus `validate.py`. |
 | [`runner/`](runner/) | The language-neutral replay: `run_vectors.py` starts a server and replays every transcript against it, with no Rust toolchain. |
 | [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by the reference server's [`crates/harness/tests/vectors.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors.rs) and by `runner/`. |
@@ -71,15 +71,23 @@ pip install jsonschema referencing     # or: nix-shell -p python3Packages.jsonsc
 python3 schema/validate.py
 ```
 
-It prints one line per schema, a count of the frames it checked, and `result OK`. It checks:
+It prints one line per schema, the frame checks it made, and `result OK`. It checks:
 
 - every `*.json` in `schema/` is a valid JSON Schema 2020-12 document;
 - every `send` and `expect` text frame in every vector parses, validates against
   `schema/session.json`, and validates against the params schema of the method or event it
   names;
+- every `expect` and `expectBody` frame is written in the canonical byte form of
+  `CANONICAL.md` §2 — the bytes a vector claims are the bytes it has to be written in — and
+  every `expect` carries the canonical spelling of the version (§2.5);
 - every `expectBody` against `schema/meta.json`;
 - every `expectClose` code against the close-code vocabulary in `schema/errors.json`;
-- a vector that asserts nothing about the version it is bound to.
+- every binary `frame` description for the shape the runner can use it in, and the awareness
+  state inside it against `schema/awareness.json`;
+- that every vector asserts something, and that the corpus still holds the number of vectors,
+  frame checks and assertion steps it is pinned to, so a deleted assertion is a red run
+  rather than a smaller number in a line of output;
+- that a vector is bound to `selvage/1` and `SJ-C/1`.
 
 A frame a vector sends *on purpose* knowing it is malformed — that is how a refusal is tested —
 carries `"refused": true`, and its params are not schema-checked.
@@ -113,20 +121,23 @@ Then, from this directory:
 python3 runner/run_vectors.py
 ```
 
-It prints one line per vector and ends with `12 files, 195 frame checks, 12 vectors passed,
-0 failed`, and exits non-zero if any vector fails. `SELVAGE_VECTORS=DIR` replays the
-transcripts in another directory — replaying a corrupt *copy* is how a failure is shown to be
-caught. `--schema-only` runs the frame checks and starts no server; CI runs that, because the
-reference server is private.
+It prints one line per vector and ends with `18 files, 552 frame checks, 18 vectors passed,
+0 failed`, and exits non-zero if any vector fails. `SELVAGE_VECTORS=DIR` reads the
+transcripts from another directory — replaying a corrupt *copy* is how a failure is shown to
+be caught — and both halves honour it. `--schema-only` is exactly `python3
+schema/validate.py` and starts no server.
 
 A `selvaged` must accept `--room-grace-ms MS`. The grace period is per-vector
 (`vectors/012` waits out 400 ms, `vectors/011` four seconds), and a runner that spawns the
 server has no other way to set it.
 
-`python3 runner/test_yprotocols.py` checks the binary decoder — the one part of the
-replay that is hand-written rather than a byte comparison — from the vectors, without a
-server. CI runs that and `--schema-only`; it cannot run the replay because it cannot obtain
-a `selvaged` while `reference_server` is private.
+`python3 runner/test_runner.py` checks the replay's comparison code — `matches`,
+`expected_bytes`, `check_text` and `check_frame_spec` — with frames whose answer is known, in
+both directions, so a comparison that stopped failing is itself a red run. A comparison that
+only ever runs against a server never runs in CI. `python3 runner/test_yprotocols.py` checks
+the binary decoder, the one part of the replay that is hand-written, from the vectors. CI runs
+both; it cannot run the replay itself, because it cannot obtain a `selvaged` while
+`reference_server` is private.
 
 ## Adding a vector
 
@@ -181,7 +192,10 @@ a `selvaged` while `reference_server` is private.
 5. **Run it** in a [`reference_server`](https://github.com/selvage-protocol/reference_server)
    checkout: `cargo test -p selvage-harness --test vectors` (its flake provides `cargo`).
    Without Rust, `python3 runner/run_vectors.py` does the same replay against a running
-   server. Then run the schema validator, which checks the vector's shape as well as its frames.
+   server. Then run the schema validator, which checks the vector's shape as well as its
+   frames — and which pins the number of vectors, frame checks and assertion steps, so a
+   new vector or a deleted assertion is a red run until those three constants are updated
+   with it.
 
 Four comparison rules are worth knowing before writing one, because they are what the runner
 enforces:
@@ -189,7 +203,8 @@ enforces:
 - **Member sets are exact, in both directions.** A frame with a member the vector does not
   mention fails. A version-locked vector is checking that nothing was silently added or renamed,
   so an implementation that adds a member to a `selvage/1` frame has broken this version.
-- **`peers` is compared as a set.** The protocol promises no order for it.
+- **`peers` is compared as a set.** The protocol promises no order for it, so the comparison
+  puts the vector's peers into the order the wire sent before it compares the bytes.
 - **The bytes are compared, not just the parsed JSON.** The vector's frame is written in the
   canonical form of `CANONICAL.md`, the reference server produces exactly those bytes, and a
   failure prints both.
