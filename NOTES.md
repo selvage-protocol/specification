@@ -211,14 +211,16 @@ profile, is **unresolved**.
 
 **B.16 The second client implementation.** See `A.7`. **Unresolved.**
 
-**B.17 A token with no `room` mints a room.** `PROTOCOL.md` §5.1 states the behaviour: a URL that
-carries `token` but no `room` mints a new room and discards the token, because `room` alone decides
-which case a URL is. The consequence is that a truncated invite link — `room` lost to a chat
-client, a proxy or a copy-paste, `token` surviving — silently hosts an empty room instead of
-refusing, and neither side is told. The alternative is a `token_invalid` refusal whenever `token`
-appears without `room`, which is a behaviour change in the server and a decision, not a wording
-fix. **Unresolved; the current behaviour is documented so that a second implementation can match
-it.**
+**B.17 A token with no `room` mints a room.** `PROTOCOL.md` §5.1 states the rule normatively: a URL
+that carries `token` but no `room` mints a new room, seats the connection as its host and discards
+the token, because `room` alone decides which case a URL is. **Decided**: the behaviour is kept,
+and a second implementation matches it by doing the same (`claims_host = join.room.is_none()` is
+the reference server's whole implementation of the rule). The alternative — a `token_invalid`
+refusal whenever `token` appears without `room` — was rejected because a URL that names no room
+cannot name the room the token is for, so refusing was defensible, but it changes the reference
+server's wire behaviour and nothing in the project needs it. The accepted cost is the current
+behaviour's: a truncated invite link — `room` lost to a chat client, a proxy or a copy-paste,
+`token` surviving — silently hosts a new, empty room and neither side is told.
 
 **B.18 The server inherits the WebSocket library's size caps.** See `A.1`. The bound exists, is
 documented in `PROTOCOL.md` §2.1, and is not the server's own: it will move with a dependency bump
