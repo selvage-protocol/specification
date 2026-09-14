@@ -53,9 +53,9 @@ BASE = "https://selvageprotocol.com/schema/1/"
 # deliberate edit, and these three numbers are what makes the opposite edit — a silent
 # deletion — a red run instead of a smaller number in a line of output. Update them in the
 # same commit that changes the corpus.
-EXPECTED_VECTORS = 18
-EXPECTED_FRAME_CHECKS = 552
-EXPECTED_ASSERTIONS = 138
+EXPECTED_VECTORS = 19
+EXPECTED_FRAME_CHECKS = 562
+EXPECTED_ASSERTIONS = 141
 
 # A step that reads or asserts something. Every other step only produces input for one, so
 # a vector made of them alone can pass while claiming nothing.

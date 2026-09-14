@@ -242,3 +242,18 @@ bound — fail the session, or stop committing CRDT transactions until there is 
 wire-visible decision this draft does not take. It becomes a MUST when those two things exist:
 every conforming client bounds what it holds, and the specification states the observable
 consequence at the bound.
+
+**B.21 A display name is bounded at 32 UTF-16 code units.** `display_name` is a peer-controlled
+string that every client draws somewhere, and an unbounded one can cover the screen; both
+reference clients were seen doing exactly that. `PROTOCOL.md` §5 states the bound normatively: a
+server **MUST** refuse a `session.hello` whose `display_name` is longer than 32 UTF-16 code units
+with `bad_params` and close 4000, the refusal a blank one already gets, and **MUST NOT** truncate
+it — a displayed name is then not the name its owner chose. **Decided.** The unit matters: it is
+counted the way a JavaScript string is measured, the same unit §8.1's offsets use, so an astral
+character costs two. An implementation that counts `str::len()` (bytes) refuses names the protocol
+allows; one that counts `chars().count()` (code points) admits names it forbids. The schema's
+`maxLength` counts Unicode code points and so cannot express the unit exactly — it is a necessary
+condition, and the server is where the bound holds. A client **SHOULD** validate before sending so
+that a person is asked for a shorter name rather than refused after typing; that is the clients'
+own obligation and not a second wire rule. The other free-form peer string, `client`, stays
+unbounded: it is diagnostics that no client draws. The lack of a `path` bound is B.8.
