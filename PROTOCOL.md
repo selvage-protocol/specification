@@ -678,24 +678,27 @@ know and do:
 
 **Implementation status.** The server implements all of the above, and the harness tests the
 host-reclaim path with a `reclaim` helper that is a *test* affordance and not part of the
-client's API. Both clients implement the bounded policy above. The Rust client also mints a
-fresh awareness client id per attempt: every handshake, including a reconnect's, seeds a new
-`Y.Doc` carrying the outgoing replica's state, so a reconnecting peer cannot be mistaken for the
-peer it replaces. The TypeScript client does not yet — it keeps the same `Y.Doc`/`Awareness`
-instance, and so the same awareness client id, across every reconnect, which is the gap the
-bullet above describes.
+client's API. Both clients implement the bounded policy above, and both use a fresh awareness
+client id on a reconnect: the Rust client seeds a new `Y.Doc` carrying the outgoing replica's
+state on every handshake, and the TypeScript client mints a new client id and drops the outgoing
+id's local state without touching the document it already holds. A reconnecting peer is
+therefore never mistaken for the peer it replaces.
 
 ## 10. Version and capability negotiation
 
 - The wire version is `selvage/1` and appears in every text frame as `v`. It must not be
-  omitted, and an incompatible value is refused at the handshake with
-  `unsupported_version` (close code 4005). Version is also checked on every later request;
-  an incompatible one is answered with an error and the connection is closed.
+  omitted: a frame with no `v` is not a session envelope at all, and is answered with
+  `bad_message` like any other frame the server cannot read. An incompatible value is refused at
+  the handshake with `unsupported_version` (close code 4005). Version is also checked on every
+  later request; an incompatible one is answered with an error and the connection is closed.
 - **Compatibility rule** (`DESIGN.md` §4.6): same major, and while at `0.x` also the same
   minor. This implementation is at `selvage/1`, so the rule in force is *same major* alone:
   every `selvage/1.x` is accepted, including `selvage/1.9` and the bare `selvage/1`, whose
-  minor defaults to `0`. `selvage/2` and anything that is not a `selvage/<number>[.<number>]`
-  string are refused. The minor becomes decisive only when the major reaches `0`.
+  minor defaults to `0`. The grammar is the one [`schema/negotiation.json`](schema/) encodes as
+  `wireVersion`: `selvage/` then a major, then optionally a minor, each a plain decimal with no
+  leading zero and nothing after it — so `selvage/2` and `selvage/x` are refused for their
+  major, and `selvage/01`, `selvage/1.09`, `selvage/1.9.3` and `selvage/1.` are refused because
+  they are not that grammar at all. The minor becomes decisive only when the major reaches `0`.
 - Capabilities are advertised additively by the server in `room.created`/`room.joined` and
   in `/meta`, and optionally by the client in `session.hello`. **Unknown capabilities and
   unknown fields are ignored by both sides.** There is no failure mode for an unknown
