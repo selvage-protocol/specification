@@ -7,16 +7,17 @@ the editor client in
 [`selvage-protocol/vscode_client`](https://github.com/selvage-protocol/vscode_client). The design
 record, `DESIGN.md`, is not published; it is cited below by section.
 
-Four things live here, and they are meant to be read together:
+Five things live here, and they are meant to be read together:
 
 | Path | What it is |
 |---|---|
 | [`PROTOCOL.md`](PROTOCOL.md) | The prose specification. What the members mean, and why. |
 | [`CANONICAL.md`](CANONICAL.md) | **SJ-C 1** — the canonical byte form of a session text frame. |
 | [`schema/`](schema/) | The machine-readable model: JSON Schema 2020-12, one file per concern, plus `validate.py`. |
-| [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by the reference server's [`crates/harness/tests/vectors.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors.rs). |
+| [`runner/`](runner/) | The language-neutral replay: `run_vectors.py` starts a server and replays every transcript against it, with no Rust toolchain. |
+| [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by the reference server's [`crates/harness/tests/vectors.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors.rs) and by `runner/`. |
 
-The prose is the specification; the other three are what an independent implementation can
+The prose is the specification; the other four are what an independent implementation can
 *check itself against* without reading the Rust.
 `DESIGN.md` §7 asks for
 "CC-BY prose plus JSON Schema" and §13.4 for the machine-readable model to be built early because
@@ -36,6 +37,10 @@ rule and a suite.
   have reproduced the bug. A transcript that asserts the intended semantics catches that; a
   transcript that asserts only what the current code does cannot. Every vector is a real exchange
   against the reference server, recorded byte for byte, and that server's own test replays it.
+- **The runner** exists so replaying the vectors is not something only a Rust checkout can do.
+  `runner/run_vectors.py` reads the same JSON, opens a WebSocket to a server it starts itself, and
+  compares the bytes, so a second implementation in any language can be held to the transcripts
+  without reading `reference_server/`.
 
 ## Versioning
 
@@ -78,6 +83,50 @@ It prints one line per schema, a count of the frames it checked, and `result OK`
 
 A frame a vector sends *on purpose* knowing it is malformed — that is how a refusal is tested —
 carries `"refused": true`, and its params are not schema-checked.
+
+## Replaying the vectors against a server
+
+`schema/validate.py` checks the shape of every frame; it cannot check that a server produces
+the bytes. `runner/run_vectors.py` does, and needs no Rust toolchain: it starts a `selvaged`
+on an ephemeral port, replays each transcript against it over a real WebSocket, and compares
+what comes back — the text frames structurally and then byte for byte, the binary frames byte
+for byte, and the document and awareness state once a frame is applied.
+
+It needs Python 3 and two packages:
+
+```
+pip install websockets jsonschema referencing
+# or: nix-shell -p python3Packages.websockets python3Packages.jsonschema python3Packages.referencing
+```
+
+and a `selvaged`, which is not part of this repository:
+
+```
+cd ../reference_server
+nix develop . -c cargo build -p selvaged
+export SELVAGE_SELVAGED=$PWD/target/debug/selvaged
+```
+
+Then, from this directory:
+
+```
+python3 runner/run_vectors.py
+```
+
+It prints one line per vector and ends with `12 files, 195 frame checks, 12 vectors passed,
+0 failed`, and exits non-zero if any vector fails. `SELVAGE_VECTORS=DIR` replays the
+transcripts in another directory — replaying a corrupt *copy* is how a failure is shown to be
+caught. `--schema-only` runs the frame checks and starts no server; CI runs that, because the
+reference server is private.
+
+A `selvaged` must accept `--room-grace-ms MS`. The grace period is per-vector
+(`vectors/012` waits out 400 ms, `vectors/011` four seconds), and a runner that spawns the
+server has no other way to set it.
+
+`python3 runner/test_yprotocols.py` checks the binary decoder — the one part of the
+replay that is hand-written rather than a byte comparison — from the vectors, without a
+server. CI runs that and `--schema-only`; it cannot run the replay because it cannot obtain
+a `selvaged` while `reference_server` is private.
 
 ## Adding a vector
 
@@ -131,7 +180,8 @@ carries `"refused": true`, and its params are not schema-checked.
    different rooms need two different placeholder names.
 5. **Run it** in a [`reference_server`](https://github.com/selvage-protocol/reference_server)
    checkout: `cargo test -p selvage-harness --test vectors` (its flake provides `cargo`).
-   Then run the schema validator, which checks the vector's shape as well as its frames.
+   Without Rust, `python3 runner/run_vectors.py` does the same replay against a running
+   server. Then run the schema validator, which checks the vector's shape as well as its frames.
 
 Four comparison rules are worth knowing before writing one, because they are what the runner
 enforces:
@@ -172,7 +222,8 @@ cursor. The file's own `notes` member says the same thing next to the data.
 ## Licence
 
 The prose, the canonicalisation rule, the schemas and the vectors are **CC-BY 4.0**
-([`LICENSE`](LICENSE)), as `DESIGN.md` §7 asks; the tooling — `schema/validate.py` — is **MIT OR
-Apache-2.0** ([`LICENSE-MIT`](LICENSE-MIT), [`LICENSE-APACHE`](LICENSE-APACHE)), the same pair the
+([`LICENSE`](LICENSE)), as `DESIGN.md` §7 asks; the tooling — `schema/validate.py` and
+`runner/` — is **MIT OR Apache-2.0** ([`LICENSE-MIT`](LICENSE-MIT),
+[`LICENSE-APACHE`](LICENSE-APACHE)), the same pair the
 reference server carries for its code. Reuse the specification with attribution, and the tooling
 under either licence.
