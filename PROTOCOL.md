@@ -667,9 +667,12 @@ know and do:
 
 **Implementation status.** The server implements all of the above, and the harness tests the
 host-reclaim path with a `reclaim` helper that is a *test* affordance and not part of the
-client's API. The Rust client has no reconnect logic — its engine ends at
-`Disconnected`/`RoomGone` and leaves reconnecting to its caller. The TypeScript client
-implements the bounded policy above.
+client's API. Both clients implement the bounded policy above. The Rust client also mints a
+fresh awareness client id per attempt: every handshake, including a reconnect's, seeds a new
+`Y.Doc` carrying the outgoing replica's state, so a reconnecting peer cannot be mistaken for the
+peer it replaces. The TypeScript client does not yet — it keeps the same `Y.Doc`/`Awareness`
+instance, and so the same awareness client id, across every reconnect, which is the gap the
+bullet above describes.
 
 ## 10. Version and capability negotiation
 
