@@ -30,7 +30,7 @@
     "roomId": {
       "type": "string",
       "minLength": 1,
-      "description": "An opaque room identifier. The reference server mints `r-<12 hex>`. A spec may pin a format later; today a client must treat it as opaque (§12, item 12)."
+      "description": "An opaque room identifier. The reference server mints `r-<12 hex>`. A spec may pin a format later; today a client must treat it as opaque (`NOTES.md` §B.12)."
     },
     "token": {
       "type": "string",
@@ -41,7 +41,7 @@
       "type": "string",
       "minLength": 1,
       "pattern": "\\S",
-      "description": "A workspace-relative path: non-empty after trimming, and otherwise unvalidated in this slice (§12, item 8). The reference server answers `bad_params` for a blank one, and `doc.open` and `doc.close` carry the same field. Document identity is the path; it is not encoded inside the CRDT."
+      "description": "A workspace-relative path: non-empty after trimming, and otherwise unvalidated in this slice (`NOTES.md` §B.8). The reference server answers `bad_params` for a blank one, and `doc.open` and `doc.close` carry the same field. Document identity is the path; it is not encoded inside the CRDT."
     },
     "awarenessClientId": {
       "type": "integer",
