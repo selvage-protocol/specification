@@ -344,10 +344,31 @@ All event `params` are flat objects.
 - `token` is present **only** in `room.created`, and only for the connection that minted
   the room. It is never echoed in `room.joined`, not even to the host after a reconnect.
 - `self` is the joining connection's own peer record.
-- `peers` lists the peers already in the room, excluding `self`.
+- `peers` lists the peers already in the room, excluding `self`. No order is promised for it,
+  and a receiver must not depend on one.
 - `documents` is the room's open-document set, in first-opened order.
 - The response is guaranteed to be the first frame on the connection after the handshake,
   before any relayed payload or other event.
+
+### What a client owes a join
+
+One obligation on the client side, and it changes no bytes:
+
+- **A client that is seated SHOULD present the room's documents**, at least the first of them
+  that it can resolve, rather than waiting for its user to go and open a file by hand. The
+  `documents` list above is the room's open-document set, so a client that holds it and shows
+  nothing has been handed the room and not shown it.
+  - **It is a SHOULD, not a MUST.** A client with no editor in front of it, or one that can
+    resolve none of the named paths, has nothing to present and owes nothing.
+  - **The first it can resolve, not all of them.** A room can name several documents, and
+    opening every one of them for every newcomer is a hostile thing to do to an editor.
+  - **What it is deciding is what to *show*, not what to fetch.** A path in the set is a name
+    and carries no content: the text, if any peer has it, arrives through the ordinary sync
+    exchange (§7). A client that presents a document before its text has arrived shows an empty
+    one and fills it in, and the protocol neither requires nor forbids that.
+  - **Presenting is not `doc.open`.** The set already names the path, so a client shows it
+    without asking for it. `doc.open` is what declares a *hold*, and a client that wants the
+    path to stay in the room's set after its other holders close it sends that itself (§5).
 
 ## 7. Document sync
 
