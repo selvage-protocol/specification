@@ -8,8 +8,11 @@ CI cannot build a `selvaged`, so `python3 schema/validate.py` and
 a byte comparison that cannot fail is not a check. These cases drive all five, in both
 directions: every rule is given a pair that must match and a pair that must not.
 
-They need no server and no `websockets`: `run_vectors` imports what it can and its
-comparison functions are pure.
+The same reason applies to the audit that reports a connection one frame ahead: it decides
+what a failure means, so it is driven here against a connection whose queue is known.
+
+They need no server and no `websockets`: `run_vectors` imports what it can, and its comparison
+and reporting functions are pure, while the connections are scripted sockets.
 """
 
 from __future__ import annotations
@@ -25,11 +28,18 @@ import run_vectors  # noqa: E402
 from run_vectors import (  # noqa: E402
     Bindings,
     Mismatch,
+    Peer,
+    Session,
     check_frame_spec,
     check_text,
+    describe_failure,
+    describe_unread,
     expected_bytes,
+    failure_message,
     matches,
     matches_unordered,
+    pending_reads,
+    unread_frames,
 )
 
 VECTOR_DIR = pathlib.Path(__file__).resolve().parent.parent / "vectors"
@@ -395,6 +405,110 @@ class TestEveryFrameDescription(unittest.TestCase):
                     check_frame_spec(step["frame"], hex_bytes(sent))
                     checked += 1
         self.assertGreater(checked, 0, "no vector describes a binary frame")
+
+
+class ScriptedSocket:
+    """A connection whose frames are already there, and then nothing.
+
+    The audit waits for a frame that a healthy connection never sends, so the script raises
+    the timeout it catches rather than spending the wall clock: a case that slept to fail
+    would be a case that passes for the wrong reason.
+    """
+
+    def __init__(self, frames: list[object]) -> None:
+        self.frames = list(frames)
+
+    async def recv(self) -> object:
+        if self.frames:
+            return self.frames.pop(0)
+        raise TimeoutError("no more frames")
+
+
+class TestDesynchronisedQueue(unittest.IsolatedAsyncioTestCase):
+    """What a failure has to be read against: how far the connection has got.
+
+    An `expect` reads the next frame, so a transcript that omits an expectation leaves its
+    connection one frame ahead and fails later on a frame from an earlier moment. These cases
+    pin the two reports that make that visible — a completed transcript that names the frame
+    no step reads, and a failure that names the connection and its place in the stream.
+    """
+
+    def session_with(self, **held: list[object]) -> Session:
+        return Session(
+            peers={
+                name: Peer(name, ScriptedSocket(frames)) for name, frames in held.items()
+            }
+        )
+
+    async def test_a_frame_no_step_reads_at_the_end_is_reported(self) -> None:
+        session = self.session_with(guest=['{"event":"peer.joined"}'])
+        held = await session.drain()
+        report = describe_unread(unread_frames(held, {}))
+        self.assertEqual(len(report), 1)
+        self.assertIn("`guest`", report[0])
+        self.assertIn("does not read", report[0])
+        self.assertIn("peer.joined", report[0])
+
+    async def test_a_connection_with_nothing_left_is_not_reported(self) -> None:
+        session = self.session_with(host=[])
+        held = await session.drain()
+        self.assertEqual(held, {})
+        self.assertEqual(describe_unread(held), [])
+
+    async def test_a_frame_a_later_step_would_read_is_not_an_omission(self) -> None:
+        # The transcript stopped short of a step that reads this frame, so the frame belongs
+        # to that read and not to a missing expectation behind it.
+        session = self.session_with(late=['{"event":"doc.opened"}'])
+        held = await session.drain()
+        self.assertEqual(unread_frames(held, {"late": 1}), {})
+        self.assertEqual(len(unread_frames(held, {})), 1)
+
+    def test_only_reading_steps_hold_a_connection_back(self) -> None:
+        steps = [
+            {"op": "expect", "conn": "guest"},
+            {"op": "send", "conn": "guest"},
+            {"op": "expectBinary", "conn": "guest"},
+            {"op": "expectDoc", "conn": "guest"},
+            {"op": "expect", "conn": "host"},
+        ]
+        self.assertEqual(pending_reads(steps, 0), {"guest": 2, "host": 1})
+        self.assertEqual(pending_reads(steps, 3), {"host": 1})
+
+    async def test_a_genuine_mismatch_still_reports_the_mismatch(self) -> None:
+        peer = Peer("guest", ScriptedSocket([]))
+        peer.frames = 5
+        session = Session(peers={"guest": peer})
+        expected = canonical(
+            {
+                "event": "doc.opened",
+                "params": {"documents": ["late.txt"], "path": "late.txt"},
+                "v": "selvage/1",
+            }
+        )
+        actual = canonical(
+            {
+                "event": "peer.joined",
+                "params": {"peer": {"display_name": "Cyd", "role": "guest"}},
+                "v": "selvage/1",
+            }
+        )
+        with self.assertRaises(Mismatch) as caught:
+            check_text(actual, expected, Bindings())
+        report = describe_failure(
+            session, 28, 26, {"op": "expect", "conn": "guest"}, 4, caught.exception
+        )
+        self.assertIn("step 26 of 28 `expect` on `guest`", report)
+        self.assertIn("reading frame 5 (4 read before it)", report)
+        self.assertIn("frame does not match", report)
+        self.assertIn("peer.joined", report)
+
+    async def test_a_mismatch_with_nothing_left_is_not_padded(self) -> None:
+        session = self.session_with(guest=[])
+        held = await session.drain()
+        report = describe_failure(
+            session, 3, 1, {"op": "expect", "conn": "guest"}, 0, Mismatch("x")
+        )
+        self.assertEqual(failure_message(report, unread_frames(held, {})), report)
 
 
 if __name__ == "__main__":
