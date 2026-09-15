@@ -2,16 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://selvageprotocol.com/schema/1/methods.json",
   "title": "Selvage Session Protocol — every method of `selvage/1`",
-  "description": "The three client-to-server methods, with the params each takes and the result each returns. Valid against PROTOCOL.md \u00a75. The mapping is: `session.hello` \u2192 `sessionHelloParams` and no response frame at all (its result is the `room.created`/`room.joined` event); `doc.open` \u2192 `docOpenParams`, result `documentSet`; `doc.close` \u2192 `docCloseParams`, result `documentSet`. An unknown method is answered with an error response and never dropped.",
+  "description": "The four client-to-server methods, with the params each takes and the result each returns. Valid against PROTOCOL.md \u00a75. The mapping is: `session.hello` \u2192 `sessionHelloParams` and no response frame at all (its result is the `room.created`/`room.joined` event); `session.rename` \u2192 `renameParams`, result `{}`; `doc.open` \u2192 `docOpenParams`, result `documentSet`; `doc.close` \u2192 `docCloseParams`, result `documentSet`. An unknown method is answered with an error response and never dropped.",
   "$defs": {
     "anyMethod": {
       "type": "string",
       "minLength": 1,
-      "description": "A method name: one of the three above, an `x.`-prefixed reserved name (\u00a710.1), or any other string at all. A name the server does not implement is answered with `unknown_method`; it is not a malformed frame."
+      "description": "A method name: one of the four above, an `x.`-prefixed reserved name (\u00a710.1), or any other string at all. A name the server does not implement is answered with `unknown_method`; it is not a malformed frame."
     },
     "knownMethod": {
       "type": "string",
-      "enum": ["session.hello", "doc.open", "doc.close"],
+      "enum": ["session.hello", "session.rename", "doc.open", "doc.close"],
       "description": "The method names `selvage/1` defines."
     },
     "anyParams": {
@@ -38,16 +38,20 @@
           "description": "Free-form client identification, for diagnostics only."
         },
         "display_name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 32,
-          "pattern": "\\S",
-          "description": "Non-empty after trimming and at most 32 UTF-16 code units (PROTOCOL.md \u00a75), so an astral character costs two; `maxLength` counts Unicode code points, so an implementation that enforces the protocol's bound counts UTF-16 code units itself. The server answers `bad_params` for a blank or longer name, and never truncates one. The only identity in this slice."
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/displayName"
         },
         "role": {
           "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/role",
           "description": "A claim, not a command: it is honoured only while the room is between host connections, and a connection that mints a room is its host whatever it claims (\u00a79)."
         }
+      }
+    },
+    "renameParams": {
+      "title": "session.rename params",
+      "type": "object",
+      "required": ["display_name"],
+      "properties": {
+        "display_name": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/displayName" }
       }
     },
     "docOpenParams": {
@@ -67,8 +71,11 @@
       }
     },
     "anyResult": {
-      "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentSet",
-      "description": "Every result `selvage/1` has: the room's open-document set. `session.hello` answers with an event instead of a response, so it has no result here."
+      "description": "Every result `selvage/1` has: the room's open-document set, or `{}` when a method has nothing to return.",
+      "oneOf": [
+        { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentSet" },
+        { "type": "object", "maxProperties": 0 }
+      ]
     }
   }
 }

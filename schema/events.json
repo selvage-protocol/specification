@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://selvageprotocol.com/schema/1/events.json",
   "title": "Selvage Session Protocol — every event of `selvage/1`",
-  "description": "The ten events a server sends, with the params of each. Valid against PROTOCOL.md \u00a76. Event `params` are flat objects; an event name a receiver does not know is ignored, like an unknown member.",
+  "description": "The eleven events a server sends, with the params of each. Valid against PROTOCOL.md \u00a76. Event `params` are flat objects; an event name a receiver does not know is ignored, like an unknown member.",
   "$defs": {
     "peerList": {
       "type": "array",
@@ -12,7 +12,7 @@
     "anyEventName": {
       "type": "string",
       "minLength": 1,
-      "description": "An event name. The ten below are defined by `selvage/1`; any other, including every `x.`-prefixed name, is ignored rather than refused (contrast `unknown_method`)."
+      "description": "An event name. The eleven below are defined by `selvage/1`; any other, including every `x.`-prefixed name, is ignored rather than refused (contrast `unknown_method`)."
     },
     "roomCreated": {
       "description": "`room.created`: the reply to a `session.hello` that minted a room. The minting connection is the host and is told the invite token here and nowhere else.",
@@ -61,6 +61,16 @@
       "required": ["peer_id"],
       "properties": {
         "peer_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId" }
+      }
+    },
+    "peerRenamed": {
+      "title": "peer.renamed",
+      "description": "To every peer, the one that renamed included, when a peer changes its own display name. It carries no `awareness_client_id`: the rename changes no awareness and the join is already known.",
+      "type": "object",
+      "required": ["peer_id", "display_name"],
+      "properties": {
+        "peer_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId" },
+        "display_name": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/displayName" }
       }
     },
     "docOpened": {

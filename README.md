@@ -128,7 +128,7 @@ Then, from this directory:
 python3 runner/run_vectors.py
 ```
 
-It prints one line per vector and ends with `19 files, 562 frame checks, 19 vectors passed,
+It prints one line per vector and ends with `20 files, 624 frame checks, 20 vectors passed,
 0 failed`, and exits non-zero if any vector fails. `SELVAGE_VECTORS=DIR` reads the
 transcripts from another directory — replaying a corrupt *copy* is how a failure is shown to
 be caught — and both halves honour it. The counts `schema/validate.py` pins are this

@@ -276,11 +276,12 @@ significant and is not stable (`CANONICAL.md` §2.1).
 
 ## 5. Methods
 
-Three methods exist. A method is cited by its name; this table is the index.
+Four methods exist. A method is cited by its name; this table is the index.
 
 | method | `params` | answered with | effect on the room's open-document set | events |
 |---|---|---|---|---|
 | `session.hello` | the table below | a `room.created` or `room.joined` **event**, not a response | unchanged; a room is minted here and starts empty | `peer.joined` to the peers already in the room |
+| `session.rename` | `{ "display_name": string }` | `{ "result": {} }` | unchanged | `peer.renamed` to every peer |
 | `doc.open` | `{ "path": string }` | `{ "result": { "documents": [string] } }` | gains `path` unless it was already there | `doc.opened` to every peer |
 | `doc.close` | `{ "path": string }` | `{ "result": { "documents": [string] } }` | loses `path` when no other peer still holds it | `doc.closed` to every peer |
 
@@ -400,22 +401,79 @@ A connection that disconnects releases its holds without announcing anything, bu
 held stay in the room's set: a hold belongs to a connection and the set belongs to the room (§1.2,
 §9).
 
+### `session.rename` — the live rename
+
+Any **seated** connection **MAY** rename itself at any time with a `session.rename` request. This
+is the counterpart to `session.hello`: that one sets the name, this one changes it. The display
+name is a peer's own and the only identity in this slice (§9), so no role or privilege is
+involved. A connection **MUST NOT** rename another peer: the method names no peer, and a server
+renames only the connection that sent it. A `session.rename` before seating is not a rename — the
+first frame on a connection **MUST** be `session.hello`, and anything else is refused
+`hello_required` (§11).
+
+```json
+{ "v": "selvage/1", "id": 4, "method": "session.rename", "params": { "display_name": "Ada Lovelace" } }
+```
+
+`display_name` in `session.rename` **MUST** satisfy the same rule as in `session.hello`:
+non-blank, and at most **32 UTF-16 code units**, counted in UTF-16 code units, so an astral
+character costs two. A server **MUST** refuse a rename whose `display_name` is blank or longer
+than that and **MUST NOT** truncate it, exactly as for `session.hello`; the same bound is the
+frame's field, the `PeerInfo` a server stores and echoes, and the `display_name` of
+`peer.renamed`: one bound, wherever it appears.
+
+A `session.rename` on a seated connection that is malformed — params that do not parse, no
+`display_name`, a `display_name` that is not a string, blank, or over-long — is answered with an
+**error response** carrying `bad_params`, correlated by the request's `id`, and the connection
+**stays open**. It is **not** a refusal in the sense of §11: no `session.error` event precedes it
+and no close follows, because §11 gives a seated `bad_params` an error response and the closing
+refusal is the shape of a fault *before* seating. A client **MUST NOT** treat an accepted rename
+as a reason to re-hello.
+
+A server **MUST** announce an accepted rename to **every** peer in the room — the one that
+renamed included — as a `peer.renamed` event (§6). It **MUST NOT** suppress the event when the new
+name is the one already in force: an accepted rename is announced, so a receiver never has to
+decide whether a name changed, and a mover's confirmation is the same frame every other peer
+receives. A receiver that holds the peer **MUST** replace its `display_name` and **MUST NOT**
+change any other field; one with no record for the `peer_id` **SHOULD** ignore the event, since
+`peer.renamed` carries no `role` to insert.
+
+`peer.renamed` is addressed like `doc.opened`/`doc.closed` (to everyone, the mover included), not
+like `peer.joined`/`host.attached` (to the others). On the renaming connection the response
+**MUST** precede the `peer.renamed` event, as a `doc.open` result precedes its `doc.opened`. The
+event **MUST** be ordered after the renaming peer's `peer.joined` (or the `room.joined` that named
+it) and before its `peer.left`; a peer is seated before it can rename and stops handling frames
+before its `peer.left`, so no receiver can be told of a rename for a peer it was not told about. A
+rename **MUST NOT** change the room's peer-list order, the peer's `role`, or its
+`awareness_client_id`; it changes `display_name` and nothing else. A rename **MUST NOT** affect the
+room's grace deadline: the room is as usable while hostless as it is for `doc.open` (§9), and a
+rename neither reclaims nor keeps the room.
+
+Every `session.rename` is answered with exactly one of a `result` or an `error` (§4.2); the result
+of an accepted rename is `{}`, because the room's statement of the new name is the `peer.renamed`
+event. A client **MUST** bound its wait for that answer (below).
+
+A rename belongs to the connection that made it and dies with it, like its `peer_id`, role, holds
+and awareness (§9.1): a reconnecting client is a new peer and its name is whatever its new
+`session.hello` carries, so a client that renamed **MUST** re-hello with the current name.
+
 ### What a client owes a request
 
 Three obligations on the request side, none of which changes the wire:
 
-- **Every request is answered, and the wait has to be bounded.** `doc.open` and `doc.close` are
-  answered with a result or an error, and nothing obliges a server to answer promptly. A client
-  **SHOULD** bound the wait, and the bound cannot be a protocol number: it has to be at least a
-  round trip on the connection in use, and less than "for ever". (The two reference clients differ
-  here; [`NOTES.md`](NOTES.md) §A.2.)
+- **Every request is answered, and the wait has to be bounded.** `doc.open`, `doc.close` and
+  `session.rename` are answered with a result or an error, and nothing obliges a server to answer
+  promptly. A client **SHOULD** bound the wait, and the bound cannot be a protocol number: it has
+  to be at least a round trip on the connection in use, and less than "for ever". (The two
+  reference clients differ here; [`NOTES.md`](NOTES.md) §A.2.)
 - **A socket that drops fails every request in flight.** When the connection ends, whether the
   client asked for it or not, each outstanding request **MUST** be failed locally: no answer can
   arrive on a socket that is gone, and a caller left holding a request that never completes cannot
   tell that from a slow server. Whether the server applied a request it never answered is not
-  knowable, and a guess about it is an answer the wire does not carry; for the two methods in
-  `selvage/1` it does not matter, because both are idempotent — a hold is a set, and a second
-  `doc.open` for a path already held changes nothing.
+  knowable, and a guess about it is an answer the wire does not carry; for the methods in
+  `selvage/1` it does not matter: a hold is a set, so a second `doc.open` for a path already held
+  changes nothing, and an applied rename reaches the mover as the `peer.renamed` every peer
+  receives (§6).
 - **A request id is not reused on a connection.** The id is the only correlation the wire has, and
   a client that reuses one cannot tell a late answer from a current one. A new connection may
   count from the beginning again, because it is a new connection: nothing survives it (§9.1).
@@ -435,6 +493,7 @@ All event `params` are flat objects.
 | `room.joined` | `SessionParams` without `token` | reply to a `session.hello` that joined one | adopts `keepalive` and reads `documents` as the room's membership, not as its content (§6.1) |
 | `peer.joined` | `{ "peer": PeerInfo }` | to the peers already in the room when a connection is seated | adds the peer to the roster, and reads `peer.role` rather than assuming a guest arrived |
 | `peer.left` | `{ "peer_id": string }` | to the remaining peers when a connection ends | removes the peer, and **SHOULD** drop its awareness state (§8.4). A host leaving is *not* the end of the room (§9) |
+| `peer.renamed` | `{ "peer_id": string, "display_name": string }` | to every peer when a peer renames itself | replaces the peer's name and keeps the peer |
 | `doc.opened` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer opens a document | replaces its view of the room's set with `documents` |
 | `doc.closed` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer closes one | the same |
 | `host.detached` | `{ "grace_ms": number }` | to the remaining peers when the host's connection ends | starts the grace period: the room is still usable and still joinable |
@@ -580,8 +639,9 @@ position as the `item` alone. Both are conforming, and see the scope rule below,
 single detail an implementation is most likely to get wrong.
 
 Both fields are optional, and identity is **not** here: a display name travels in the session
-layer (§6.1). A client that understands neither field ignores a state it cannot parse, and still
-relays the frame — awareness is opaque to everything but its readers.
+layer (§6.1), and a mid-session change to one is announced there as `peer.renamed` (§6). A client
+that understands neither field ignores a state it cannot parse, and still relays the frame —
+awareness is opaque to everything but its readers.
 
 The shape is this protocol's, but a *meaning* is not: two clients that disagree about what a
 selection means show each other no cursor, or the wrong one, and nothing about the frame reveals
@@ -865,6 +925,8 @@ what goes out.
 | seated | `session.hello` | seated | the error response `already_seated` |
 | seated | `doc.open` / `doc.close` with a non-blank `path` | seated | the result, then `doc.opened`/`doc.closed` to the room |
 | seated | `doc.open` / `doc.close` with a blank `path`, or params that do not parse | seated | the error response `bad_params` |
+| seated | `session.rename` with a non-blank `display_name` within the bound | seated | `{ "result": {} }` to the caller, then `peer.renamed` to the room, the caller included |
+| seated | `session.rename` with params that do not parse, or a blank or over-long `display_name` | seated | the error response `bad_params` |
 | seated | any other method | seated | the error response `unknown_method` |
 | seated | a text frame that is not an envelope, or has no `id` | seated | `session.error{bad_message}` |
 | seated | a request whose `v` is incompatible | closed | the error response `unsupported_version` for that request, then close 4005 |
