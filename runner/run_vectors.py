@@ -20,6 +20,13 @@ directions, `peers` is a set, and a text frame is compared twice — structurall
 failure names the member, and then as whole bytes, because the vector is written in
 the canonical form. A `$name` placeholder binds the first value it sees and must be
 that value again; `$_` matches anything and is never remembered.
+
+An `expect` step reads the connection's next frame and compares it, so a vector that omits
+an expectation leaves that connection one frame ahead, and the failure lands later on a frame
+that belongs to an earlier moment. A failure therefore names the connection, the step's place
+in the transcript and how many frames it had read; and when the transcript stops reading,
+whatever each connection still holds that no step reads is reported as the omission itself
+rather than the symptom it caused.
 """
 
 from __future__ import annotations
@@ -61,6 +68,10 @@ VECTOR_DIR = ROOT / "vectors"
 SERVER_ENV = "SELVAGE_SELVAGED"
 DEFAULT_GRACE_MS = 30_000
 FRAME_TIMEOUT = 10.0
+# The audit that names a frame no step reads runs when the transcript stops reading, so the
+# frame it is meant to catch is normally already on the socket; a healthy connection has nothing
+# to send and pays only this window.
+DRAIN_TIMEOUT = 0.1
 ANY = "$_"
 # The members whose prose promises no order: a comparison matches each as a multiset and
 # reconciles the order before the bytes are built (`CANONICAL.md` §2.7). `documents` is not
@@ -401,6 +412,26 @@ class Peer:
         except Exception:  # the socket is already gone; nothing left to close
             pass
 
+    async def drain(self, window: float) -> list[Incoming]:
+        """The frames still on the connection when the transcript stopped reading.
+
+        A frame that arrives here is one no step of this run has read; whether a step still to
+        run would have read it is what `unread_frames` decides. A close ends the stream and is
+        not a frame.
+        """
+        unread: list[Incoming] = []
+        while True:
+            try:
+                message = await asyncio.wait_for(self.ws.recv(), window)
+            except (TimeoutError, ConnectionClosed):
+                return unread
+            except Exception:  # the socket is gone; nothing left to read
+                return unread
+            if isinstance(message, str):
+                unread.append(Incoming("text", text=message))
+            else:
+                unread.append(Incoming("binary", data=message))
+
 
 @dataclass
 class Session:
@@ -427,6 +458,108 @@ class Session:
     async def stop(self) -> None:
         for peer in self.peers.values():
             await peer.stop()
+
+    async def drain(self, window: float = DRAIN_TIMEOUT) -> dict[str, list[Incoming]]:
+        """What each connection holds once the transcript has stopped reading."""
+        unread: dict[str, list[Incoming]] = {}
+        for name, peer in self.peers.items():
+            frames = await peer.drain(window)
+            if frames:
+                unread[name] = frames
+        return unread
+
+
+def describe_frame(incoming: Incoming) -> str:
+    """A frame as one line of a report."""
+    if incoming.kind == "text":
+        return incoming.text
+    return f"binary {bytes_hex(incoming.data)}"
+
+
+def describe_unread(unread: dict[str, list[Incoming]]) -> list[str]:
+    """One line per connection: what it holds that no step of the transcript reads.
+
+    A frame here is the shape a vector missing an expectation has, and the thing that shifts
+    every later read on that connection. Naming the connection and the frame is what points at
+    the omission, rather than at the failure it causes several steps later.
+    """
+    report = []
+    for name, frames in unread.items():
+        held = "frame" if len(frames) == 1 else "frames"
+        shown = ", ".join(describe_frame(frame) for frame in frames)
+        report.append(
+            f"`{name}` holds {len(frames)} {held} the transcript does not read: {shown}"
+        )
+    return report
+
+
+def describe_failure(
+    session: Session,
+    total: int,
+    index: int,
+    step: dict,
+    before: int | None,
+    error: Exception,
+) -> str:
+    """A failed step, placed in the transcript and in its connection's stream.
+
+    Every step reads the frame at the head of its connection's queue, so a queue that is one
+    frame behind fails on a frame from an earlier moment. The step's position and the number
+    of frames that connection had already read are what make that visible.
+    """
+    where = f"step {index} of {total} `{step.get('op')}`"
+    name = step.get("conn")
+    peer = session.peers.get(name) if name is not None else None
+    if peer is None or before is None:
+        return f"{where}: {error}"
+    read = peer.frames - before
+    reading = (
+        f"reading frame {peer.frames} ({before} read before it)"
+        if read
+        else f"after {before} frames read"
+    )
+    return f"{where} on `{name}`, {reading}: {error}"
+
+
+# The steps that take a frame off a connection. Everything else either sends, asks the doc,
+# or waits, so it reads nothing that a leftover frame could belong to.
+READING_OPS = frozenset({"expect", "expectBinary", "expectClose"})
+
+
+def pending_reads(steps: list[dict], start: int) -> dict[str, int]:
+    """How many frames each connection's steps from `start` on would read."""
+    pending: dict[str, int] = {}
+    for step in steps[start:]:
+        if step.get("op") in READING_OPS:
+            name = step.get("conn")
+            if name is not None:
+                pending[name] = pending.get(name, 0) + 1
+    return pending
+
+
+def unread_frames(
+    held: dict[str, list[Incoming]], pending: dict[str, int]
+) -> dict[str, list[Incoming]]:
+    """The frames a connection holds that no step of the transcript reads.
+
+    A reading step takes the head of its connection's queue, so the first `pending` frames
+    are the ones the steps still to run would read and belong to a transcript that stopped
+    short. What sits behind them is read by no step at all.
+    """
+    unread: dict[str, list[Incoming]] = {}
+    for name, frames in held.items():
+        left = frames[pending.get(name, 0) :]
+        if left:
+            unread[name] = left
+    return unread
+
+
+def failure_message(failure: str, unread: dict[str, list[Incoming]]) -> str:
+    """The failure, followed by what each connection holds that no step reads."""
+    report = describe_unread(unread)
+    if not report:
+        return failure
+    return "\n".join([failure, *report])
 
 
 class Server:
@@ -584,8 +717,12 @@ async def run_step(session: Session, server: Server, step: dict) -> None:
         raise Mismatch(f"`{op}` is not a step this runner knows")
 
 
-async def replay(vector: dict, binary: str) -> None:
-    """Replays one vector against a fresh server."""
+async def replay(vector: dict, binary: str) -> dict[str, list[Incoming]]:
+    """Replays one vector against a fresh server.
+
+    Returns what each connection still held once the steps were over — empty for a vector
+    whose transcript reads every frame it is sent.
+    """
     if vector.get("selvage") != "selvage/1" or vector.get("canonical") != "SJ-C/1":
         raise ReplayError(
             f"vector {vector.get('id')} is bound to {vector.get('selvage')} / "
@@ -598,19 +735,33 @@ async def replay(vector: dict, binary: str) -> None:
     except ServerError as error:
         raise ReplayError(str(error)) from error
     session = Session()
+    steps = vector["steps"]
+    failure: str | None = None
+    # Where the transcript got to: past the failing step, or past the last one.
+    start = len(steps)
     try:
-        for index, step in enumerate(vector["steps"]):
+        for index, step in enumerate(steps):
+            name = step.get("conn")
+            peer = session.peers.get(name) if name is not None else None
+            before = peer.frames if peer is not None else None
             try:
                 await run_step(session, server, step)
             except ReplayError:
                 raise
             except Exception as error:
-                raise ReplayError(
-                    f"step {index} `{step.get('op')}`: {error}"
-                ) from error
+                failure = describe_failure(
+                    session, len(steps), index, step, before, error
+                )
+                start = index + 1
+                break
+        held = await session.drain()
     finally:
         await session.stop()
         server.stop()
+    unread = unread_frames(held, pending_reads(steps, start))
+    if failure is not None:
+        raise ReplayError(failure_message(failure, unread))
+    return unread
 
 
 # --- schema checks and the command line ---------------------------------------
@@ -655,12 +806,14 @@ def replay_all(binary: str) -> tuple[int, int]:
     for vector in vectors:
         name = vector["_file"]
         try:
-            asyncio.run(replay(vector, binary))
+            unread = asyncio.run(replay(vector, binary))
         except ReplayError as error:
             failed += 1
             print(f"FAIL   {name:<33} {error}")
         else:
             print(f"ok     {name}")
+            for line in describe_unread(unread):
+                print(f"note   {name:<33} {line}")
     return len(vectors), failed
 
 
