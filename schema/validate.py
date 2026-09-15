@@ -54,8 +54,8 @@ BASE = "https://selvageprotocol.com/schema/1/"
 # deletion — a red run instead of a smaller number in a line of output. Update them in the
 # same commit that changes the corpus.
 EXPECTED_VECTORS = 23
-EXPECTED_FRAME_CHECKS = 802
-EXPECTED_ASSERTIONS = 191
+EXPECTED_FRAME_CHECKS = 806
+EXPECTED_ASSERTIONS = 192
 
 # A step that reads or asserts something. Every other step only produces input for one, so
 # a vector made of them alone can pass while claiming nothing.
