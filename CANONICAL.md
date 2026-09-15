@@ -100,9 +100,16 @@ particular `"params": null` is not the same as an absent `params`.
 
 ### 2.7 Array order
 
-An array's order is part of what a frame *says* only where `PROTOCOL.md` promises one. Exactly
-one array is in that position: `documents`, "the room's open-document set, in first-opened
-order" (§6.2), which a comparison holds to that order.
+An array's order is part of what a frame *says* only where `PROTOCOL.md` promises one. Two arrays
+are in that position:
+
+- **`documents`**, "the room's open-document set, in first-opened order" (\u00a76.2), which a
+  comparison holds to that order; and
+- **a grant's `paths`** (`doc.grant`, `doc.granted`), which `PROTOCOL.md` \u00a75 requires its
+  *publisher* to write in ascending order by UTF-16 code unit and requires a server to carry
+  unchanged. This one is written in an order the sender chose rather than one the server arrived
+  at, which is the only thing that distinguishes it from `documents` here: the order is still a
+  claim, and a comparison holds the bytes to it.
 
 Every other array this protocol defines — `peers` ("No order is promised for it", §6.2),
 `capabilities` (§2, §6.2, §10), `wire_versions` and `roles` (§2) — is a **set**, and there is
@@ -126,11 +133,16 @@ follow:
 ### 2.8 String length
 
 SJ-C fixes a string's bytes, not its length: a value longer than a receiver's bound is still
-canonical, and a receiver that refuses it refuses the value, not the encoding. `selvage/1` has one
-such bound — a `display_name` is at most 32 **UTF-16 code units** (`PROTOCOL.md` §5) — counted in
-the unit a JavaScript string's `.length` reports and the unit §8.1 of that document counts offsets
-in, so an astral character costs two. A name over the bound is refused `bad_params`, the code a
-blank one gets; it is not a canonical-form fault, and the frame is not `bad_message`.
+canonical, and a receiver that refuses it refuses the value, not the encoding. `selvage/1` fixes
+one such bound on a value — a `display_name` is at most 32 **UTF-16 code units** (`PROTOCOL.md`
+§5) — counted in the unit a JavaScript string's `.length` reports and the unit §8.1 of that document
+counts offsets in, so an astral character costs two. A name over the bound is refused `bad_params`,
+the code a blank one gets; it is not a canonical-form fault, and the frame is not `bad_message`.
+
+A server's own limit on what it will carry is a different thing, and `PROTOCOL.md` §5 fixes no
+number for it: the size of an inbound frame or message (§2.1), a listing it will not store whole, a
+path longer than it will hold. A server refuses one of those with `bad_params`, and the value is
+still canonical — the limit is policy, and the refusal is about the value.
 
 ## 3. Unknown members: dropped
 
@@ -156,7 +168,8 @@ unknown member back, which §4.1 forbids in effect by making every frame's membe
   receiver that compares frames byte for byte is wrong, not the peer that sent them.
 - **Any order of an array `PROTOCOL.md` does not order.** `peers`, `capabilities`,
   `wire_versions` and `roles` are sets (§2.7); their order is not a claim, and a receiver that
-  reads one into one is wrong, not the peer that wrote them.
+  reads one into one is wrong, not the peer that wrote them. `documents` and a grant's `paths`
+  are the exceptions §2.7 names, and a receiver reads them as the order they were sent in.
 - **Members it does not know**, at any depth, in either direction (§3).
 - **Event names it does not know**: ignored, like an unknown member.
 - **Capability names it does not know**: ignored, in `/meta` and in the `capabilities` member.

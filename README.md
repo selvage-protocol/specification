@@ -128,13 +128,14 @@ Then, from this directory:
 python3 runner/run_vectors.py
 ```
 
-It prints one line per vector and ends with `20 files, 624 frame checks, 20 vectors passed,
-0 failed`, and exits non-zero if any vector fails. `SELVAGE_VECTORS=DIR` reads the
-transcripts from another directory — replaying a corrupt *copy* is how a failure is shown to
-be caught — and both halves honour it. The counts `schema/validate.py` pins are this
-repository's, so the schema half fails on a directory that does not hold them rather than
-checking less of it quietly; the replay itself checks whatever it finds. `--schema-only` is
-exactly `python3 schema/validate.py` and starts no server.
+It prints one line per vector and ends with a summary — `23 files, 802 frame checks, 23 vectors
+passed, 0 failed` once the `selvaged` it runs implements every frame the corpus covers, so
+`021`-`023` are red against a server that does not yet speak `doc.grant` — and exits non-zero if
+any vector fails. `SELVAGE_VECTORS=DIR` reads the transcripts from another directory — replaying a
+corrupt *copy* is how a failure is shown to be caught — and both halves honour it. The counts
+`schema/validate.py` pins are this repository's, so the schema half fails on a directory that does
+not hold them rather than checking less of it quietly; the replay itself checks whatever it finds.
+`--schema-only` is exactly `python3 schema/validate.py` and starts no server.
 
 A `selvaged` must accept `--room-grace-ms MS`. The grace period is per-vector
 (`vectors/012` waits out 400 ms, `vectors/011` four seconds), and a runner that spawns the
@@ -215,7 +216,8 @@ enforces:
 - **`peers`, `capabilities`, `wire_versions` and `roles` are compared as sets.** The protocol
   promises no order for them (`CANONICAL.md` §2.7), so the comparison matches them as multisets
   and puts the vector's into the order the wire sent before it compares the bytes. `documents`
-  is not one of them: §6.2 promises it first-opened order, and the comparison holds it to that.
+  and a grant's `paths` are not among them: the protocol promises an order for both (`PROTOCOL.md`
+  §6.2 and §5), and the comparison holds each to the order the vector wrote.
 - **The bytes are compared, not just the parsed JSON.** The vector's frame is written in the
   canonical form of `CANONICAL.md`, the reference server produces exactly those bytes, and a
   failure prints both.

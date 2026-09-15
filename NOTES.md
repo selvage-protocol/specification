@@ -280,3 +280,78 @@ peer-list order, the peer's `role` or its `awareness_client_id`. The wire versio
 is already canonical under §2.1, §2.2 and §2.3, and §2.8 already covers its `display_name` bound.
 No new error code and no new close code: `bad_params` and `unsupported_version` cover every
 outcome.
+
+**B.23 A room's working tree is `doc.grant` and `doc.granted`.** A room could not say what its
+working copy is: `documents` is the union of the holds its connections declared, so a guest's view
+of a project was the union of what every peer happened to have open, and a path nobody had opened
+was invisible (`PROTOCOL.md` §1.2, §6.2). `PROTOCOL.md` §5 adds `doc.grant`, a host-only request
+answered with `{}` — the room's statement of the listing is the event, as it is for a rename — and
+§6 adds `doc.granted`, sent to every peer, the publishing host included, and to a joining
+connection immediately after its `room.joined` when the room's grant is non-empty. **Decided**,
+with six deliberate choices and three questions left open.
+
+- **The listing is one snapshot, not a stream.** A host enumerates and the whole listing arrives in
+  one frame: there is no per-directory walk, no request for a subdirectory and no delta. Paths are
+  cheap beside content, so the room's *shape* arrives at once while a file's **content** still
+  arrives the way it did before — through `doc.open` and the ordinary sync exchange, when someone
+  opens the path (§7). A listing carries **files** and no directory entry: a client that presents a
+  tree derives the directories by splitting the paths it was given, which is also what makes a
+  project-wide search over one flat list possible.
+- **A publication is announced, and only a join can be silent.** A server **MUST NOT** suppress
+  `doc.granted` because the listing equals the one already in force, the same choice §5 makes for
+  a rename to the current name: "the request was applied" and "the room was told" stay one
+  observable thing, and no receiver has to diff two listings. The join-time event is the other
+  way round, and deliberately so — it is sent only when the grant is non-empty, because a joiner
+  of a room that grants nothing has nothing to be told and `room.joined` already says so.
+- **The order of `paths` is a rule.** A publisher **MUST** write its listing in ascending order by
+  UTF-16 code unit, and a server **MUST** carry the order it received and not sort, deduplicate or
+  normalise it. Without a defined order, byte-exact vectors for `doc.granted` are impossible and
+  the corpus could only assert set equality — a change with a cost of its own. `CANONICAL.md` §2.7
+  said exactly one array was ordered (`documents`) and now names two, and §2.8's "one such bound on
+  a value" is qualified, because the server's own limit on what it will store is policy and not a
+  bound this document fixes on a value. The wire version stays `selvage/1` and the canonical form
+  stays `SJ-C/1`: two frames are added and no existing frame's bytes change, so the two edits are
+  prose about new members rather than a new byte rule.
+- **The bounds are the server's policy.** A server **MAY** refuse a listing it will not store whole
+  — too many paths, or a path longer than its own limit — with `bad_params`, and a host **SHOULD**
+  bound what it enumerates so that a pathological tree cannot wedge the session: a listing over the
+  transport's frame bound ends the connection with nothing on the wire to say why (§2.1), which is
+  the worse failure of the two.
+- **There is deliberately no capability name.** Adding one would change the `capabilities` array in
+  every `room.created` and `room.joined` and re-baseline all 20 pre-existing vectors, which is a far
+  larger change than the two frames it would announce. A host learns support by sending
+  `doc.grant` and handling `unknown_method`; a client that does not know `doc.granted` ignores it,
+  as it ignores any unknown event, and keeps working from `documents` (§10). A `file-tree`
+  capability can be added later in its own change, with the corpus re-baselined for it then.
+- **The grant sits in the room and outlives its peers**, exactly as the open-document set does
+  (§9). A host that disconnects leaves it, a host that reclaims the room inside the grace period
+  learns it from the join-time `doc.granted` and may republish or not, and destroying the room
+  destroys it. It is one more thing about a room that a reconnect inherits rather than rebuilds.
+
+**What a non-host publisher gets** is the first open question. §11's vocabulary has no code for
+"not permitted" and this change adds none, so §5 says a `doc.grant` from a connection the server
+does not hold as the room's host is answered `bad_params`, and vector `023` pins that — the same
+code a malformed request gets, which is a distinction a client cannot see. The spec-correct
+alternative is an `x.`-namespaced code (§10.1) or a new bare one, and either is a new
+client-visible failure; §5, §11 and `023` move together when one is wanted. Note what host-only can
+and cannot mean: the server has no filesystem, so it can only refuse a publisher that is not the
+host of record — it can never tell whether a listing is the host's disk.
+
+**What a listed path promises** is now settled in `PROTOCOL.md` §12 and is worth repeating here,
+because it is the sentence an adapter has to implement: a listed path is a name the host's working
+copy held when it enumerated, the server neither resolves nor verifies it, and it may since have
+been deleted, may be unreadable, may name a directory anyway, or may name something the host
+declines to seed. A client **MUST** treat it as a candidate, not as a promise of a file or of
+content. That is the same trust boundary the open-document set already had.
+
+**Two questions are left open.** The first is the sort unit: §5 now says UTF-16 code unit, so a
+path beginning with a supplementary character sorts among the surrogates, and a byte- or
+code-point-ordered sort — a Rust `Vec<String>::sort()`, for one — orders such a listing the other
+way round. Vector `022` is written to fail against a server that sorts at all, or a host that sorts
+by code point; if the owner prefers a listing whose order is not a claim, both that rule and the
+vector's last two paths move with it. The second is a mid-session tree change: the listing is a
+snapshot, no filesystem watcher is specified, and a host republishes when it notices. That is
+defensible rather than complete — a path absent from the listing can still be opened by a peer that
+knows it, so staleness is a discoverability problem and not a protocol fault — but whether
+`selvage/1` wants a file-created/file-removed event, or a republish policy it states, is unowned
+for now.

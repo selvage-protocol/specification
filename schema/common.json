@@ -97,7 +97,7 @@
       "items": {
         "$ref": "#/$defs/documentPath"
       },
-      "description": "A list of document paths, in first-opened order. The room's open-document set and the `documents` member of every event that reports it are the same list."
+      "description": "A list of document paths. Where a frame names it `documents` it is the room's open-document set, in first-opened order (\u00a76.2); where it names it `paths` it is the room's grant, in the order its host published it, ascending by UTF-16 code unit (\u00a75). Those two are the only arrays whose order `selvage/1` promises, and the order always belongs to the frame that carries the list."
     }
   }
 }
