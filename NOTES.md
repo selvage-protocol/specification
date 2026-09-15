@@ -257,3 +257,26 @@ condition, and the server is where the bound holds. A client **SHOULD** validate
 that a person is asked for a shorter name rather than refused after typing; that is the clients'
 own obligation and not a second wire rule. The other free-form peer string, `client`, stays
 unbounded: it is diagnostics that no client draws. The lack of a `path` bound is B.8.
+
+**B.22 A mid-session display-name change is `session.rename` and `peer.renamed`.** A seated
+connection could not change its name: a second `session.hello` is `already_seated`, and both
+reference clients told a person that the session keeps the name it started with. `PROTOCOL.md`
+§5 adds `session.rename`, answered with `{}` — the room's statement of the new name is the event,
+not the response — and §6 adds `peer.renamed` carrying the minimal `{ "peer_id",
+"display_name" }`: no `PeerInfo`, because a rename changes one field and a receiver already holds
+`role` and `awareness_client_id` from the roster, and no awareness change at all, because §8.3's
+rule that identity is not in awareness still stands. **Decided.** The name carries the
+handshake's bound (non-blank, at most 32 UTF-16 code units, `B.21`); a refusal is a **non-fatal**
+error response carrying `bad_params`, and the connection stays open, because §11's closing refusal
+is the shape of a fault *before* seating and a malformed rename must not drop a working session;
+the event is broadcast to **every** peer in the room, the mover included, as `doc.opened` and
+`doc.closed` are; and a rename to the name already in force is **still announced**, so "the request
+was applied" and "the room was told" stay the same observable thing and no receiver has to
+decide whether a name changed. A rename is accepted while the room is hostless — §9's "the room
+is fully usable" during the grace period — and touches neither the grace deadline nor the room's
+peer-list order, the peer's `role` or its `awareness_client_id`. The wire version stays
+`selvage/1`: the member set of no frame changes and two frames are added. `CANONICAL.md` is
+**unchanged** and the canonical form stays `SJ-C/1` — a `session.rename` or `peer.renamed` frame
+is already canonical under §2.1, §2.2 and §2.3, and §2.8 already covers its `display_name` bound.
+No new error code and no new close code: `bad_params` and `unsupported_version` cover every
+outcome.

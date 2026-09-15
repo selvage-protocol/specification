@@ -53,9 +53,9 @@ BASE = "https://selvageprotocol.com/schema/1/"
 # deliberate edit, and these three numbers are what makes the opposite edit — a silent
 # deletion — a red run instead of a smaller number in a line of output. Update them in the
 # same commit that changes the corpus.
-EXPECTED_VECTORS = 19
-EXPECTED_FRAME_CHECKS = 562
-EXPECTED_ASSERTIONS = 141
+EXPECTED_VECTORS = 20
+EXPECTED_FRAME_CHECKS = 624
+EXPECTED_ASSERTIONS = 154
 
 # A step that reads or asserts something. Every other step only produces input for one, so
 # a vector made of them alone can pass while claiming nothing.
@@ -71,6 +71,7 @@ ASSERTION_OPS = {
 
 METHOD_PARAMS = {
     "session.hello": f"{BASE}methods.json#/$defs/sessionHelloParams",
+    "session.rename": f"{BASE}methods.json#/$defs/renameParams",
     "doc.open": f"{BASE}methods.json#/$defs/docOpenParams",
     "doc.close": f"{BASE}methods.json#/$defs/docCloseParams",
 }
@@ -80,6 +81,7 @@ EVENT_PARAMS = {
     "room.joined": f"{BASE}events.json#/$defs/roomJoined",
     "peer.joined": f"{BASE}events.json#/$defs/peerJoined",
     "peer.left": f"{BASE}events.json#/$defs/peerLeft",
+    "peer.renamed": f"{BASE}events.json#/$defs/peerRenamed",
     "doc.opened": f"{BASE}events.json#/$defs/docOpened",
     "doc.closed": f"{BASE}events.json#/$defs/docClosed",
     "host.detached": f"{BASE}events.json#/$defs/hostDetached",

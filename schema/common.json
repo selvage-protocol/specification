@@ -49,6 +49,13 @@
       "maximum": 9007199254740991,
       "description": "A y-protocols awareness client id. Supplied by the client in `session.hello` and echoed on its `PeerInfo`, so an editor adapter can join a cursor to a display name without putting identity into awareness (§8.4)."
     },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 32,
+      "pattern": "\\S",
+      "description": "At most 32 UTF-16 code units (PROTOCOL.md §5), so an astral character costs two; `maxLength` counts Unicode code points, so an implementation that enforces the protocol's bound counts UTF-16 code units itself. The server answers `bad_params` for a blank or longer name, and never truncates one."
+    },
     "peer": {
       "type": "object",
       "description": "A participant, as the session layer sees one. Identity is the display name and nothing else.",
@@ -63,10 +70,7 @@
           "description": "Omitted when the connection did not claim one."
         },
         "display_name": {
-          "type": "string",
-          "minLength": 1,
-          "maxLength": 32,
-          "description": "The only identity in this slice, sent by its owner in `session.hello` and echoed here. At most 32 UTF-16 code units (PROTOCOL.md §5), so an astral character costs two; `maxLength` counts Unicode code points, where an astral character costs one, so an implementation that enforces the protocol's bound counts UTF-16 code units itself. The server answers `bad_params` for a longer name and never truncates one."
+          "$ref": "#/$defs/displayName"
         },
         "peer_id": {
           "$ref": "#/$defs/peerId"
