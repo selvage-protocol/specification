@@ -56,7 +56,8 @@ The implementations this document describes:
   than an oversight (`B.20`).
 - A reconnecting client seeds a **new `Y.Doc`** carrying the outgoing replica's state on every
   handshake, so it never reuses an awareness client id.
-- The client's request surface is the handshake, `doc.open` and `doc.close`; see `A.4`.
+- The client's request surface is the handshake, `doc.open`, `doc.close` and `session.rename`;
+  see `A.4`.
 
 ### A.3 The TypeScript client (VS Code, and the Neovim companion)
 
@@ -67,18 +68,18 @@ The implementations this document describes:
 - Rotates its awareness client id on every reconnect (`rotateIdentity` before `session.hello`),
   dropping the outgoing id's local state.
 - **Removes a departed peer's awareness state on `peer.left`** (`removeAwarenessStates`). The Rust
-  client does not: it leaves the state to expire on the advertised clock, which is why
-  `PROTOCOL.md` §8.4 states this as a SHOULD.
+  client does the same in `peer_left`, so both clients drop a departed peer's state rather than
+  leave it to expire on the advertised clock (`PROTOCOL.md` §8.4).
 
 ### A.4 The `x.` method surface
 
 `PROTOCOL.md` §10.1 says the wire is open: a server answers any method it does not implement with
 `unknown_method`, so an extension method travels like any other. A *client* is the constraint —
-both reference clients can send the handshake, `doc.open` and `doc.close` and nothing else, so an
-editor adapter behind them cannot ask for an `x.` method at all. An implementation that defines one
-has to expose a way to send a method whose params it does not interpret; neither reference client
-has made that decision. An `x.` **event** needs nothing of the sort, because events reach a client
-that has already promised to ignore the ones it does not know.
+both reference clients can send the handshake, `doc.open`, `doc.close` and `session.rename` and
+nothing else, so an editor adapter behind them cannot ask for an `x.` method at all. An
+implementation that defines one has to expose a way to send a method whose params it does not
+interpret; neither reference client has made that decision. An `x.` **event** needs nothing of the
+sort, because events reach a client that has already promised to ignore the ones it does not know.
 
 ### A.5 `GET /meta`
 
@@ -162,17 +163,29 @@ alternative is for the awareness state to name a `peer_id`. **Unresolved.**
 to address one peer, which the host-seeded document flow ("the host serves this path to that
 requester") would want. Adding it means a target field in the frame. **Unresolved.**
 
-**B.7 No per-document request/response.** A guest's `doc.open` is informational: content arrives
-because the single session `Y.Doc` syncs as a whole, not because the host was asked for that path.
-Whether the protocol wants a real "serve me this path" exchange — needed once content can be large,
-or lazily fetched, or access-controlled — is **unresolved.**
+**B.7 No per-document request/response.** A guest's `doc.open` is informational on the wire: no
+frame asks the host for a path, and a document's content arrives because the single session
+`Y.Doc` syncs as a whole. That mechanism is unchanged, and `B.23`'s grant does not touch it — a
+listing carries paths and never content. What the grant changes is *which* paths a client opens:
+the room carries a listing of the host's working tree, a client mirrors its shape and fetches a
+file's content only when something needs it (`DESIGN.md` §4.2), so a guest no longer inherits the
+union of what its peers happen to hold open. The question this item left open — whether the
+protocol wants a real "serve me this path" exchange — is **superseded rather than answered** for
+`selvage/1`: a fetch stays a `doc.open` plus the ordinary sync exchange (§7) and no frame is
+added, while content large enough to want one would reopen it in a later version. Neither
+reference client materialises the grant or fetches lazily yet.
 
 **B.8 Open-document paths are unvalidated.** `path` is an opaque string, and `PROTOCOL.md` §5 only
 requires it to be non-blank (`trim()` non-empty, and the schema's `documentPath` says the same in
 its description; the JSON Schema itself is a `minLength` and cannot express "non-blank"). The
-design's folder grant, exclude globs (`.env`, `.git/**`) and path clamping are not implemented, and
-are harmless only while nothing reads the host's filesystem. `PROTOCOL.md` §12 says what an
-implementation that does read it owes. **Must be settled before file access exists.**
+room's grant is no longer missing from the protocol: `PROTOCOL.md` §5 defines `doc.grant` and
+`B.23` describes it, a listing of paths carrying that same non-blank rule and no other, though no
+implementation speaks it yet. A listing is not a confinement, and the three rules this item is
+about are unimplemented: the folder a read is held under, exclude globs (`.env`, `.git/**`) and
+path clamping, all of which the design puts host-side. A peer may therefore open any path it
+names, listed or not, and nothing bounds what a host reads to serve one; that is harmless only
+while nothing reads the host's filesystem. `PROTOCOL.md` §12 says what an implementation that
+does read it owes. **Must be settled before file access exists.**
 
 **B.9 Do capabilities ever gate behaviour?** Today they are pure advertisement: unknown ones are
 ignored and a client cannot insist on one. If a profile ever becomes mandatory, the protocol needs
@@ -227,8 +240,8 @@ documented in `PROTOCOL.md` §2.1, and is not the server's own: it will move wit
 unless the server configures it explicitly. **Unresolved.**
 
 **B.19 Where the reference client's request surface ends.** See `A.4`: the client can express
-`session.hello`, `doc.open` and `doc.close` and nothing else, so no `x.` method can be sent through
-it. **Unresolved**, and a client-API decision rather than a wire one.
+`session.hello`, `doc.open`, `doc.close` and `session.rename` and nothing else, so no `x.` method
+can be sent through it. **Unresolved**, and a client-API decision rather than a wire one.
 
 **B.20 A client's outbound bound is a SHOULD, deliberately.** `PROTOCOL.md` §2.1 asks a client to
 bound what it holds rather than queue without limit, and states it as a SHOULD. **Decided**: the
