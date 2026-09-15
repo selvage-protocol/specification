@@ -32,11 +32,12 @@ This draft covers, and only covers:
 
 - handshake, version and capability negotiation;
 - room mint, join, roles, and the room lifecycle;
-- the open-document set;
+- the open-document set, and the room's grant listing;
 - relay of document-sync and awareness payloads (opaque to the server).
 
 It does **not** cover, in this slice: persistence, accounts, authentication beyond a room token,
-file access, terminals, rich text, E2EE, or any HTTP API other than `GET /meta`.
+file access (the room's grant is a list of *names* the server carries and never resolves, §5),
+terminals, rich text, E2EE, or any HTTP API other than `GET /meta`.
 
 Everything outside the core layer is a **named optional profile**. One profile name is reserved
 here so that a later draft can define it without competing for the name: **`terminal/1`, shared
@@ -113,6 +114,11 @@ These words carry obligations, and the protocol uses them precisely.
 - **the room's open-document set** — the paths the room has open, `documents`, in first-opened
   order. It belongs to the room and **outlives every peer that opened a path**; a path leaves it
   only when the last hold on it is released (§5).
+- **the room's grant** — the files the room's host has published as its working tree, `paths`,
+  written ascending by its publisher in UTF-16 code units (§5). It is the same kind of value and
+  the same kind of claim as a path in the open-document set: a list of names, no content,
+  unvalidated by the server (§5, §12). It belongs to the room as the open-document set does, and
+  is replaced wholesale by every `doc.grant`.
 - **the session document** — the single `Y.Doc` a room's peers converge on, one `Y.Text` per open
   path keyed by the path (§7). The server never holds it.
 - **text frame**, **envelope**, **binary frame**, **message** — a *text frame* is one JSON
@@ -121,8 +127,8 @@ These words carry obligations, and the protocol uses them precisely.
 - **advertised** — carried by the server in `capabilities`, `keepalive` and `wire_versions`:
   in `GET /meta` and again in the handshake reply (§10).
 - **set** — an array whose order the protocol does not promise: `peers`, `capabilities`,
-  `wire_versions`, `roles` (§2, §6.2, §10, `CANONICAL.md` §2.7). `documents` is the only array
-  this protocol orders.
+  `wire_versions`, `roles` (§2, §6.2, §10, `CANONICAL.md` §2.7). `documents` and a grant's
+  `paths` are the only arrays this protocol orders (§5, §6.3).
 
 ## 2. Transport
 
@@ -276,7 +282,7 @@ significant and is not stable (`CANONICAL.md` §2.1).
 
 ## 5. Methods
 
-Four methods exist. A method is cited by its name; this table is the index.
+Five methods exist. A method is cited by its name; this table is the index.
 
 | method | `params` | answered with | effect on the room's open-document set | events |
 |---|---|---|---|---|
@@ -284,6 +290,7 @@ Four methods exist. A method is cited by its name; this table is the index.
 | `session.rename` | `{ "display_name": string }` | `{ "result": {} }` | unchanged | `peer.renamed` to every peer |
 | `doc.open` | `{ "path": string }` | `{ "result": { "documents": [string] } }` | gains `path` unless it was already there | `doc.opened` to every peer |
 | `doc.close` | `{ "path": string }` | `{ "result": { "documents": [string] } }` | loses `path` when no other peer still holds it | `doc.closed` to every peer |
+| `doc.grant` | `{ "paths": [string] }` | `{ "result": {} }` | unchanged: a grant is not a hold, and the room's grant is replaced wholesale | `doc.granted` to every peer |
 
 ### `session.hello` — the handshake
 
@@ -401,6 +408,84 @@ A connection that disconnects releases its holds without announcing anything, bu
 held stay in the room's set: a hold belongs to a connection and the set belongs to the room (§1.2,
 §9).
 
+### `doc.grant`
+
+```json
+{ "v": "selvage/1", "id": 5, "method": "doc.grant", "params": { "paths": ["README.md", "src/main.rs"] } }
+```
+
+A `doc.grant` publishes the room's **grant**: the host's listing of the files in its working tree,
+as an array of workspace-relative paths. Each is the same kind of value as `doc.open`'s `path` and
+is held to the same rule — it **MUST** be non-blank, and it is otherwise unvalidated in this slice
+(§12, [`NOTES.md`](NOTES.md) §B.8). A `paths` that is not an array, a member of it that is not a
+string, or one whose `trim()` is empty is `bad_params`; so is a request with no `paths` at all,
+because the member is required.
+
+The listing **replaces** the room's grant wholesale: it is a snapshot, not a delta, so a host that
+grants fewer paths writes the shorter array and never has to say what was removed. An empty
+`paths` is a valid listing and not `bad_params` — "this room grants nothing" is a statement a host
+may make — and it is announced like any other change (§6.3).
+
+A listing carries **files**, not directories. A path in `paths` names a file the host's working
+copy held when it enumerated them; no frame carries a directory entry, and a receiver **MUST NOT**
+expect one. A receiver that presents a tree derives it by splitting the paths it was given —
+`src/main.rs` implies a `src` — and that implied directory is a rendering decision of the
+receiver's, not something the wire said. One flat listing is what a client needs in order to offer
+a search across the whole project, which a walk it had to drive directory by directory could not
+answer.
+
+Only the room's host **MAY** publish a grant. A `doc.grant` from a seated connection the server
+does not hold as the room's host is answered with an error response carrying `bad_params`: the
+vocabulary of §11 has no code for "not permitted" and this document adds none, so the code is the
+one a malformed request gets, and a client **MUST NOT** read it as an accepted publication. The
+server cannot tell whether a listing is the host's working tree and does not try — it has no
+filesystem (§3), and §12 concedes that the host role is claimed rather than proven.
+
+The reply is `{ "result": {} }`, because what the room has to say about the listing is the
+`doc.granted` event and not the response — the same reason an accepted `session.rename` answers
+with `{}`. The response **MUST** precede the event on the publishing connection, as a `doc.open`
+result precedes its `doc.opened`, and **every** peer in the room, the publishing host included,
+then receives `doc.granted` carrying the same listing (§6.3).
+
+**The order of `paths` is defined, and it is part of what the frame says.** A client that
+publishes **MUST** write its listing in ascending order of path, compared as a sequence of
+**UTF-16 code units** — the unit this document counts in elsewhere, so a supplementary character,
+which is a surrogate pair, sorts among the surrogates rather than where its code point would put
+it. A server **MUST** carry the listing in the order it received and **MUST NOT** sort,
+deduplicate, resolve or otherwise normalise it, so the bytes a room holds are the bytes its host
+wrote. Beside `documents`, `paths` is the second array whose order is a claim
+([`CANONICAL.md`](CANONICAL.md) §2.7), and the one array whose order the *client* fixes rather
+than the server.
+
+A host enumerates its working copy and the listing arrives whole: a `doc.grant` is one snapshot
+and not a stream, there is no per-directory walk and no request for a subdirectory. That is
+deliberate — paths are cheap beside content, so the room's *shape* arrives in one frame, while a
+file's **content** is still fetched only when someone opens it (§7). A server **MAY** bound what
+it will carry: a listing it will not store whole — too many paths, or a path longer than its own
+limit — is answered `bad_params`, and the connection stays open. The numbers are the server's
+policy and not a peer's contract, as §2.1's frame bound is. A host **SHOULD** bound its own
+enumeration to match — leaving out what a working copy should not share, and capping how much it
+lists — so that a pathological tree (`node_modules`, a build output, a flat directory of ten
+thousand files) cannot wedge the session: a listing over the transport's bound never arrives at
+all, and ends the connection the way a dropped socket does (§2.1), while one over the server's
+bound is a refusal the host has to shrink or give up on.
+
+A malformed `doc.grant` on a seated connection — params that do not parse, no `paths`, a `paths`
+that is not an array, a member that is not a string, a blank one, or a listing over the server's
+bound — is answered with an **error response** carrying `bad_params`, correlated by the request's
+`id`, and the connection **stays open**. It is not a refusal in the sense of §11: no
+`session.error` event precedes it and no close follows. A malformed listing changes nothing: the
+room keeps the grant it had, and a client **MUST NOT** read the room's grant as cleared because a
+publication was refused.
+
+There is deliberately **no capability name** for the grant. A host learns whether a server
+implements this method by sending one and reading the answer: a server that does not know it
+answers `unknown_method` and keeps the connection open (§5, §11), which a host **MUST** treat as
+"this server has no grant" — no listing to publish to and no reason to end the session. Adding a
+name of its own to `capabilities` would change that array in every `room.created` and
+`room.joined`, a far larger change than the two frames it would announce; a name can be added in
+its own change, with the corpus re-baselined for it ([`NOTES.md`](NOTES.md) §B.23).
+
 ### `session.rename` — the live rename
 
 Any **seated** connection **MAY** rename itself at any time with a `session.rename` request. This
@@ -461,19 +546,20 @@ and awareness (§9.1): a reconnecting client is a new peer and its name is whate
 
 Three obligations on the request side, none of which changes the wire:
 
-- **Every request is answered, and the wait has to be bounded.** `doc.open`, `doc.close` and
-  `session.rename` are answered with a result or an error, and nothing obliges a server to answer
-  promptly. A client **SHOULD** bound the wait, and the bound cannot be a protocol number: it has
-  to be at least a round trip on the connection in use, and less than "for ever". (The two
-  reference clients differ here; [`NOTES.md`](NOTES.md) §A.2.)
+- **Every request is answered, and the wait has to be bounded.** `doc.open`, `doc.close`,
+  `doc.grant` and `session.rename` are answered with a result or an error, and nothing obliges a
+  server to answer promptly. A client **SHOULD** bound the wait, and the bound cannot be a
+  protocol number: it has to be at least a round trip on the connection in use, and less than
+  "for ever". (The two reference clients differ here; [`NOTES.md`](NOTES.md) §A.2.)
 - **A socket that drops fails every request in flight.** When the connection ends, whether the
   client asked for it or not, each outstanding request **MUST** be failed locally: no answer can
   arrive on a socket that is gone, and a caller left holding a request that never completes cannot
   tell that from a slow server. Whether the server applied a request it never answered is not
   knowable, and a guess about it is an answer the wire does not carry; for the methods in
   `selvage/1` it does not matter: a hold is a set, so a second `doc.open` for a path already held
-  changes nothing, and an applied rename reaches the mover as the `peer.renamed` every peer
-  receives (§6).
+  changes nothing, a grant is a snapshot, so a second `doc.grant` that repeats a listing changes
+  nothing, and an applied rename reaches the mover as the `peer.renamed` every peer receives
+  (§6).
 - **A request id is not reused on a connection.** The id is the only correlation the wire has, and
   a client that reuses one cannot tell a late answer from a current one. A new connection may
   count from the beginning again, because it is a new connection: nothing survives it (§9.1).
@@ -496,6 +582,7 @@ All event `params` are flat objects.
 | `peer.renamed` | `{ "peer_id": string, "display_name": string }` | to every peer when a peer renames itself | replaces the peer's name and keeps the peer |
 | `doc.opened` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer opens a document | replaces its view of the room's set with `documents` |
 | `doc.closed` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer closes one | the same |
+| `doc.granted` | `{ "paths": [string] }` | to every peer when a grant is published, and to a joining connection right after its `room.joined` | replaces its view of the room's grant with `paths`, which is a list of names and not content |
 | `host.detached` | `{ "grace_ms": number }` | to the remaining peers when the host's connection ends | starts the grace period: the room is still usable and still joinable |
 | `host.attached` | `{ "peer": PeerInfo }` | to the remaining peers when a connection claiming `role: "host"` is seated into a room whose host is absent | reads `peer.role`: this is a reclaim, and a `peer.joined` for the same peer follows (§9.1) |
 | `room.gone` | `{ "room_id": string, "reason": string }` | to the remaining peers when the room is destroyed | **MUST NOT** retry the URL: the room id is gone for good (§9.1) |
@@ -535,6 +622,49 @@ peer **MUST NOT** depend on either.
   depend on one. `documents` is the only array in this frame whose order means anything. The same
   four capabilities and the same keepalive triple appear in `GET /meta` (§2): a server advertises
   one list, in two places, and a client reads either.
+
+### 6.3 `doc.granted`
+
+```json
+{
+  "v": "selvage/1",
+  "event": "doc.granted",
+  "params": { "paths": ["README.md", "src/main.rs"] }
+}
+```
+
+- **Sent to every peer in the room, the publishing host included, whenever the grant is
+  published** — the `doc.opened`/`doc.closed`/`peer.renamed` addressing rule, not the
+  `peer.joined` one. A change is announced even when the new listing is equal to the one already
+  in force, exactly as an accepted rename to the current name is: the event says what the room's
+  grant now is, so "the request was applied" and "the room was told" stay the same observable
+  thing and no receiver has to decide whether anything changed.
+- **Sent to a joining connection immediately after its `room.joined`, and to a minting connection
+  after `room.created`, if and only if the room's grant is non-empty.** A server **MUST** order it
+  after that reply, which §5 already promises is the connection's first frame, and **MUST NOT**
+  send one for an empty grant: a joiner of a room that grants nothing receives `room.joined` alone
+  and has nothing to miss. A fresh room's grant is always empty, so a mint never produces this
+  event. This is how a joiner learns the room's listing without a round trip and without a fifth
+  member in `room.joined`.
+- **It names no peer.** A grant is the host's and a room has one host, so the event carries the
+  room's listing and not its author; a receiver that wants to know who published it reads the
+  roster.
+- **A receiver MUST replace its view of the grant with `paths`**, whatever it held before, and
+  **MUST NOT** merge the two: a shorter listing is a smaller grant, not a partial one.
+- **`paths` carries no content and no promise.** Membership does not claim that any peer holds a
+  `Y.Text` for a path, that a file exists, or that the path is readable: it is a list of names to
+  offer, and the text of one arrives, if a peer has it, through the ordinary sync exchange (§7). A
+  client **MUST NOT** read the grant as evidence that content has arrived, exactly as it must not
+  read `documents` that way (§6.2), and it **MUST** treat a listed path as a candidate rather than
+  a promise: the host may since have deleted it, may be unable to read it, or may decline to seed
+  it, and the server verifies none of that (§12). A receiver that presents a tree derives its
+  directories by splitting the paths (§5); no frame carries one.
+- **The listing belongs to the room and outlives every peer**, as the open-document set does
+  (§1.2, §9). A host that disconnects releases its holds and leaves the grant in place; a host that
+  returns inside the grace period inherits it and learns it from the join-time `doc.granted`;
+  republishing an unchanged listing is allowed and not required; destroying the room destroys it.
+- **A receiver that does not know the event ignores it**, as it ignores any event name it does not
+  know, and falls back to the open-document set (§10, §11).
 
 ### What a client owes a join
 
@@ -1108,11 +1238,21 @@ public internet **MUST** put a terminator or a proxy in front that supplies a co
 idle deadline and a rate limit.
 
 **Paths are not validated.** `doc.open` and `doc.close` carry an opaque, workspace-relative path
-that the server does not resolve, normalise or check against anything (§5). It is harmless only
-while nothing reads the host's filesystem: the moment an adapter turns a path from the wire into a
-file read, the protocol supplies no confinement — a folder grant, exclude globs and path clamping
-are all outside this slice. An implementation that reads the host's filesystem **MUST** confine
-the path itself, and the path rules have to be settled before file access exists
+that the server does not resolve, normalise or check against anything (§5), and a grant's `paths`
+are exactly as unvalidated: the server carries the listing, relays it and never resolves one. A
+listed path is a name the host's working copy held when it enumerated — and that is all a receiver
+may read into it: the server neither resolves the name nor verifies that it names a file, that it
+exists, or that it lies inside the host's working copy. It may since have been deleted, may be
+unreadable, may name a directory even though a listing carries files, or may name something the
+host declines to seed, so a client **MUST** treat a listed path as a candidate and not as a
+promise of a readable file or of content. `..`, an absolute path and a name that escapes the
+working copy are all names the server will hold and announce if a host sends them. This is harmless only while nothing reads the host's
+filesystem: the moment an adapter turns a path from the wire into a file read, the protocol
+supplies no confinement — a folder grant, exclude globs and path clamping are all outside this
+slice. The grant is a list of names *the host chose*, which is a statement about the host and not
+a check by the server; a peer's request for a name, and any read the host performs to serve it, is
+where confinement has to happen. An implementation that reads the host's filesystem **MUST**
+confine the path itself, and the path rules have to be settled before file access exists
 ([`NOTES.md`](NOTES.md) §B.8).
 
 **Capabilities are not security.** `capabilities` is advertisement with no failure mode (§10): a

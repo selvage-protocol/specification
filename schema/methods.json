@@ -2,16 +2,16 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://selvageprotocol.com/schema/1/methods.json",
   "title": "Selvage Session Protocol — every method of `selvage/1`",
-  "description": "The four client-to-server methods, with the params each takes and the result each returns. Valid against PROTOCOL.md \u00a75. The mapping is: `session.hello` \u2192 `sessionHelloParams` and no response frame at all (its result is the `room.created`/`room.joined` event); `session.rename` \u2192 `renameParams`, result `{}`; `doc.open` \u2192 `docOpenParams`, result `documentSet`; `doc.close` \u2192 `docCloseParams`, result `documentSet`. An unknown method is answered with an error response and never dropped.",
+  "description": "The five client-to-server methods, with the params each takes and the result each returns. Valid against PROTOCOL.md \u00a75. The mapping is: `session.hello` \u2192 `sessionHelloParams` and no response frame at all (its result is the `room.created`/`room.joined` event); `session.rename` \u2192 `renameParams`, result `{}`; `doc.open` \u2192 `docOpenParams`, result `documentSet`; `doc.close` \u2192 `docCloseParams`, result `documentSet`; `doc.grant` \u2192 `grantParams`, result `{}`. An unknown method is answered with an error response and never dropped.",
   "$defs": {
     "anyMethod": {
       "type": "string",
       "minLength": 1,
-      "description": "A method name: one of the four above, an `x.`-prefixed reserved name (\u00a710.1), or any other string at all. A name the server does not implement is answered with `unknown_method`; it is not a malformed frame."
+      "description": "A method name: one of the five above, an `x.`-prefixed reserved name (\u00a710.1), or any other string at all. A name the server does not implement is answered with `unknown_method`; it is not a malformed frame."
     },
     "knownMethod": {
       "type": "string",
-      "enum": ["session.hello", "session.rename", "doc.open", "doc.close"],
+      "enum": ["session.hello", "session.rename", "doc.open", "doc.close", "doc.grant"],
       "description": "The method names `selvage/1` defines."
     },
     "anyParams": {
@@ -68,6 +68,17 @@
       "required": ["path"],
       "properties": {
         "path": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath" }
+      }
+    },
+    "grantParams": {
+      "title": "doc.grant params",
+      "type": "object",
+      "required": ["paths"],
+      "properties": {
+        "paths": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentList",
+          "description": "The room's grant: the host's listing of the files in its working tree, workspace-relative and `/`-separated, in ascending order by UTF-16 code unit as the host wrote it. No directory entry is carried: a receiver that presents a tree derives each directory by splitting the paths it was given (\u00a75). The listing replaces the room's grant wholesale, so a shorter array is a smaller grant and a delta was never sent; `[]` is a valid grant, and a missing or non-array `paths` is `bad_params`. The server carries the order it receives and does not sort, deduplicate or normalise it, and it resolves none of the names."
+        }
       }
     },
     "anyResult": {
