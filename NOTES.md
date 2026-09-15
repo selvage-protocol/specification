@@ -56,7 +56,7 @@ The implementations this document describes:
   than an oversight (`B.20`).
 - A reconnecting client seeds a **new `Y.Doc`** carrying the outgoing replica's state on every
   handshake, so it never reuses an awareness client id.
-- The client's request surface is the handshake, `doc.open`, `doc.close` and `session.rename`;
+- The client's request surface is the handshake, `doc.open`, `doc.close`, `session.rename` and `doc.grant`;
   see `A.4`.
 
 ### A.3 The TypeScript client (VS Code, and the Neovim companion)
@@ -75,7 +75,7 @@ The implementations this document describes:
 
 `PROTOCOL.md` §10.1 says the wire is open: a server answers any method it does not implement with
 `unknown_method`, so an extension method travels like any other. A *client* is the constraint —
-both reference clients can send the handshake, `doc.open`, `doc.close` and `session.rename` and
+both reference clients can send the handshake, `doc.open`, `doc.close`, `session.rename` and `doc.grant` and
 nothing else, so an editor adapter behind them cannot ask for an `x.` method at all. An
 implementation that defines one has to expose a way to send a method whose params it does not
 interpret; neither reference client has made that decision. An `x.` **event** needs nothing of the
@@ -172,20 +172,25 @@ file's content only when something needs it (`DESIGN.md` §4.2), so a guest no l
 union of what its peers happen to hold open. The question this item left open — whether the
 protocol wants a real "serve me this path" exchange — is **superseded rather than answered** for
 `selvage/1`: a fetch stays a `doc.open` plus the ordinary sync exchange (§7) and no frame is
-added, while content large enough to want one would reopen it in a later version. Neither
-reference client materialises the grant or fetches lazily yet.
+added, while content large enough to want one would reopen it in a later version. Both
+reference clients now materialise the grant and fetch content lazily: the VS Code client holds
+the listing its engine reports on `doc.granted` and opens a granted path on demand, while the
+Neovim guest mirrors the listing into a directory and reads a file only when something opens it.
 
 **B.8 Open-document paths are unvalidated.** `path` is an opaque string, and `PROTOCOL.md` §5 only
 requires it to be non-blank (`trim()` non-empty, and the schema's `documentPath` says the same in
 its description; the JSON Schema itself is a `minLength` and cannot express "non-blank"). The
 room's grant is no longer missing from the protocol: `PROTOCOL.md` §5 defines `doc.grant` and
-`B.23` describes it, a listing of paths carrying that same non-blank rule and no other, though no
-implementation speaks it yet. A listing is not a confinement, and the three rules this item is
-about are unimplemented: the folder a read is held under, exclude globs (`.env`, `.git/**`) and
-path clamping, all of which the design puts host-side. A peer may therefore open any path it
-names, listed or not, and nothing bounds what a host reads to serve one; that is harmless only
-while nothing reads the host's filesystem. `PROTOCOL.md` §12 says what an implementation that
-does read it owes. **Must be settled before file access exists.**
+`B.23` describes it, a listing of paths carrying that same non-blank rule and no other, and both
+reference clients now speak it — vectors `021`–`023` pin the exchange. A listing is not a
+confinement, and the three rules this item is about are implemented host-side, where the design
+puts them, by `isGrantedPath` and the per-segment directory checks: a read is held under the
+session's captured folders, the exclude globs (`.env`, `.git/**`) bind a peer-named path as they
+bind the listing, the path is clamped to plain relative segments, and every directory on the way
+to the file must itself be a plain directory of its folder. A peer may still open any path it
+names, listed or not — the wire half is unchanged — but a host no longer reads unboundedly to
+serve one: a guessed exclude or a path through a link is refused rather than read.
+`PROTOCOL.md` §12 says what an implementation that does read it owes.
 
 **B.9 Do capabilities ever gate behaviour?** Today they are pure advertisement: unknown ones are
 ignored and a client cannot insist on one. If a profile ever becomes mandatory, the protocol needs
@@ -240,7 +245,7 @@ documented in `PROTOCOL.md` §2.1, and is not the server's own: it will move wit
 unless the server configures it explicitly. **Unresolved.**
 
 **B.19 Where the reference client's request surface ends.** See `A.4`: the client can express
-`session.hello`, `doc.open`, `doc.close` and `session.rename` and nothing else, so no `x.` method
+`session.hello`, `doc.open`, `doc.close`, `session.rename` and `doc.grant` and nothing else, so no `x.` method
 can be sent through it. **Unresolved**, and a client-API decision rather than a wire one.
 
 **B.20 A client's outbound bound is a SHOULD, deliberately.** `PROTOCOL.md` §2.1 asks a client to
