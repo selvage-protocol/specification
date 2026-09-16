@@ -162,6 +162,15 @@ def close_codes() -> list[int]:
 CLOSE_CODES = close_codes()
 
 
+def known_methods() -> list[str]:
+    """The method names `selvage/1` defines, read from the schema that defines them."""
+    schema = json.loads((SCHEMA_DIR / "methods.json").read_text())
+    return schema["$defs"]["knownMethod"]["enum"]
+
+
+KNOWN_METHODS = known_methods()
+
+
 def registry() -> Registry:
     loaded = Registry()
     identifiers: dict[str, str] = {}
@@ -260,10 +269,19 @@ def check_frame(reg: Registry, text: str, where: str) -> None:
     if not isinstance(frame, dict):
         return
     if "method" in frame:
-        ref = METHOD_PARAMS.get(frame["method"])
+        method = frame["method"]
+        ref = METHOD_PARAMS.get(method)
         if ref is None:
-            check(reg, f"{BASE}methods.json#/$defs/anyParams", frame.get("params", {}), where,
-                  f"params for unknown method {frame['method']!r}")
+            if method in KNOWN_METHODS:
+                # A method the schema names but the map does not is a map that rotted
+                # behind the schema: fail closed, like an event with no schema.
+                fail(where, f"method {method!r} has no params schema")
+            else:
+                # Any other name is legal on the wire: methods.json answers an unknown
+                # method with `unknown_method` rather than refusing the frame, and 007
+                # pins exactly that. Its params are checked as opaque.
+                check(reg, f"{BASE}methods.json#/$defs/anyParams", frame.get("params", {}), where,
+                      f"params for unknown method {method!r}")
         else:
             check(reg, ref, frame.get("params", {}), where, f"params for {frame['method']}")
     elif "event" in frame:
@@ -500,9 +518,40 @@ def check_codes(collected: dict[str, list[str]]) -> None:
             )
 
 
+def check_method_map() -> None:
+    """Fails when `METHOD_PARAMS` no longer covers every method the schema names.
+
+    Adding a method to `methods.json` without teaching this map its params schema would
+    otherwise validate that method's params against permissive `anyParams`: a
+    wire-meaning change that is validation-green. Events fail closed by construction;
+    this is the same rule for methods. Truly unknown names stay permissive — the wire
+    answers them with `unknown_method` — so this checks the map, not the frames.
+    """
+    schema = json.loads((SCHEMA_DIR / "methods.json").read_text())
+    defined = set(schema["$defs"])
+    for method in KNOWN_METHODS:
+        if method not in METHOD_PARAMS:
+            fail(
+                "methods",
+                f"method {method!r} is known to the schema but METHOD_PARAMS "
+                "has no params schema for it",
+            )
+    for method, ref in METHOD_PARAMS.items():
+        if method not in KNOWN_METHODS:
+            fail("methods", f"METHOD_PARAMS names {method!r}, which the schema does not know")
+        else:
+            fragment = ref.split("#/$defs/", 1)
+            if len(fragment) != 2 or fragment[1] not in defined:
+                fail(
+                    "methods",
+                    f"the params schema for {method!r} does not name a $def of methods.json",
+                )
+
+
 def main() -> int:
     global CHECKS
     reg = registry()
+    check_method_map()
     print(f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas")
 
     vectors = sorted(VECTOR_DIR.glob("*.json"))
