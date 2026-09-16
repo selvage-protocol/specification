@@ -767,8 +767,8 @@ async def replay(vector: dict, binary: str) -> dict[str, list[Incoming]]:
 # --- schema checks and the command line ---------------------------------------
 
 
-def run_schema_checks() -> tuple[int, int]:
-    """Runs `schema/validate.py` unchanged, returning (exit code, frame checks)."""
+def load_validate_module():
+    """Loads `schema/validate.py` unchanged, for its checks and its corpus pins."""
     spec = importlib.util.spec_from_file_location(
         "selvage_schema_validate", SCHEMA_DIR / "validate.py"
     )
@@ -782,6 +782,12 @@ def run_schema_checks() -> tuple[int, int]:
             file=sys.stderr,
         )
         raise SystemExit(2) from error
+    return module
+
+
+def run_schema_checks() -> tuple[int, int]:
+    """Runs `schema/validate.py` unchanged, returning (exit code, frame checks)."""
+    module = load_validate_module()
     return module.main(), module.CHECKS
 
 
@@ -800,8 +806,28 @@ def load_vectors() -> list[dict]:
     return sorted(vectors, key=lambda vector: vector.get("id", ""))
 
 
+def check_corpus_size(vectors: list[dict], expected: int) -> None:
+    """Fails when the directory does not hold the corpus the pins describe.
+
+    The replay checks whatever it finds, so a shrunk directory replays green on less:
+    a deleted transcript changes this number, and the number is a check. `expected` is
+    `schema/validate.py`'s `EXPECTED_VECTORS` — the count has one home, and the schema
+    half already pins it; this is the same pin where the real server is tested.
+    """
+    if len(vectors) != expected:
+        raise ReplayError(
+            f"the directory holds {len(vectors)} vectors, and this suite pins "
+            f"{expected}: adding or removing a transcript is a deliberate edit"
+        )
+
+
 def replay_all(binary: str) -> tuple[int, int]:
     vectors = load_vectors()
+    try:
+        check_corpus_size(vectors, load_validate_module().EXPECTED_VECTORS)
+    except ReplayError as error:
+        print(f"FAIL   corpus: {error}")
+        return len(vectors), 1
     failed = 0
     for vector in vectors:
         name = vector["_file"]

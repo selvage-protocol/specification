@@ -29,7 +29,9 @@ from run_vectors import (  # noqa: E402
     Bindings,
     Mismatch,
     Peer,
+    ReplayError,
     Session,
+    check_corpus_size,
     check_frame_spec,
     check_text,
     describe_failure,
@@ -405,6 +407,25 @@ class TestEveryFrameDescription(unittest.TestCase):
                     check_frame_spec(step["frame"], hex_bytes(sent))
                     checked += 1
         self.assertGreater(checked, 0, "no vector describes a binary frame")
+
+
+class TestCorpusSize(unittest.TestCase):
+    """The replay holds the same file-count pin the schema half pins.
+
+    Without it a shrunk directory replays green on less: the count is a check. The
+    number itself lives in `schema/validate.py` alone and arrives here as an argument.
+    """
+
+    def test_the_pinned_corpus_passes(self) -> None:
+        check_corpus_size([{}] * 23, 23)
+
+    def test_a_shrunk_directory_fails(self) -> None:
+        with self.assertRaises(ReplayError):
+            check_corpus_size([{}] * 22, 23)
+
+    def test_an_empty_directory_fails(self) -> None:
+        with self.assertRaises(ReplayError):
+            check_corpus_size([], 23)
 
 
 class ScriptedSocket:
