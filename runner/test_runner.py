@@ -413,6 +413,26 @@ class TestEveryFrameDescription(unittest.TestCase):
         self.assertGreater(checked, 0, "no vector describes a binary frame")
 
 
+class TestSendBinaryShapes(unittest.TestCase):
+    """Every `sendBinary` carries the bytes it sends.
+
+    A send is bytes the runner must transmit, and a `frame` description is not
+    transmittable, so the schema half requires `hex` on every send while an
+    `expectBinary` may still assert by description. This pins that contract on the
+    corpus side: a frame-only send is a check that never runs.
+    """
+
+    def test_every_sendBinary_carries_hex(self) -> None:
+        for path in sorted(VECTOR_DIR.glob("*.json")):
+            for step in json.loads(path.read_text())["steps"]:
+                if step.get("op") == "sendBinary":
+                    self.assertIn(
+                        "hex",
+                        step,
+                        f"{path.name}: a send is bytes, and a frame description is not",
+                    )
+
+
 class TestCorpusSize(unittest.TestCase):
     """The replay holds the same file-count pin the schema half pins.
 

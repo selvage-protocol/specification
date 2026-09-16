@@ -420,6 +420,13 @@ def check_vector(reg: Registry, document: object, name: str) -> tuple[int, list[
             if candidate not in CLOSE_CODES:
                 fail(at, f"close code {candidate!r} is not one of {CLOSE_CODES}")
         elif op in {"expectBinary", "sendBinary"}:
+            if op == "sendBinary" and "hex" not in step:
+                # A send is bytes the runner must transmit, and a `frame` description
+                # names what to assert about a received frame: it is not bytes the
+                # runner can send. `check_frame_description` already says a description
+                # the runner could not use is a check that never runs — for a send,
+                # a frame-only step is exactly that.
+                fail(at, "sendBinary needs hex: a frame description is not bytes the runner can send")
             if "hex" not in step and "frame" not in step:
                 fail(at, "needs hex or frame")
             if "hex" in step:
