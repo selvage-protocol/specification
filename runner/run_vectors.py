@@ -25,8 +25,9 @@ An `expect` step reads the connection's next frame and compares it, so a vector 
 an expectation leaves that connection one frame ahead, and the failure lands later on a frame
 that belongs to an earlier moment. A failure therefore names the connection, the step's place
 in the transcript and how many frames it had read; and when the transcript stops reading,
-whatever each connection still holds that no step reads is reported as the omission itself
-rather than the symptom it caused.
+whatever each connection still holds that no step reads fails the vector outright — a server
+that sends more than the transcript reads is chattier than the vector allows, and a passing
+run reads every frame it is sent.
 """
 
 from __future__ import annotations
@@ -721,7 +722,8 @@ async def replay(vector: dict, binary: str) -> dict[str, list[Incoming]]:
     """Replays one vector against a fresh server.
 
     Returns what each connection still held once the steps were over — empty for a vector
-    whose transcript reads every frame it is sent.
+    whose transcript reads every frame it is sent. `replay_all` fails the vector when the
+    transcript leaves anything unread.
     """
     if vector.get("selvage") != "selvage/1" or vector.get("canonical") != "SJ-C/1":
         raise ReplayError(
@@ -837,9 +839,15 @@ def replay_all(binary: str) -> tuple[int, int]:
             failed += 1
             print(f"FAIL   {name:<33} {error}")
         else:
-            print(f"ok     {name}")
-            for line in describe_unread(unread):
-                print(f"note   {name:<33} {line}")
+            report = describe_unread(unread)
+            if report:
+                failed += 1
+                print(
+                    f"FAIL   {name:<33} "
+                    f"{failure_message('holds frames the transcript does not read', unread)}"
+                )
+            else:
+                print(f"ok     {name}")
     return len(vectors), failed
 
 

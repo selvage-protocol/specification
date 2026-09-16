@@ -18,15 +18,19 @@ and reporting functions are pure, while the connections are scripted sockets.
 from __future__ import annotations
 
 import json
+import contextlib
+import io
 import pathlib
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import run_vectors  # noqa: E402
 from run_vectors import (  # noqa: E402
     Bindings,
+    Incoming,
     Mismatch,
     Peer,
     ReplayError,
@@ -426,6 +430,36 @@ class TestCorpusSize(unittest.TestCase):
     def test_an_empty_directory_fails(self) -> None:
         with self.assertRaises(ReplayError):
             check_corpus_size([], 23)
+
+
+class TestReplayVerdict(unittest.TestCase):
+    """A frame no step reads fails the vector: the drain audit is a verdict.
+
+    The server is scripted out — `replay` is replaced with the unread it would have
+    returned, and the corpus pin with a stub — so these cases decide the verdict alone.
+    """
+
+    def replay_all_with(self, unread: dict, files: int = 1) -> tuple[int, int]:
+        vector = {"_file": "000-probe.json", "id": "000"}
+        pin = mock.Mock(EXPECTED_VECTORS=files)
+        with (
+            mock.patch.object(
+                run_vectors, "load_vectors", return_value=[vector] * files
+            ),
+            mock.patch.object(run_vectors, "load_validate_module", return_value=pin),
+            mock.patch.object(
+                run_vectors, "replay", new=mock.AsyncMock(return_value=unread)
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            return run_vectors.replay_all("dummy")
+
+    def test_a_transcript_that_reads_everything_passes(self) -> None:
+        self.assertEqual(self.replay_all_with({}), (1, 0))
+
+    def test_a_frame_no_step_reads_fails_the_run(self) -> None:
+        unread = {"guest": [Incoming("text", text='{"event":"peer.joined"}')]}
+        self.assertEqual(self.replay_all_with(unread), (1, 1))
 
 
 class ScriptedSocket:
