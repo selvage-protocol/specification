@@ -536,6 +536,20 @@ class TestMethodsSchemaUnavailable(unittest.TestCase):
         module.check_frame(reg, hello, "probe")
         self.assertEqual(module.FAILURES, [])
 
+    def test_a_non_string_method_reports_without_raising(self) -> None:
+        # `anyMethod` requires a string, so the schema error is already recorded;
+        # the params lookup must then stand aside instead of raising TypeError on
+        # the unhashable method and hiding the remaining frame errors.
+        module = self.fresh_validate()
+        reg = module.registry()
+        module.check_frame(
+            reg, '{"id":1,"method":[],"params":{},"v":"selvage/1"}', "probe"
+        )
+        self.assertTrue(
+            any("session.json" in problem for problem in module.FAILURES),
+            module.FAILURES,
+        )
+
 
 class ScriptedSocket:
     """A connection whose frames are already there, and then nothing.

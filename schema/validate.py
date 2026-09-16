@@ -311,6 +311,10 @@ def check_frame(reg: Registry, text: str, where: str) -> None:
         if METHODS_SCHEMA is None:
             return  # the load failure is already reported; no params schema to check
         method = frame["method"]
+        if not isinstance(method, str):
+            return  # the schema error is already recorded above; an unhashable
+            # method would raise on the params lookup instead of letting the
+            # remaining frame errors report
         ref = METHOD_PARAMS.get(method)
         if ref is None:
             if method in KNOWN_METHODS:
