@@ -214,14 +214,14 @@ The reference server's numbers, for a reader who needs to know what to expect in
 | HTTP request head | 16 KiB, and 5 s to arrive | the connection is closed without a response |
 | `session.hello` after the upgrade | 10 s | `hello_required`, then close 4000 |
 | WebSocket ping | every 30 s | the server pings; it never closes a connection for silence |
-| outbound queue, per connection | unlimited | a peer that stops reading is not disconnected |
-| connections | unlimited | no cap, no idle reaper, no per-source rate limit |
-| inbound WebSocket frame | 16 MiB | the connection ends the way a dropped socket ends: no `session.error`, no session close code |
-| inbound WebSocket message | 64 MiB | the same |
+| outbound queue, per connection | 32 frames and 32 MiB | a peer past either cap is disconnected and the room is told `peer.left` |
+| connections | 1024 | past the cap a connection is closed without an answer; still no idle reaper, no per-source rate limit |
+| inbound WebSocket frame | 8 MiB | the connection ends the way a dropped socket ends: no `session.error`, no session close code |
+| inbound WebSocket message | 8 MiB | the same |
 
-The last two are not the server's own numbers but the defaults of the WebSocket library it uses,
-and a dependency bump can move both; that, and the v1 posture the two unbounded rows describe, are
-in [`NOTES.md`](NOTES.md) §A.1.
+The frame and message bounds are the server's own configured values rather than the
+WebSocket library's defaults, and the queue and connection rows are enforced caps rather
+than the v1 posture they once stated; the background is in [`NOTES.md`](NOTES.md) §A.1.
 
 ## 3. Layering and opacity
 
@@ -1230,9 +1230,10 @@ the same token already grants read access to the whole working copy, this grants
 *today* — it stops being harmless the moment the token is shared more widely than the host's
 devices. ([`NOTES.md`](NOTES.md) §B.2.)
 
-**The denial-of-service posture is a v1 posture.** §2.1's two unbounded rows are real: no
-connection cap, no idle reaper, no per-source rate limit, an unbounded per-connection outbound
-queue, and a frame over the transport's bound ends a connection with nothing on the wire to say
+**The denial-of-service posture is a v1 posture.** §2.1's capacity rows are the reference
+server's own policy: a 1024-connection cap, no idle reaper, no per-source rate limit, a
+per-connection outbound queue of 32 frames and 32 MiB past which the slow peer is disconnected,
+and a frame over the transport's bound ends a connection with nothing on the wire to say
 why. A room's peers can be flooded at whatever rate their sockets accept. A deployment on the
 public internet **MUST** put a terminator or a proxy in front that supplies a connection cap, an
 idle deadline and a rate limit.
