@@ -829,7 +829,9 @@ def replay_all(binary: str) -> tuple[int, int]:
         check_corpus_size(vectors, load_validate_module().EXPECTED_VECTORS)
     except ReplayError as error:
         print(f"FAIL   corpus: {error}")
-        return len(vectors), 1
+        # No vector was attempted: the failure is the corpus itself, not a vector,
+        # so it must not count as an attempted one (`main` derives passed from these).
+        return 0, 1
     failed = 0
     for vector in vectors:
         name = vector["_file"]
@@ -902,7 +904,9 @@ def main(argv: list[str] | None = None) -> int:
 
     schema_code, checks = run_schema_checks()
     vectors, failed = replay_all(binary)
-    passed = vectors - failed
+    # A corpus failure attempts no vectors, so `vectors` is 0 and the failure is
+    # the corpus itself; the clamp keeps that from reading as negative passes.
+    passed = max(vectors - failed, 0)
     print(
         f"summary        {vectors} files, {checks} frame checks, "
         f"{passed} vectors passed, {failed} failed"

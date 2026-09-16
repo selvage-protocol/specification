@@ -459,9 +459,11 @@ class TestReplayVerdict(unittest.TestCase):
     returned, and the corpus pin with a stub — so these cases decide the verdict alone.
     """
 
-    def replay_all_with(self, unread: dict, files: int = 1) -> tuple[int, int]:
+    def replay_all_with(
+        self, unread: dict, files: int = 1, pinned: int | None = None
+    ) -> tuple[int, int]:
         vector = {"_file": "000-probe.json", "id": "000"}
-        pin = mock.Mock(EXPECTED_VECTORS=files)
+        pin = mock.Mock(EXPECTED_VECTORS=files if pinned is None else pinned)
         with (
             mock.patch.object(
                 run_vectors, "load_vectors", return_value=[vector] * files
@@ -480,6 +482,12 @@ class TestReplayVerdict(unittest.TestCase):
     def test_a_frame_no_step_reads_fails_the_run(self) -> None:
         unread = {"guest": [Incoming("text", text='{"event":"peer.joined"}')]}
         self.assertEqual(self.replay_all_with(unread), (1, 1))
+
+    def test_a_corrupt_corpus_attempts_no_vectors(self) -> None:
+        # The corpus failure is not a vector failure: nothing was attempted, so
+        # the run must not report passes, let alone negative ones.
+        self.assertEqual(self.replay_all_with({}, files=22, pinned=23), (0, 1))
+        self.assertEqual(self.replay_all_with({}, files=0, pinned=23), (0, 1))
 
 
 class ScriptedSocket:
