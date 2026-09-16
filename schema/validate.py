@@ -269,6 +269,11 @@ def check_frame(reg: Registry, text: str, where: str) -> None:
         fail(where, f"frame is not JSON: {error}")
         return
 
+    # `session.json` intentionally permits members no schema names: unknown fields and
+    # capabilities are ignored on the wire (the compatibility rule), so neither the
+    # schemas nor this check may reject them — no `additionalProperties` anywhere.
+    # Strictness lives in the replay's `matches` instead, which is exact in both
+    # directions because a version-locked vector is checking that nothing was added.
     check(reg, f"{BASE}session.json", frame, where, "session.json")
 
     if not isinstance(frame, dict):
