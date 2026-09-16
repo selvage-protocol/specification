@@ -585,6 +585,19 @@ class TestDesynchronisedQueue(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(failure_message(report, unread_frames(held, {})), report)
 
+    async def test_a_silent_server_fails_the_step_within_the_bound(self) -> None:
+        # The script raises the timeout at once rather than spending the wall clock:
+        # what this pins is the verdict a hung server gets — a named failure, not a
+        # hang — and the bound it names, which the reference replay must match.
+        peer = Peer("guest", ScriptedSocket([]))
+        with self.assertRaises(Mismatch) as caught:
+            await peer.text('{"event":"room.created"}')
+        self.assertIn("no frame within", str(caught.exception))
+
+    def test_the_frame_bound_is_ten_seconds(self) -> None:
+        self.assertEqual(run_vectors.FRAME_TIMEOUT, 10.0)
+        self.assertEqual(Peer("guest", ScriptedSocket([])).timeout, 10.0)
+
 
 if __name__ == "__main__":
     unittest.main()
