@@ -162,10 +162,39 @@ def close_codes() -> list[int]:
 CLOSE_CODES = close_codes()
 
 
+def load_methods_schema() -> dict | None:
+    """Reads `methods.json` once, reporting through `fail(...)` instead of raising.
+
+    `KNOWN_METHODS` is read at import, so a missing file, invalid JSON or a missing
+    `$defs.knownMethod.enum` would raise before any check can report it: a broken
+    schema file would crash the validator instead of failing it. Callers skip
+    method-dependent checks when this returns `None`; the load failure itself is
+    already in `FAILURES`.
+    """
+    try:
+        schema = json.loads((SCHEMA_DIR / "methods.json").read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        fail("methods.json", f"not readable as JSON: {error}")
+        return None
+    defs = schema.get("$defs") if isinstance(schema, dict) else None
+    known = defs.get("knownMethod") if isinstance(defs, dict) else None
+    enum = known.get("enum") if isinstance(known, dict) else None
+    if not isinstance(enum, list) or not all(
+        isinstance(name, str) for name in enum
+    ):
+        fail("methods.json", "no $defs.knownMethod.enum of method names")
+        return None
+    return schema
+
+
+METHODS_SCHEMA = load_methods_schema()
+
+
 def known_methods() -> list[str]:
     """The method names `selvage/1` defines, read from the schema that defines them."""
-    schema = json.loads((SCHEMA_DIR / "methods.json").read_text())
-    return schema["$defs"]["knownMethod"]["enum"]
+    if METHODS_SCHEMA is None:
+        return []
+    return METHODS_SCHEMA["$defs"]["knownMethod"]["enum"]
 
 
 KNOWN_METHODS = known_methods()
@@ -279,6 +308,8 @@ def check_frame(reg: Registry, text: str, where: str) -> None:
     if not isinstance(frame, dict):
         return
     if "method" in frame:
+        if METHODS_SCHEMA is None:
+            return  # the load failure is already reported; no params schema to check
         method = frame["method"]
         ref = METHOD_PARAMS.get(method)
         if ref is None:
@@ -537,7 +568,9 @@ def check_method_map() -> None:
     this is the same rule for methods. Truly unknown names stay permissive — the wire
     answers them with `unknown_method` — so this checks the map, not the frames.
     """
-    schema = json.loads((SCHEMA_DIR / "methods.json").read_text())
+    if METHODS_SCHEMA is None:
+        return  # the load failure is already reported; there is no map to check
+    schema = METHODS_SCHEMA
     defined = set(schema["$defs"])
     for method in KNOWN_METHODS:
         if method not in METHOD_PARAMS:

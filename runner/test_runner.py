@@ -22,6 +22,7 @@ import contextlib
 import io
 import pathlib
 import sys
+import tempfile
 import unittest
 from unittest import mock
 
@@ -488,6 +489,52 @@ class TestReplayVerdict(unittest.TestCase):
         # the run must not report passes, let alone negative ones.
         self.assertEqual(self.replay_all_with({}, files=22, pinned=23), (0, 1))
         self.assertEqual(self.replay_all_with({}, files=0, pinned=23), (0, 1))
+
+
+class TestMethodsSchemaUnavailable(unittest.TestCase):
+    """An unreadable methods.json fails the run instead of crashing it.
+
+    The method names are read at import, so a missing file, invalid JSON or a
+    missing enum would raise before any check can report it. The loader reports
+    through fail() and the method-dependent checks skip; these cases drive both
+    halves against a fresh validate module.
+    """
+
+    def fresh_validate(self):
+        module = run_vectors.load_validate_module()
+        module.FAILURES.clear()
+        return module
+
+    def test_a_missing_methods_json_is_a_failure(self) -> None:
+        module = self.fresh_validate()
+        with mock.patch.object(
+            module, "SCHEMA_DIR", pathlib.Path("/nonexistent-dir")
+        ):
+            self.assertIsNone(module.load_methods_schema())
+        self.assertEqual(len(module.FAILURES), 1)
+
+    def test_a_methods_json_without_the_enum_is_a_failure(self) -> None:
+        module = self.fresh_validate()
+        with tempfile.TemporaryDirectory() as tmp:
+            pathlib.Path(tmp, "methods.json").write_text('{"$defs":{}}')
+            with mock.patch.object(module, "SCHEMA_DIR", pathlib.Path(tmp)):
+                self.assertIsNone(module.load_methods_schema())
+        self.assertEqual(len(module.FAILURES), 1)
+
+    def test_the_method_dependent_checks_skip(self) -> None:
+        module = self.fresh_validate()
+        module.METHODS_SCHEMA = None
+        module.KNOWN_METHODS = []
+        reg = module.registry()
+        module.check_method_map()
+        hello = (
+            '{"id":1,"method":"session.hello","params":{'
+            '"awareness_client_id":77,"capabilities":["y-protocols/1"],'
+            '"client":"probe/1","display_name":"Ada","role":"host"},'
+            '"v":"selvage/1"}'
+        )
+        module.check_frame(reg, hello, "probe")
+        self.assertEqual(module.FAILURES, [])
 
 
 class ScriptedSocket:
