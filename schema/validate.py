@@ -205,11 +205,16 @@ def check(reg: Registry, ref: str, instance: object, where: str, label: str) -> 
     # The ref is resolved through the registry, never by extracting a subschema: a
     # relative `#/$defs/...` inside it must keep the base URI of the file it lives in.
     validator = Draft202012Validator({"$ref": ref}, registry=reg)
-    error = next(validator.iter_errors(instance), None)
-    if error is None:
-        return
-    at = "/".join(str(part) for part in error.absolute_path) or "<root>"
-    fail(where, f"{label}: {at}: {error.message}")
+    errors = sorted(
+        validator.iter_errors(instance),
+        key=lambda error: (
+            "/".join(str(part) for part in error.absolute_path),
+            error.message,
+        ),
+    )
+    for error in errors:
+        at = "/".join(str(part) for part in error.absolute_path) or "<root>"
+        fail(where, f"{label}: {at}: {error.message}")
 
 
 def plain_integer(digits: str) -> int:
