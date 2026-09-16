@@ -137,9 +137,7 @@ corrupt *copy* is how a failure is shown to be caught — and both halves honour
 `schema/validate.py` pins are this repository's, so either half fails on a directory that does
 not hold them rather than checking less of it quietly.
 `--schema-only` is exactly `python3 schema/validate.py` and starts no server.
-The counts `schema/validate.py` pins are this repository's, and the replay holds the
-same pin on the file count before it starts: neither half checks less of the corpus
-quietly.
+The replay holds the same pin on the file count before it starts.
 
 A `selvaged` must accept `--room-grace-ms MS`. The grace period is per-vector
 (`vectors/012` waits out 400 ms, `vectors/011` four seconds), and a runner that spawns the
