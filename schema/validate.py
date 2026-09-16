@@ -16,6 +16,15 @@ The count of vectors, of frame checks and of assertion steps is pinned, because 
 that shrinks silently reads exactly like a corpus that passes: a deleted assertion changes
 the numbers, and the numbers are a check.
 
+The asserted error and close codes are pinned per vector for the same reason, one level
+deeper: the counts catch deletion, not substitution. Swapping one vocabulary code for another
+(`unknown_method` for `bad_params`) parses, validates and keeps every count, so without this
+census a silently redefined assertion is a green run. Only the closed vocabularies are pinned —
+response `error.code`, `session.error` `params.code`, and `expectClose` codes — because only a
+substitution inside a closed vocabulary is both schema-green and meaning-red. Free-form params,
+member order and prose are not pinned here; they would freeze legitimate evolution, and the live
+replay in the reference server's suite is what checks them against a running server.
+
 Run it with a JSON Schema implementation available, from the repository root:
 
     pip install jsonschema referencing
@@ -56,6 +65,44 @@ BASE = "https://selvageprotocol.com/schema/1/"
 EXPECTED_VECTORS = 23
 EXPECTED_FRAME_CHECKS = 806
 EXPECTED_ASSERTIONS = 192
+
+# The error and close codes each vector asserts, in sorted order. A substitution inside a
+# closed vocabulary is schema-valid and count-identical, so this census is what makes one a
+# red run instead of a quiet redefinition. `error:` is a response `error.code`,
+# `session.error:` a `session.error` event's `params.code`, `close:` an `expectClose` code.
+# Like the three counts above, this is updated in the same commit that changes what the
+# corpus asserts: it cannot false-positive on a legal change, because the pin and the
+# corpus move together.
+EXPECTED_CODES = {
+    "001": [],
+    "002": [],
+    "003": [],
+    "004": [],
+    "005": ["close:4005", "close:4005", "close:4005", "error:unsupported_version",
+            "session.error:unsupported_version", "session.error:unsupported_version"],
+    "006": ["error:bad_params", "error:bad_params"],
+    "007": ["error:unknown_method", "error:unknown_method"],
+    "008": ["close:4000", "close:4000", "session.error:bad_message",
+            "session.error:hello_required"],
+    "009": [],
+    "010": [],
+    "011": [],
+    "012": ["close:4001", "close:4003", "session.error:room_unknown"],
+    "013": ["close:4002", "close:4002", "session.error:token_invalid",
+            "session.error:token_invalid"],
+    "014": ["close:4004", "session.error:host_present"],
+    "015": ["error:already_seated"],
+    "016": ["close:4000", "session.error:bad_message", "session.error:bad_message"],
+    "017": ["close:4000", "close:4000", "session.error:bad_message",
+            "session.error:bad_params"],
+    "018": [],
+    "019": ["close:4000", "session.error:bad_params"],
+    "020": ["error:bad_params"],
+    "021": [],
+    "022": [],
+    "023": ["error:bad_params", "error:bad_params", "error:bad_params",
+            "error:bad_params", "error:bad_params"],
+}
 
 # A step that reads or asserts something. Every other step only produces input for one, so
 # a vector made of them alone can pass while claiming nothing.
@@ -278,11 +325,37 @@ def check_frame_description(reg: Registry, frame: object, where: str) -> None:
         )
 
 
-def check_vector(reg: Registry, document: object, name: str) -> int:
-    """Checks one vector, returning how many assertion steps it holds."""
+def asserted_codes(step: dict) -> list[str]:
+    """The closed-vocabulary codes one step asserts.
+
+    A response `error.code`, a `session.error` event's `params.code`, or an `expectClose`
+    code. These are collected, not checked: `check_codes` compares them against the pinned
+    census, which is what makes a substitution inside a closed vocabulary a red run.
+    """
+    op = step.get("op")
+    if op == "expectClose" and isinstance(step.get("code"), int):
+        return [f"close:{step['code']}"]
+    if op != "expect" or not isinstance(step.get("text"), str):
+        return []
+    frame = parse_or_none(step["text"])
+    if not isinstance(frame, dict):
+        return []
+    codes = []
+    error = frame.get("error")
+    if isinstance(error, dict) and isinstance(error.get("code"), str):
+        codes.append(f"error:{error['code']}")
+    if frame.get("event") == "session.error":
+        params = frame.get("params")
+        if isinstance(params, dict) and isinstance(params.get("code"), str):
+            codes.append(f"session.error:{params['code']}")
+    return codes
+
+
+def check_vector(reg: Registry, document: object, name: str) -> tuple[int, list[str]]:
+    """Checks one vector, returning its assertion steps and its asserted codes."""
     if not isinstance(document, dict):
         fail(name, "a vector is a JSON object")
-        return 0
+        return 0, []
     where = f"{name} [{document.get('id')}]"
 
     for member in ("id", "title", "spec", "selvage", "canonical", "steps"):
@@ -296,9 +369,10 @@ def check_vector(reg: Registry, document: object, name: str) -> int:
     steps = document.get("steps")
     if not isinstance(steps, list):
         fail(where, "steps must be a list")
-        return 0
+        return 0, []
 
     assertions = 0
+    codes: list[str] = []
     for index, step in enumerate(steps):
         if not isinstance(step, dict):
             fail(f"{where} step {index}", "a step is a JSON object")
@@ -307,6 +381,7 @@ def check_vector(reg: Registry, document: object, name: str) -> int:
         op = step.get("op")
         if op in ASSERTION_OPS:
             assertions += 1
+        codes.extend(asserted_codes(step))
         if op in {"send", "expect"}:
             if "text" not in step:
                 fail(at, "no text")
@@ -367,7 +442,7 @@ def check_vector(reg: Registry, document: object, name: str) -> int:
 
     if not assertions:
         fail(where, "asserts nothing: no step reads or asserts a frame")
-    return assertions
+    return assertions, sorted(codes)
 
 
 def check_counts(vectors: int, assertions: int) -> None:
@@ -393,6 +468,31 @@ def check_counts(vectors: int, assertions: int) -> None:
         )
 
 
+def check_codes(collected: dict[str, list[str]]) -> None:
+    """Fails when a vector asserts codes the pinned census does not describe."""
+    for vid in sorted(set(collected) | set(EXPECTED_CODES)):
+        want = EXPECTED_CODES.get(vid)
+        have = collected.get(vid)
+        if want is None:
+            fail(
+                "vectors",
+                f"vector {vid!r} asserts {have} and this suite pins no census for it: "
+                "a new transcript is a deliberate edit, and so is its entry here",
+            )
+        elif have is None:
+            fail(
+                "vectors",
+                f"vector {vid!r} is in the pinned census as {want} but the corpus "
+                "holds no such vector: removing a transcript is a deliberate edit",
+            )
+        elif have != want:
+            fail(
+                "vectors",
+                f"vector {vid!r} asserts {have}, and this suite pins {want}: an "
+                "asserted code was added, removed or changed",
+            )
+
+
 def main() -> int:
     global CHECKS
     reg = registry()
@@ -400,15 +500,20 @@ def main() -> int:
 
     vectors = sorted(VECTOR_DIR.glob("*.json"))
     assertions = 0
+    collected: dict[str, list[str]] = {}
     for path in vectors:
         try:
             document = json.loads(path.read_text())
         except json.JSONDecodeError as error:
             fail(path.name, f"not JSON: {error}")
             continue
-        assertions += check_vector(reg, document, path.name)
+        count, codes = check_vector(reg, document, path.name)
+        assertions += count
+        vid = document.get("id") if isinstance(document, dict) else None
+        collected[vid if isinstance(vid, str) else path.name] = codes
 
     check_counts(len(vectors), assertions)
+    check_codes(collected)
 
     for problem in FAILURES:
         print(f"FAIL           {problem}")

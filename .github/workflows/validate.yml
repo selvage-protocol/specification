@@ -34,10 +34,14 @@ jobs:
       - name: validate the schemas and the vectors
         run: python3 schema/validate.py
 
-      # `schema/validate.py` checks the frame bytes a vector *claims*; the runner is the
-      # code that checks them against a server. Only the second half needs a `selvaged`,
-      # and `reference_server` is private, so the replay itself cannot run here — but the
-      # comparison it is built on can, and it is tested in both directions, because a
+      # `schema/validate.py` checks the frame bytes a vector *claims*: the shape, the
+      # canonical bytes, the pinned counts, and the per-vector census of asserted error
+      # and close codes — the census is what makes a substitution inside a closed
+      # vocabulary a red run here. The runner is the code that checks those claims against
+      # a server, and only that second half needs a `selvaged`: it runs in the reference
+      # server's own suite, over the vendored corpus, rather than here, because this
+      # workflow has no Rust toolchain to build one with — but the comparison the replay
+      # is built on can run here, and it is tested in both directions, because a
       # comparison that cannot fail is not a check. Run `python3 runner/run_vectors.py`
       # with SELVAGE_SELVAGED set to replay the wire.
       - name: check the runner's comparison code
