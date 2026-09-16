@@ -28,11 +28,10 @@ The implementations this document describes:
 
 `PROTOCOL.md` §2.1 carries the table of bounds. The rows a reader is most likely to be caught by:
 
-- The **16 MiB frame and 64 MiB message** bounds are not configured by the server at all: it takes
-  `tokio-tungstenite`'s default `WebSocketConfig`, so what it enforces is the library's default and
-  a dependency bump moves it. Exceeding one is a stream error, which the connection loop treats as
-  "the socket ended" — no `session.error` and no session close code. Whether the server should pin
-  the config explicitly rather than inherit it is **open** (`B.18`).
+- The **8 MiB frame and 8 MiB message** bounds are the server's own configured values, not the
+  WebSocket library's defaults. Exceeding one is a stream error, which the connection loop treats as
+  "the socket ended" — no `session.error` and no session close code, as before. Whether to pin
+  them explicitly is **settled** for these two (`B.18`).
 - The **10 s hello timeout** is not advertised anywhere: `/meta`'s `keepalive` object carries the
   ping and awareness clocks, and no client can learn how long it has to send `session.hello`. That
   is the one bound a second implementation most needs, and the only negotiation surface the
@@ -240,9 +239,9 @@ server's wire behaviour and nothing in the project needs it. The accepted cost i
 behaviour's: a truncated invite link — `room` lost to a chat client, a proxy or a copy-paste,
 `token` surviving — silently hosts a new, empty room and neither side is told.
 
-**B.18 The server inherits the WebSocket library's size caps.** See `A.1`. The bound exists, is
-documented in `PROTOCOL.md` §2.1, and is not the server's own: it will move with a dependency bump
-unless the server configures it explicitly. **Unresolved.**
+**B.18 The server pins its own WebSocket size caps.** See `A.1`. The frame and message bounds
+documented in `PROTOCOL.md` §2.1 are the server's own configured values, not the WebSocket library's
+defaults. **Decided.**
 
 **B.19 Where the reference client's request surface ends.** See `A.4`: the client can express
 `session.hello`, `doc.open`, `doc.close`, `session.rename` and `doc.grant` and nothing else, so no `x.` method
