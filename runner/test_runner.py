@@ -18,18 +18,25 @@ and reporting functions are pure, while the connections are scripted sockets.
 from __future__ import annotations
 
 import json
+import contextlib
+import io
 import pathlib
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
 import run_vectors  # noqa: E402
 from run_vectors import (  # noqa: E402
     Bindings,
+    Incoming,
     Mismatch,
     Peer,
+    ReplayError,
     Session,
+    check_corpus_size,
     check_frame_spec,
     check_text,
     describe_failure,
@@ -407,6 +414,143 @@ class TestEveryFrameDescription(unittest.TestCase):
         self.assertGreater(checked, 0, "no vector describes a binary frame")
 
 
+class TestSendBinaryShapes(unittest.TestCase):
+    """Every `sendBinary` carries the bytes it sends.
+
+    A send is bytes the runner must transmit, and a `frame` description is not
+    transmittable, so the schema half requires `hex` on every send while an
+    `expectBinary` may still assert by description. This pins that contract on the
+    corpus side: a frame-only send is a check that never runs.
+    """
+
+    def test_every_sendBinary_carries_hex(self) -> None:
+        for path in sorted(VECTOR_DIR.glob("*.json")):
+            for step in json.loads(path.read_text())["steps"]:
+                if step.get("op") == "sendBinary":
+                    self.assertIn(
+                        "hex",
+                        step,
+                        f"{path.name}: a send is bytes, and a frame description is not",
+                    )
+
+
+class TestCorpusSize(unittest.TestCase):
+    """The replay holds the same file-count pin the schema half pins.
+
+    Without it a shrunk directory replays green on less: the count is a check. The
+    number itself lives in `schema/validate.py` alone and arrives here as an argument.
+    """
+
+    def test_the_pinned_corpus_passes(self) -> None:
+        check_corpus_size([{}] * 23, 23)
+
+    def test_a_shrunk_directory_fails(self) -> None:
+        with self.assertRaises(ReplayError):
+            check_corpus_size([{}] * 22, 23)
+
+    def test_an_empty_directory_fails(self) -> None:
+        with self.assertRaises(ReplayError):
+            check_corpus_size([], 23)
+
+
+class TestReplayVerdict(unittest.TestCase):
+    """A frame no step reads fails the vector: the drain audit is a verdict.
+
+    The server is scripted out — `replay` is replaced with the unread it would have
+    returned, and the corpus pin with a stub — so these cases decide the verdict alone.
+    """
+
+    def replay_all_with(
+        self, unread: dict, files: int = 1, pinned: int | None = None
+    ) -> tuple[int, int]:
+        vector = {"_file": "000-probe.json", "id": "000"}
+        pin = mock.Mock(EXPECTED_VECTORS=files if pinned is None else pinned)
+        with (
+            mock.patch.object(
+                run_vectors, "load_vectors", return_value=[vector] * files
+            ),
+            mock.patch.object(run_vectors, "load_validate_module", return_value=pin),
+            mock.patch.object(
+                run_vectors, "replay", new=mock.AsyncMock(return_value=unread)
+            ),
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            return run_vectors.replay_all("dummy")
+
+    def test_a_transcript_that_reads_everything_passes(self) -> None:
+        self.assertEqual(self.replay_all_with({}), (1, 0))
+
+    def test_a_frame_no_step_reads_fails_the_run(self) -> None:
+        unread = {"guest": [Incoming("text", text='{"event":"peer.joined"}')]}
+        self.assertEqual(self.replay_all_with(unread), (1, 1))
+
+    def test_a_corrupt_corpus_attempts_no_vectors(self) -> None:
+        # The corpus failure is not a vector failure: nothing was attempted, so
+        # the run must not report passes, let alone negative ones.
+        self.assertEqual(self.replay_all_with({}, files=22, pinned=23), (0, 1))
+        self.assertEqual(self.replay_all_with({}, files=0, pinned=23), (0, 1))
+
+
+class TestMethodsSchemaUnavailable(unittest.TestCase):
+    """An unreadable methods.json fails the run instead of crashing it.
+
+    The method names are read at import, so a missing file, invalid JSON or a
+    missing enum would raise before any check can report it. The loader reports
+    through fail() and the method-dependent checks skip; these cases drive both
+    halves against a fresh validate module.
+    """
+
+    def fresh_validate(self):
+        module = run_vectors.load_validate_module()
+        module.FAILURES.clear()
+        return module
+
+    def test_a_missing_methods_json_is_a_failure(self) -> None:
+        module = self.fresh_validate()
+        with mock.patch.object(
+            module, "SCHEMA_DIR", pathlib.Path("/nonexistent-dir")
+        ):
+            self.assertIsNone(module.load_methods_schema())
+        self.assertEqual(len(module.FAILURES), 1)
+
+    def test_a_methods_json_without_the_enum_is_a_failure(self) -> None:
+        module = self.fresh_validate()
+        with tempfile.TemporaryDirectory() as tmp:
+            pathlib.Path(tmp, "methods.json").write_text('{"$defs":{}}')
+            with mock.patch.object(module, "SCHEMA_DIR", pathlib.Path(tmp)):
+                self.assertIsNone(module.load_methods_schema())
+        self.assertEqual(len(module.FAILURES), 1)
+
+    def test_the_method_dependent_checks_skip(self) -> None:
+        module = self.fresh_validate()
+        module.METHODS_SCHEMA = None
+        module.KNOWN_METHODS = []
+        reg = module.registry()
+        module.check_method_map()
+        hello = (
+            '{"id":1,"method":"session.hello","params":{'
+            '"awareness_client_id":77,"capabilities":["y-protocols/1"],'
+            '"client":"probe/1","display_name":"Ada","role":"host"},'
+            '"v":"selvage/1"}'
+        )
+        module.check_frame(reg, hello, "probe")
+        self.assertEqual(module.FAILURES, [])
+
+    def test_a_non_string_method_reports_without_raising(self) -> None:
+        # `anyMethod` requires a string, so the schema error is already recorded;
+        # the params lookup must then stand aside instead of raising TypeError on
+        # the unhashable method and hiding the remaining frame errors.
+        module = self.fresh_validate()
+        reg = module.registry()
+        module.check_frame(
+            reg, '{"id":1,"method":[],"params":{},"v":"selvage/1"}', "probe"
+        )
+        self.assertTrue(
+            any("session.json" in problem for problem in module.FAILURES),
+            module.FAILURES,
+        )
+
+
 class ScriptedSocket:
     """A connection whose frames are already there, and then nothing.
 
@@ -509,6 +653,19 @@ class TestDesynchronisedQueue(unittest.IsolatedAsyncioTestCase):
             session, 3, 1, {"op": "expect", "conn": "guest"}, 0, Mismatch("x")
         )
         self.assertEqual(failure_message(report, unread_frames(held, {})), report)
+
+    async def test_a_silent_server_fails_the_step_within_the_bound(self) -> None:
+        # The script raises the timeout at once rather than spending the wall clock:
+        # what this pins is the verdict a hung server gets — a named failure, not a
+        # hang — and the bound it names, which the reference replay must match.
+        peer = Peer("guest", ScriptedSocket([]))
+        with self.assertRaises(Mismatch) as caught:
+            await peer.text('{"event":"room.created"}')
+        self.assertIn("no frame within", str(caught.exception))
+
+    def test_the_frame_bound_is_ten_seconds(self) -> None:
+        self.assertEqual(run_vectors.FRAME_TIMEOUT, 10.0)
+        self.assertEqual(Peer("guest", ScriptedSocket([])).timeout, 10.0)
 
 
 if __name__ == "__main__":

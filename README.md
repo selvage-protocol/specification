@@ -134,9 +134,10 @@ passed, 0 failed` once the `selvaged` it runs implements every frame the corpus 
 `021`-`023` are red against a server that does not yet speak `doc.grant` — and exits non-zero if
 any vector fails. `SELVAGE_VECTORS=DIR` reads the transcripts from another directory — replaying a
 corrupt *copy* is how a failure is shown to be caught — and both halves honour it. The counts
-`schema/validate.py` pins are this repository's, so the schema half fails on a directory that does
-not hold them rather than checking less of it quietly; the replay itself checks whatever it finds.
+`schema/validate.py` pins are this repository's, so either half fails on a directory that does
+not hold them rather than checking less of it quietly.
 `--schema-only` is exactly `python3 schema/validate.py` and starts no server.
+The replay holds the same pin on the file count before it starts.
 
 A `selvaged` must accept `--room-grace-ms MS`. The grace period is per-vector
 (`vectors/012` waits out 400 ms, `vectors/011` four seconds), and a runner that spawns the

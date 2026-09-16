@@ -16,6 +16,15 @@ The count of vectors, of frame checks and of assertion steps is pinned, because 
 that shrinks silently reads exactly like a corpus that passes: a deleted assertion changes
 the numbers, and the numbers are a check.
 
+The asserted error and close codes are pinned per vector for the same reason, one level
+deeper: the counts catch deletion, not substitution. Swapping one vocabulary code for another
+(`unknown_method` for `bad_params`) parses, validates and keeps every count, so without this
+census a silently redefined assertion is a green run. Only the closed vocabularies are pinned —
+response `error.code`, `session.error` `params.code`, and `expectClose` codes — because only a
+substitution inside a closed vocabulary is both schema-green and meaning-red. Free-form params,
+member order and prose are not pinned here; they would freeze legitimate evolution, and the live
+replay in the reference server's suite is what checks them against a running server.
+
 Run it with a JSON Schema implementation available, from the repository root:
 
     pip install jsonschema referencing
@@ -56,6 +65,44 @@ BASE = "https://selvageprotocol.com/schema/1/"
 EXPECTED_VECTORS = 23
 EXPECTED_FRAME_CHECKS = 806
 EXPECTED_ASSERTIONS = 192
+
+# The error and close codes each vector asserts, in sorted order. A substitution inside a
+# closed vocabulary is schema-valid and count-identical, so this census is what makes one a
+# red run instead of a quiet redefinition. `error:` is a response `error.code`,
+# `session.error:` a `session.error` event's `params.code`, `close:` an `expectClose` code.
+# Like the three counts above, this is updated in the same commit that changes what the
+# corpus asserts: it cannot false-positive on a legal change, because the pin and the
+# corpus move together.
+EXPECTED_CODES = {
+    "001": [],
+    "002": [],
+    "003": [],
+    "004": [],
+    "005": ["close:4005", "close:4005", "close:4005", "error:unsupported_version",
+            "session.error:unsupported_version", "session.error:unsupported_version"],
+    "006": ["error:bad_params", "error:bad_params"],
+    "007": ["error:unknown_method", "error:unknown_method"],
+    "008": ["close:4000", "close:4000", "session.error:bad_message",
+            "session.error:hello_required"],
+    "009": [],
+    "010": [],
+    "011": [],
+    "012": ["close:4001", "close:4003", "session.error:room_unknown"],
+    "013": ["close:4002", "close:4002", "session.error:token_invalid",
+            "session.error:token_invalid"],
+    "014": ["close:4004", "session.error:host_present"],
+    "015": ["error:already_seated"],
+    "016": ["close:4000", "session.error:bad_message", "session.error:bad_message"],
+    "017": ["close:4000", "close:4000", "session.error:bad_message",
+            "session.error:bad_params"],
+    "018": [],
+    "019": ["close:4000", "session.error:bad_params"],
+    "020": ["error:bad_params"],
+    "021": [],
+    "022": [],
+    "023": ["error:bad_params", "error:bad_params", "error:bad_params",
+            "error:bad_params", "error:bad_params"],
+}
 
 # A step that reads or asserts something. Every other step only produces input for one, so
 # a vector made of them alone can pass while claiming nothing.
@@ -115,6 +162,44 @@ def close_codes() -> list[int]:
 CLOSE_CODES = close_codes()
 
 
+def load_methods_schema() -> dict | None:
+    """Reads `methods.json` once, reporting through `fail(...)` instead of raising.
+
+    `KNOWN_METHODS` is read at import, so a missing file, invalid JSON or a missing
+    `$defs.knownMethod.enum` would raise before any check can report it: a broken
+    schema file would crash the validator instead of failing it. Callers skip
+    method-dependent checks when this returns `None`; the load failure itself is
+    already in `FAILURES`.
+    """
+    try:
+        schema = json.loads((SCHEMA_DIR / "methods.json").read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        fail("methods.json", f"not readable as JSON: {error}")
+        return None
+    defs = schema.get("$defs") if isinstance(schema, dict) else None
+    known = defs.get("knownMethod") if isinstance(defs, dict) else None
+    enum = known.get("enum") if isinstance(known, dict) else None
+    if not isinstance(enum, list) or not all(
+        isinstance(name, str) for name in enum
+    ):
+        fail("methods.json", "no $defs.knownMethod.enum of method names")
+        return None
+    return schema
+
+
+METHODS_SCHEMA = load_methods_schema()
+
+
+def known_methods() -> list[str]:
+    """The method names `selvage/1` defines, read from the schema that defines them."""
+    if METHODS_SCHEMA is None:
+        return []
+    return METHODS_SCHEMA["$defs"]["knownMethod"]["enum"]
+
+
+KNOWN_METHODS = known_methods()
+
+
 def registry() -> Registry:
     loaded = Registry()
     identifiers: dict[str, str] = {}
@@ -149,11 +234,16 @@ def check(reg: Registry, ref: str, instance: object, where: str, label: str) -> 
     # The ref is resolved through the registry, never by extracting a subschema: a
     # relative `#/$defs/...` inside it must keep the base URI of the file it lives in.
     validator = Draft202012Validator({"$ref": ref}, registry=reg)
-    error = next(validator.iter_errors(instance), None)
-    if error is None:
-        return
-    at = "/".join(str(part) for part in error.absolute_path) or "<root>"
-    fail(where, f"{label}: {at}: {error.message}")
+    errors = sorted(
+        validator.iter_errors(instance),
+        key=lambda error: (
+            "/".join(str(part) for part in error.absolute_path),
+            error.message,
+        ),
+    )
+    for error in errors:
+        at = "/".join(str(part) for part in error.absolute_path) or "<root>"
+        fail(where, f"{label}: {at}: {error.message}")
 
 
 def plain_integer(digits: str) -> int:
@@ -208,15 +298,35 @@ def check_frame(reg: Registry, text: str, where: str) -> None:
         fail(where, f"frame is not JSON: {error}")
         return
 
+    # `session.json` intentionally permits members no schema names: unknown fields and
+    # capabilities are ignored on the wire (the compatibility rule), so neither the
+    # schemas nor this check may reject them — no `additionalProperties` anywhere.
+    # Strictness lives in the replay's `matches` instead, which is exact in both
+    # directions because a version-locked vector is checking that nothing was added.
     check(reg, f"{BASE}session.json", frame, where, "session.json")
 
     if not isinstance(frame, dict):
         return
     if "method" in frame:
-        ref = METHOD_PARAMS.get(frame["method"])
+        if METHODS_SCHEMA is None:
+            return  # the load failure is already reported; no params schema to check
+        method = frame["method"]
+        if not isinstance(method, str):
+            return  # the schema error is already recorded above; an unhashable
+            # method would raise on the params lookup instead of letting the
+            # remaining frame errors report
+        ref = METHOD_PARAMS.get(method)
         if ref is None:
-            check(reg, f"{BASE}methods.json#/$defs/anyParams", frame.get("params", {}), where,
-                  f"params for unknown method {frame['method']!r}")
+            if method in KNOWN_METHODS:
+                # A method the schema names but the map does not is a map that rotted
+                # behind the schema: fail closed, like an event with no schema.
+                fail(where, f"method {method!r} has no params schema")
+            else:
+                # Any other name is legal on the wire: methods.json answers an unknown
+                # method with `unknown_method` rather than refusing the frame, and 007
+                # pins exactly that. Its params are checked as opaque.
+                check(reg, f"{BASE}methods.json#/$defs/anyParams", frame.get("params", {}), where,
+                      f"params for unknown method {method!r}")
         else:
             check(reg, ref, frame.get("params", {}), where, f"params for {frame['method']}")
     elif "event" in frame:
@@ -278,11 +388,37 @@ def check_frame_description(reg: Registry, frame: object, where: str) -> None:
         )
 
 
-def check_vector(reg: Registry, document: object, name: str) -> int:
-    """Checks one vector, returning how many assertion steps it holds."""
+def asserted_codes(step: dict) -> list[str]:
+    """The closed-vocabulary codes one step asserts.
+
+    A response `error.code`, a `session.error` event's `params.code`, or an `expectClose`
+    code. These are collected, not checked: `check_codes` compares them against the pinned
+    census, which is what makes a substitution inside a closed vocabulary a red run.
+    """
+    op = step.get("op")
+    if op == "expectClose" and isinstance(step.get("code"), int):
+        return [f"close:{step['code']}"]
+    if op != "expect" or not isinstance(step.get("text"), str):
+        return []
+    frame = parse_or_none(step["text"])
+    if not isinstance(frame, dict):
+        return []
+    codes = []
+    error = frame.get("error")
+    if isinstance(error, dict) and isinstance(error.get("code"), str):
+        codes.append(f"error:{error['code']}")
+    if frame.get("event") == "session.error":
+        params = frame.get("params")
+        if isinstance(params, dict) and isinstance(params.get("code"), str):
+            codes.append(f"session.error:{params['code']}")
+    return codes
+
+
+def check_vector(reg: Registry, document: object, name: str) -> tuple[int, list[str]]:
+    """Checks one vector, returning its assertion steps and its asserted codes."""
     if not isinstance(document, dict):
         fail(name, "a vector is a JSON object")
-        return 0
+        return 0, []
     where = f"{name} [{document.get('id')}]"
 
     for member in ("id", "title", "spec", "selvage", "canonical", "steps"):
@@ -296,9 +432,10 @@ def check_vector(reg: Registry, document: object, name: str) -> int:
     steps = document.get("steps")
     if not isinstance(steps, list):
         fail(where, "steps must be a list")
-        return 0
+        return 0, []
 
     assertions = 0
+    codes: list[str] = []
     for index, step in enumerate(steps):
         if not isinstance(step, dict):
             fail(f"{where} step {index}", "a step is a JSON object")
@@ -307,6 +444,7 @@ def check_vector(reg: Registry, document: object, name: str) -> int:
         op = step.get("op")
         if op in ASSERTION_OPS:
             assertions += 1
+        codes.extend(asserted_codes(step))
         if op in {"send", "expect"}:
             if "text" not in step:
                 fail(at, "no text")
@@ -345,6 +483,13 @@ def check_vector(reg: Registry, document: object, name: str) -> int:
             if candidate not in CLOSE_CODES:
                 fail(at, f"close code {candidate!r} is not one of {CLOSE_CODES}")
         elif op in {"expectBinary", "sendBinary"}:
+            if op == "sendBinary" and "hex" not in step:
+                # A send is bytes the runner must transmit, and a `frame` description
+                # names what to assert about a received frame: it is not bytes the
+                # runner can send. `check_frame_description` already says a description
+                # the runner could not use is a check that never runs — for a send,
+                # a frame-only step is exactly that.
+                fail(at, "sendBinary needs hex: a frame description is not bytes the runner can send")
             if "hex" not in step and "frame" not in step:
                 fail(at, "needs hex or frame")
             if "hex" in step:
@@ -367,7 +512,7 @@ def check_vector(reg: Registry, document: object, name: str) -> int:
 
     if not assertions:
         fail(where, "asserts nothing: no step reads or asserts a frame")
-    return assertions
+    return assertions, sorted(codes)
 
 
 def check_counts(vectors: int, assertions: int) -> None:
@@ -393,22 +538,85 @@ def check_counts(vectors: int, assertions: int) -> None:
         )
 
 
+def check_codes(collected: dict[str, list[str]]) -> None:
+    """Fails when a vector asserts codes the pinned census does not describe."""
+    for vid in sorted(set(collected) | set(EXPECTED_CODES)):
+        want = EXPECTED_CODES.get(vid)
+        have = collected.get(vid)
+        if want is None:
+            fail(
+                "vectors",
+                f"vector {vid!r} asserts {have} and this suite pins no census for it: "
+                "a new transcript is a deliberate edit, and so is its entry here",
+            )
+        elif have is None:
+            fail(
+                "vectors",
+                f"vector {vid!r} is in the pinned census as {want} but the corpus "
+                "holds no such vector: removing a transcript is a deliberate edit",
+            )
+        elif have != want:
+            fail(
+                "vectors",
+                f"vector {vid!r} asserts {have}, and this suite pins {want}: an "
+                "asserted code was added, removed or changed",
+            )
+
+
+def check_method_map() -> None:
+    """Fails when `METHOD_PARAMS` no longer covers every method the schema names.
+
+    Adding a method to `methods.json` without teaching this map its params schema would
+    otherwise validate that method's params against permissive `anyParams`: a
+    wire-meaning change that is validation-green. Events fail closed by construction;
+    this is the same rule for methods. Truly unknown names stay permissive — the wire
+    answers them with `unknown_method` — so this checks the map, not the frames.
+    """
+    if METHODS_SCHEMA is None:
+        return  # the load failure is already reported; there is no map to check
+    schema = METHODS_SCHEMA
+    defined = set(schema["$defs"])
+    for method in KNOWN_METHODS:
+        if method not in METHOD_PARAMS:
+            fail(
+                "methods",
+                f"method {method!r} is known to the schema but METHOD_PARAMS "
+                "has no params schema for it",
+            )
+    for method, ref in METHOD_PARAMS.items():
+        if method not in KNOWN_METHODS:
+            fail("methods", f"METHOD_PARAMS names {method!r}, which the schema does not know")
+        else:
+            fragment = ref.split("#/$defs/", 1)
+            if len(fragment) != 2 or fragment[1] not in defined:
+                fail(
+                    "methods",
+                    f"the params schema for {method!r} does not name a $def of methods.json",
+                )
+
+
 def main() -> int:
     global CHECKS
     reg = registry()
+    check_method_map()
     print(f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas")
 
     vectors = sorted(VECTOR_DIR.glob("*.json"))
     assertions = 0
+    collected: dict[str, list[str]] = {}
     for path in vectors:
         try:
             document = json.loads(path.read_text())
         except json.JSONDecodeError as error:
             fail(path.name, f"not JSON: {error}")
             continue
-        assertions += check_vector(reg, document, path.name)
+        count, codes = check_vector(reg, document, path.name)
+        assertions += count
+        vid = document.get("id") if isinstance(document, dict) else None
+        collected[vid if isinstance(vid, str) else path.name] = codes
 
     check_counts(len(vectors), assertions)
+    check_codes(collected)
 
     for problem in FAILURES:
         print(f"FAIL           {problem}")

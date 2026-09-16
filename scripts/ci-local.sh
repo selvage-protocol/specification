@@ -18,8 +18,12 @@
 # that had to be built says nothing until it is done, and a cached one still says what it found.
 # A failure exits this script with the check's own report, which nix prints as the log tail.
 #
-# The checks read the files git tracks, so a file that is new and unstaged is invisible to them:
-# `git add` a vector or a schema before expecting the pinned counts to move.
+# What the checks read is the tracked tree at its working-tree content: a file that is
+# new and untracked is invisible to them, while a modified or deleted tracked file is
+# read as it stands. Either way the run is not the run CI would do — CI checks out the
+# committed ref — so `validate` refuses when its inputs differ from HEAD, and says so.
+# Commit, not just stage: staged-but-uncommitted is visible to the local build and
+# absent from CI. `lint` runs actionlint on the working tree, so it needs no guard.
 set -euo pipefail
 
 repo_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)
@@ -35,6 +39,17 @@ system=$(nix eval --raw --impure --expr builtins.currentSystem)
 
 say() { printf '\n=== %s ===\n' "$*"; }
 
+inputs_clean() {
+  local dirty
+  dirty=$(git status --porcelain -- schema vectors runner flake.nix flake.lock)
+  if [[ -n $dirty ]]; then
+    printf 'refusing: the validate inputs differ from HEAD, so this is not the run CI would do.\n' >&2
+    printf 'commit these paths first, then re-run:\n' >&2
+    printf '%s\n' "$dirty" >&2
+    return 1
+  fi
+}
+
 check() {
   local name=$1 description=$2 out
   say "validate: $description"
@@ -43,6 +58,7 @@ check() {
 }
 
 job_validate() {
+  inputs_clean
   check schemas "the schemas and the vectors"
   check runner "the runner's comparison code"
   check yprotocols "the binary decoder"

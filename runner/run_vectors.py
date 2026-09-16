@@ -25,8 +25,9 @@ An `expect` step reads the connection's next frame and compares it, so a vector 
 an expectation leaves that connection one frame ahead, and the failure lands later on a frame
 that belongs to an earlier moment. A failure therefore names the connection, the step's place
 in the transcript and how many frames it had read; and when the transcript stops reading,
-whatever each connection still holds that no step reads is reported as the omission itself
-rather than the symptom it caused.
+whatever each connection still holds that no step reads fails the vector outright — a server
+that sends more than the transcript reads is chattier than the vector allows, and a passing
+run reads every frame it is sent.
 """
 
 from __future__ import annotations
@@ -721,7 +722,8 @@ async def replay(vector: dict, binary: str) -> dict[str, list[Incoming]]:
     """Replays one vector against a fresh server.
 
     Returns what each connection still held once the steps were over — empty for a vector
-    whose transcript reads every frame it is sent.
+    whose transcript reads every frame it is sent. `replay_all` fails the vector when the
+    transcript leaves anything unread.
     """
     if vector.get("selvage") != "selvage/1" or vector.get("canonical") != "SJ-C/1":
         raise ReplayError(
@@ -767,8 +769,8 @@ async def replay(vector: dict, binary: str) -> dict[str, list[Incoming]]:
 # --- schema checks and the command line ---------------------------------------
 
 
-def run_schema_checks() -> tuple[int, int]:
-    """Runs `schema/validate.py` unchanged, returning (exit code, frame checks)."""
+def load_validate_module():
+    """Loads `schema/validate.py` unchanged, for its checks and its corpus pins."""
     spec = importlib.util.spec_from_file_location(
         "selvage_schema_validate", SCHEMA_DIR / "validate.py"
     )
@@ -782,6 +784,12 @@ def run_schema_checks() -> tuple[int, int]:
             file=sys.stderr,
         )
         raise SystemExit(2) from error
+    return module
+
+
+def run_schema_checks() -> tuple[int, int]:
+    """Runs `schema/validate.py` unchanged, returning (exit code, frame checks)."""
+    module = load_validate_module()
     return module.main(), module.CHECKS
 
 
@@ -800,8 +808,30 @@ def load_vectors() -> list[dict]:
     return sorted(vectors, key=lambda vector: vector.get("id", ""))
 
 
+def check_corpus_size(vectors: list[dict], expected: int) -> None:
+    """Fails when the directory does not hold the corpus the pins describe.
+
+    The replay checks whatever it finds, so a shrunk directory replays green on less:
+    a deleted transcript changes this number, and the number is a check. `expected` is
+    `schema/validate.py`'s `EXPECTED_VECTORS` — the count has one home, and the schema
+    half already pins it; this is the same pin where the real server is tested.
+    """
+    if len(vectors) != expected:
+        raise ReplayError(
+            f"the directory holds {len(vectors)} vectors, and this suite pins "
+            f"{expected}: adding or removing a transcript is a deliberate edit"
+        )
+
+
 def replay_all(binary: str) -> tuple[int, int]:
     vectors = load_vectors()
+    try:
+        check_corpus_size(vectors, load_validate_module().EXPECTED_VECTORS)
+    except ReplayError as error:
+        print(f"FAIL   corpus: {error}")
+        # No vector was attempted: the failure is the corpus itself, not a vector,
+        # so it must not count as an attempted one (`main` derives passed from these).
+        return 0, 1
     failed = 0
     for vector in vectors:
         name = vector["_file"]
@@ -811,9 +841,15 @@ def replay_all(binary: str) -> tuple[int, int]:
             failed += 1
             print(f"FAIL   {name:<33} {error}")
         else:
-            print(f"ok     {name}")
-            for line in describe_unread(unread):
-                print(f"note   {name:<33} {line}")
+            report = describe_unread(unread)
+            if report:
+                failed += 1
+                print(
+                    f"FAIL   {name:<33} "
+                    f"{failure_message('holds frames the transcript does not read', unread)}"
+                )
+            else:
+                print(f"ok     {name}")
     return len(vectors), failed
 
 
@@ -868,7 +904,9 @@ def main(argv: list[str] | None = None) -> int:
 
     schema_code, checks = run_schema_checks()
     vectors, failed = replay_all(binary)
-    passed = vectors - failed
+    # A corpus failure attempts no vectors, so `vectors` is 0 and the failure is
+    # the corpus itself; the clamp keeps that from reading as negative passes.
+    passed = max(vectors - failed, 0)
     print(
         f"summary        {vectors} files, {checks} frame checks, "
         f"{passed} vectors passed, {failed} failed"
