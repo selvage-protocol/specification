@@ -566,6 +566,9 @@ Three obligations on the request side, none of which changes the wire:
 - **A request id is not reused on a connection.** The id is the only correlation the wire has, and
   a client that reuses one cannot tell a late answer from a current one. A new connection may
   count from the beginning again, because it is a new connection: nothing survives it (§9.1).
+- **At most one request is in flight on a connection.** A seated `session.error{bad_message}`
+  carries no `id` (§11), so a client that pipelined could not tell which request it sank; a client
+  **MUST NOT** pipeline, and it fails the outstanding request, if any, when such an event arrives.
 
 ### Unknown methods
 
@@ -1112,7 +1115,10 @@ its grace period whether or not any peer is left in it — only the deadline rem
   then a major, then optionally a minor, each a plain decimal with no leading zero and nothing
   after it — so `selvage/2` and `selvage/x` are refused for their major, and `selvage/01`,
   `selvage/1.09`, `selvage/1.9.3` and `selvage/1.` are refused because they are not that grammar
-  at all. A receiver **MUST** refuse a version outside the grammar; the minor becomes decisive
+  at all. A receiver **MUST** refuse a version outside the grammar, and outside the grammar is
+  still `unsupported_version`, never `bad_message`: at the handshake a refusal closed with 4005,
+  on a seated connection the error response to the offending request followed by close 4005
+  (§9.2, §11). The minor becomes decisive
   only when the major reaches `0`. A conforming producer writes `selvage/1`, never `selvage/1.0`
   (`CANONICAL.md` §2.5).
 - Capabilities are advertised additively by the server in `room.created`/`room.joined` and in
