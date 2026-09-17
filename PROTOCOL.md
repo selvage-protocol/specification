@@ -952,7 +952,9 @@ gone has no cursor to show.
 - The **token is the permission** (§12). Any holder may join; there is no per-join approval. The
   token is secret: it is in the invite URL and nothing else.
 - **Exactly one host connection at a time.** A joining connection that claims `role: "host"` while
-  a host is present is refused with `host_present`, and the room is untouched.
+  a host is present is refused with `host_present`, and the room is untouched. Seating is atomic
+  under the room lock: of concurrent host claimants for a hostless room exactly one is seated,
+  and every loser is refused `host_present` with close 4004.
 - **A host leaving is `peer.left` and then `host.detached`**, in that order, to the remaining
   peers. The room then enters a grace period of `grace_ms` (the value `host.detached` carries;
   30 s by default in the reference server) during which it is fully usable: guests keep syncing
@@ -961,11 +963,15 @@ gone has no cursor to show.
 - **A guest that joins during the grace period is a guest.** It is announced as `peer.joined` and
   nothing else — `host.attached` means a *host* reclaiming, so a connection admitted into a
   hostless room without claiming `host` produces no `host.attached` at all, and the room stays
-  hostless with its grace deadline unchanged. A client that reads `host.attached` as "the host is
+  hostless — a guest join leaves the grace deadline unchanged, while every host departure arms
+  a fresh grace period that supersedes the earlier timer. A client that reads `host.attached` as "the host is
   back" is right, and a client that reads `peer.joined` as "the host is back" is wrong (§9.1).
 - **If the grace period expires with no host, the room is destroyed**: remaining peers receive
   `room.gone` and are then closed with code 4003. The room id is gone for good — a later join
-  attempt is `room_unknown`, not a fresh room.
+  attempt is `room_unknown`, not a fresh room. Seating and reaping are serialised under the room
+  lock: a reclaim hello seated before the deadline supersedes the armed timer, and a hello that
+  arrives at or after the destruction is refused `room_unknown` with close 4001, never seated
+  into a room that is gone.
 - **A guest disconnecting produces `peer.left` and nothing else.**
 - **Keepalive.** The server sends a WebSocket Ping every `ping_interval_ms`. A client answers it
   with a Pong (every mainstream WebSocket library does this for you). Protocol-level pings are not
