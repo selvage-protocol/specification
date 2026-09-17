@@ -63,8 +63,8 @@ BASE = "https://selvageprotocol.com/schema/1/"
 # deletion — a red run instead of a smaller number in a line of output. Update them in the
 # same commit that changes the corpus.
 EXPECTED_VECTORS = 27
-EXPECTED_FRAME_CHECKS = 2240
-EXPECTED_ASSERTIONS = 483
+EXPECTED_FRAME_CHECKS = 34748
+EXPECTED_ASSERTIONS = 8610
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
 # closed vocabulary is schema-valid and count-identical, so this census is what makes one a
