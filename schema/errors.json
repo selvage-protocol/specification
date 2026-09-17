@@ -21,6 +21,11 @@
       ],
       "description": "Every code `selvage/1` defines. `doc_not_open` is reserved and never produced by this slice; a code a receiver does not know is treated as an unknown fault, not as a protocol error."
     },
+    "extensionCode": {
+      "type": "string",
+      "pattern": "^x\\.\\S+$",
+      "description": "An implementation's own code in the reserved `x.` namespace (PROTOCOL.md §10.1, §11): only the `x.` prefix is protocol, the suffix is the definer's. The reference server refuses past its capacity with `x.server_full` and `x.room_full` — a further join to a room at its peer cap is `x.room_full`, refused with the generic close 4000. Not defined by `selvage/1`, but carriable wherever an `errorCode` is."
+    },
     "closeCode": {
       "type": "integer",
       "enum": [4000, 4001, 4002, 4003, 4004, 4005],
@@ -31,7 +36,12 @@
       "description": "`error` on a response (\u00a74.2) and `params` on a `session.error` event (\u00a76) are the same shape. `message` is human-readable and explicitly not stable, so nothing may depend on it.",
       "required": ["code", "message"],
       "properties": {
-        "code": { "$ref": "#/$defs/errorCode" },
+        "code": {
+          "anyOf": [
+            { "$ref": "#/$defs/errorCode" },
+            { "$ref": "#/$defs/extensionCode" }
+          ]
+        },
         "message": { "type": "string", "minLength": 1 }
       }
     }

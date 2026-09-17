@@ -129,6 +129,10 @@ These words carry obligations, and the protocol uses them precisely.
 - **set** — an array whose order the protocol does not promise: `peers`, `capabilities`,
   `wire_versions`, `roles` (§2, §6.2, §10, `CANONICAL.md` §2.7). `documents` and a grant's
   `paths` are the only arrays this protocol orders (§5, §6.3).
+- **blank** — empty after removing leading and trailing Unicode whitespace. A `doc.open` or
+  `doc.close` path and a `display_name`, wherever either appears, are held to this one rule;
+  the schema patterns built on `\S` are a necessary-only approximation of it, as `maxLength`
+  is of the UTF-16 bound (§5).
 
 ## 2. Transport
 
@@ -382,9 +386,10 @@ it can be told the room exists, and it cannot be seated in it.
 { "v": "selvage/1", "id": 2, "method": "doc.open", "params": { "path": "src/main.rs" } }
 ```
 
-`path` is a workspace-relative path. It **MUST** be non-blank: a path whose `trim()` is empty is
-`bad_params`, and a path is otherwise unvalidated in this slice (§12, [`NOTES.md`](NOTES.md)
-§B.8). The connection declares that it holds `path` open, and the room's open-document set gains
+`path` is a workspace-relative path. It **MUST** be non-blank: a blank path is
+`bad_params`, and, beside length, a path is otherwise unvalidated in this slice (§12, [`NOTES.md`](NOTES.md)
+§B.8). A server **MAY** bound the length of a path as its own policy, as it may bound a grant
+listing, and a path over that bound is `bad_params`. The connection declares that it holds `path` open, and the room's open-document set gains
 the path if it was not already in it.
 
 The reply is `{ "result": { "documents": [ … ] } }` — the room's set after the change — so a
@@ -401,7 +406,9 @@ open-document set only when no other peer still holds it open; if another peer h
 document open, the set does not change.
 
 The reply is `{ "result": { "documents": [ … ] } }`, the room's set after the change, and every
-peer receives a `doc.closed` event carrying it. Closing does not delete content: the `Y.Text`
+peer receives a `doc.closed` event carrying it, even when the set is unchanged: every validated
+close is announced, including a close for a path the connection never held, so a peer counting
+`doc.closed` never diverges. Closing does not delete content: the `Y.Text`
 remains in the session document, and a later `doc.open` by any peer sees it again.
 
 A connection that disconnects releases its holds without announcing anything, but the paths it
@@ -418,7 +425,7 @@ A `doc.grant` publishes the room's **grant**: the host's listing of the files in
 as an array of workspace-relative paths. Each is the same kind of value as `doc.open`'s `path` and
 is held to the same rule — it **MUST** be non-blank, and it is otherwise unvalidated in this slice
 (§12, [`NOTES.md`](NOTES.md) §B.8). A `paths` that is not an array, a member of it that is not a
-string, or one whose `trim()` is empty is `bad_params`; so is a request with no `paths` at all,
+string, or a blank one is `bad_params`; so is a request with no `paths` at all,
 because the member is required.
 
 The listing **replaces** the room's grant wholesale: it is a snapshot, not a delta, so a host that
@@ -544,7 +551,7 @@ and awareness (§9.1): a reconnecting client is a new peer and its name is whate
 
 ### What a client owes a request
 
-Three obligations on the request side, none of which changes the wire:
+Four obligations on the request side, none of which changes the wire:
 
 - **Every request is answered, and the wait has to be bounded.** `doc.open`, `doc.close`,
   `doc.grant` and `session.rename` are answered with a result or an error, and nothing obliges a
@@ -563,6 +570,9 @@ Three obligations on the request side, none of which changes the wire:
 - **A request id is not reused on a connection.** The id is the only correlation the wire has, and
   a client that reuses one cannot tell a late answer from a current one. A new connection may
   count from the beginning again, because it is a new connection: nothing survives it (§9.1).
+- **At most one request is in flight on a connection.** A seated `session.error{bad_message}`
+  carries no `id` (§11), so a client that pipelined could not tell which request it sank; a client
+  **MUST NOT** pipeline, and it fails the outstanding request, if any, when such an event arrives.
 
 ### Unknown methods
 
@@ -581,7 +591,7 @@ All event `params` are flat objects.
 | `peer.left` | `{ "peer_id": string }` | to the remaining peers when a connection ends | removes the peer, and **SHOULD** drop its awareness state (§8.4). A host leaving is *not* the end of the room (§9) |
 | `peer.renamed` | `{ "peer_id": string, "display_name": string }` | to every peer when a peer renames itself | replaces the peer's name and keeps the peer |
 | `doc.opened` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer opens a document | replaces its view of the room's set with `documents` |
-| `doc.closed` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer closes one | the same |
+| `doc.closed` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer closes one, whether or not the closer held the path | the same |
 | `doc.granted` | `{ "paths": [string] }` | to every peer when a grant is published, and to a joining connection right after its `room.joined` | replaces its view of the room's grant with `paths`, which is a list of names and not content |
 | `host.detached` | `{ "grace_ms": number }` | to the remaining peers when the host's connection ends | starts the grace period: the room is still usable and still joinable |
 | `host.attached` | `{ "peer": PeerInfo }` | to the remaining peers when a connection claiming `role: "host"` is seated into a room whose host is absent | reads `peer.role`: this is a reclaim, and a `peer.joined` for the same peer follows (§9.1) |
@@ -645,7 +655,9 @@ peer **MUST NOT** depend on either.
   send one for an empty grant: a joiner of a room that grants nothing receives `room.joined` alone
   and has nothing to miss. A fresh room's grant is always empty, so a mint never produces this
   event. This is how a joiner learns the room's listing without a round trip and without a fifth
-  member in `room.joined`.
+  member in `room.joined`. The listing sent is the snapshot at seating, taken under the seating
+  lock: publications are serialised with seatings, and every publication after that snapshot
+  follows it on the joining connection.
 - **It names no peer.** A grant is the host's and a room has one host, so the event carries the
   room's listing and not its author; a receiver that wants to know who published it reads the
   roster.
@@ -939,7 +951,8 @@ awareness client id for every connection, which is what keeps the mapping one-to
 
 When a peer leaves, its awareness state **SHOULD** be dropped locally rather than left to expire
 by the clock — the room's roster is the authority on who is present, and a state whose peer has
-gone has no cursor to show.
+gone has no cursor to show — but only the state for the awareness id it last claimed, and only
+while no other seated peer still claims that id.
 
 ## 9. Rooms and the lifecycle
 
@@ -952,7 +965,9 @@ gone has no cursor to show.
 - The **token is the permission** (§12). Any holder may join; there is no per-join approval. The
   token is secret: it is in the invite URL and nothing else.
 - **Exactly one host connection at a time.** A joining connection that claims `role: "host"` while
-  a host is present is refused with `host_present`, and the room is untouched.
+  a host is present is refused with `host_present`, and the room is untouched. Seating is atomic
+  under the room lock: of concurrent host claimants for a hostless room exactly one is seated,
+  and every loser is refused `host_present` with close 4004.
 - **A host leaving is `peer.left` and then `host.detached`**, in that order, to the remaining
   peers. The room then enters a grace period of `grace_ms` (the value `host.detached` carries;
   30 s by default in the reference server) during which it is fully usable: guests keep syncing
@@ -961,11 +976,15 @@ gone has no cursor to show.
 - **A guest that joins during the grace period is a guest.** It is announced as `peer.joined` and
   nothing else — `host.attached` means a *host* reclaiming, so a connection admitted into a
   hostless room without claiming `host` produces no `host.attached` at all, and the room stays
-  hostless with its grace deadline unchanged. A client that reads `host.attached` as "the host is
+  hostless — a guest join leaves the grace deadline unchanged, while every host departure arms
+  a fresh grace period that supersedes the earlier timer. A client that reads `host.attached` as "the host is
   back" is right, and a client that reads `peer.joined` as "the host is back" is wrong (§9.1).
 - **If the grace period expires with no host, the room is destroyed**: remaining peers receive
   `room.gone` and are then closed with code 4003. The room id is gone for good — a later join
-  attempt is `room_unknown`, not a fresh room.
+  attempt is `room_unknown`, not a fresh room. Seating and reaping are serialised under the room
+  lock: a reclaim hello seated before the deadline supersedes the armed timer, and a hello that
+  arrives at or after the destruction is refused `room_unknown` with close 4001, never seated
+  into a room that is gone.
 - **A guest disconnecting produces `peer.left` and nothing else.**
 - **Keepalive.** The server sends a WebSocket Ping every `ping_interval_ms`. A client answers it
   with a Pong (every mainstream WebSocket library does this for you). Protocol-level pings are not
@@ -1009,7 +1028,11 @@ a reconnecting client is a new peer that has to say who it is again. What it mus
 - **A refusal means stop; a drop means try again.** `room_unknown`, `token_invalid`,
   `host_present` and `unsupported_version` refuse for a reason a retry cannot change — a room that
   is gone is gone for good, and the host did not come back inside the grace period — so a client
-  **MUST** stop and say why rather than reconnect into the same refusal. A room destroyed under a
+  **MUST** stop and say why rather than reconnect into the same refusal. A fault in the reserved
+  `x.` namespace — capacity, in this slice (§2.1, §10.1, §11) — is a stop as well: a handshake
+  refused with an `x.*` code **MUST NOT** be re-helloed automatically, and a seated request
+  refused with one **MUST NOT** be re-issued automatically; the attempt ends, or the request
+  fails, and anything further needs its user's action. A room destroyed under a
   *seated* connection is not a refusal a client could have avoided: it learns of it as the
   `room.gone` event and close 4003 (§6, §11), which is an ending and not a retry. Every other loss
   of the socket is **recoverable**, and a client **SHOULD** re-hello with a bounded backoff rather
@@ -1054,7 +1077,7 @@ what goes out.
 | unseated | no frame within the server's hello timeout | closed | `session.error{hello_required}`, close 4000 |
 | seated | `session.hello` | seated | the error response `already_seated` |
 | seated | `doc.open` / `doc.close` with a non-blank `path` | seated | the result, then `doc.opened`/`doc.closed` to the room |
-| seated | `doc.open` / `doc.close` with a blank `path`, or params that do not parse | seated | the error response `bad_params` |
+| seated | `doc.open` / `doc.close` with a blank or over-long `path`, or params that do not parse | seated | the error response `bad_params` |
 | seated | `session.rename` with a non-blank `display_name` within the bound | seated | `{ "result": {} }` to the caller, then `peer.renamed` to the room, the caller included |
 | seated | `session.rename` with params that do not parse, or a blank or over-long `display_name` | seated | the error response `bad_params` |
 | seated | any other method | seated | the error response `unknown_method` |
@@ -1094,12 +1117,18 @@ its grace period whether or not any peer is left in it — only the deadline rem
   (§11).
 - **Compatibility rule**: same major, and while at `0.x` also the same minor. This document
   defines `selvage/1`, so the rule in force is *same major* alone: every `selvage/1.x` is
-  accepted, including `selvage/1.9` and the bare `selvage/1`, whose minor defaults to `0`. The
+  accepted, including `selvage/1.9` and the bare `selvage/1`, whose minor defaults to `0`. Same-major
+  acceptance is not a promise that binary frames interoperate across minors: a minor **MUST NOT**
+  change the binary encoding without a handling rule both sides share, since binary frames carry
+  no version to check. The
   grammar is the one [`schema/negotiation.json`](schema/) encodes as `wireVersion`: `selvage/`
   then a major, then optionally a minor, each a plain decimal with no leading zero and nothing
   after it — so `selvage/2` and `selvage/x` are refused for their major, and `selvage/01`,
   `selvage/1.09`, `selvage/1.9.3` and `selvage/1.` are refused because they are not that grammar
-  at all. A receiver **MUST** refuse a version outside the grammar; the minor becomes decisive
+  at all. A receiver **MUST** refuse a version outside the grammar, and outside the grammar is
+  still `unsupported_version`, never `bad_message`: at the handshake a refusal closed with 4005,
+  on a seated connection the error response to the offending request followed by close 4005
+  (§9.2, §11). The minor becomes decisive
   only when the major reaches `0`. A conforming producer writes `selvage/1`, never `selvage/1.0`
   (`CANONICAL.md` §2.5).
 - Capabilities are advertised additively by the server in `room.created`/`room.joined` and in
