@@ -62,9 +62,9 @@ BASE = "https://selvageprotocol.com/schema/1/"
 # deliberate edit, and these three numbers are what makes the opposite edit — a silent
 # deletion — a red run instead of a smaller number in a line of output. Update them in the
 # same commit that changes the corpus.
-EXPECTED_VECTORS = 24
-EXPECTED_FRAME_CHECKS = 872
-EXPECTED_ASSERTIONS = 206
+EXPECTED_VECTORS = 25
+EXPECTED_FRAME_CHECKS = 930
+EXPECTED_ASSERTIONS = 218
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
 # closed vocabulary is schema-valid and count-identical, so this census is what makes one a
@@ -103,6 +103,7 @@ EXPECTED_CODES = {
     "023": ["error:bad_params", "error:bad_params", "error:bad_params",
             "error:bad_params", "error:bad_params"],
     "024": [],
+    "025": [],
 }
 
 # A step that reads or asserts something. Every other step only produces input for one, so
