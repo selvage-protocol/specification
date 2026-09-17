@@ -23,8 +23,8 @@
     },
     "extensionCode": {
       "type": "string",
-      "pattern": "^x\\.[a-z0-9._-]+$",
-      "description": "An implementation's own code in the reserved `x.` namespace (PROTOCOL.md §10.1, §11): the reference server refuses past its capacity with `x.server_full` and `x.room_full`. Not defined by `selvage/1`, but carriable wherever an `errorCode` is."
+      "pattern": "^x\\.\\S+$",
+      "description": "An implementation's own code in the reserved `x.` namespace (PROTOCOL.md §10.1, §11): only the `x.` prefix is protocol, the suffix is the definer's. The reference server refuses past its capacity with `x.server_full` and `x.room_full` — a further join to a room at its peer cap is `x.room_full`, refused with the generic close 4000. Not defined by `selvage/1`, but carriable wherever an `errorCode` is."
     },
     "closeCode": {
       "type": "integer",
