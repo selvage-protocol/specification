@@ -382,9 +382,10 @@ it can be told the room exists, and it cannot be seated in it.
 { "v": "selvage/1", "id": 2, "method": "doc.open", "params": { "path": "src/main.rs" } }
 ```
 
-`path` is a workspace-relative path. It **MUST** be non-blank: a path whose `trim()` is empty is
-`bad_params`, and a path is otherwise unvalidated in this slice (§12, [`NOTES.md`](NOTES.md)
-§B.8). The connection declares that it holds `path` open, and the room's open-document set gains
+`path` is a workspace-relative path. It **MUST** be non-blank: a blank path is
+`bad_params`, and, beside length, a path is otherwise unvalidated in this slice (§12, [`NOTES.md`](NOTES.md)
+§B.8). A server **MAY** bound the length of a path as its own policy, as it may bound a grant
+listing, and a path over that bound is `bad_params`. The connection declares that it holds `path` open, and the room's open-document set gains
 the path if it was not already in it.
 
 The reply is `{ "result": { "documents": [ … ] } }` — the room's set after the change — so a
@@ -401,7 +402,9 @@ open-document set only when no other peer still holds it open; if another peer h
 document open, the set does not change.
 
 The reply is `{ "result": { "documents": [ … ] } }`, the room's set after the change, and every
-peer receives a `doc.closed` event carrying it. Closing does not delete content: the `Y.Text`
+peer receives a `doc.closed` event carrying it, even when the set is unchanged: every validated
+close is announced, including a close for a path the connection never held, so a peer counting
+`doc.closed` never diverges. Closing does not delete content: the `Y.Text`
 remains in the session document, and a later `doc.open` by any peer sees it again.
 
 A connection that disconnects releases its holds without announcing anything, but the paths it
@@ -581,7 +584,7 @@ All event `params` are flat objects.
 | `peer.left` | `{ "peer_id": string }` | to the remaining peers when a connection ends | removes the peer, and **SHOULD** drop its awareness state (§8.4). A host leaving is *not* the end of the room (§9) |
 | `peer.renamed` | `{ "peer_id": string, "display_name": string }` | to every peer when a peer renames itself | replaces the peer's name and keeps the peer |
 | `doc.opened` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer opens a document | replaces its view of the room's set with `documents` |
-| `doc.closed` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer closes one | the same |
+| `doc.closed` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer closes one, whether or not the closer held the path | the same |
 | `doc.granted` | `{ "paths": [string] }` | to every peer when a grant is published, and to a joining connection right after its `room.joined` | replaces its view of the room's grant with `paths`, which is a list of names and not content |
 | `host.detached` | `{ "grace_ms": number }` | to the remaining peers when the host's connection ends | starts the grace period: the room is still usable and still joinable |
 | `host.attached` | `{ "peer": PeerInfo }` | to the remaining peers when a connection claiming `role: "host"` is seated into a room whose host is absent | reads `peer.role`: this is a reclaim, and a `peer.joined` for the same peer follows (§9.1) |
@@ -1015,7 +1018,11 @@ a reconnecting client is a new peer that has to say who it is again. What it mus
 - **A refusal means stop; a drop means try again.** `room_unknown`, `token_invalid`,
   `host_present` and `unsupported_version` refuse for a reason a retry cannot change — a room that
   is gone is gone for good, and the host did not come back inside the grace period — so a client
-  **MUST** stop and say why rather than reconnect into the same refusal. A room destroyed under a
+  **MUST** stop and say why rather than reconnect into the same refusal. A fault in the reserved
+  `x.` namespace — capacity, in this slice (§2.1, §10.1, §11) — is a stop as well: a handshake
+  refused with an `x.*` code **MUST NOT** be re-helloed automatically, and a seated request
+  refused with one **MUST NOT** be re-issued automatically; the attempt ends, or the request
+  fails, and anything further needs its user's action. A room destroyed under a
   *seated* connection is not a refusal a client could have avoided: it learns of it as the
   `room.gone` event and close 4003 (§6, §11), which is an ending and not a retry. Every other loss
   of the socket is **recoverable**, and a client **SHOULD** re-hello with a bounded backoff rather
@@ -1060,7 +1067,7 @@ what goes out.
 | unseated | no frame within the server's hello timeout | closed | `session.error{hello_required}`, close 4000 |
 | seated | `session.hello` | seated | the error response `already_seated` |
 | seated | `doc.open` / `doc.close` with a non-blank `path` | seated | the result, then `doc.opened`/`doc.closed` to the room |
-| seated | `doc.open` / `doc.close` with a blank `path`, or params that do not parse | seated | the error response `bad_params` |
+| seated | `doc.open` / `doc.close` with a blank or over-long `path`, or params that do not parse | seated | the error response `bad_params` |
 | seated | `session.rename` with a non-blank `display_name` within the bound | seated | `{ "result": {} }` to the caller, then `peer.renamed` to the room, the caller included |
 | seated | `session.rename` with params that do not parse, or a blank or over-long `display_name` | seated | the error response `bad_params` |
 | seated | any other method | seated | the error response `unknown_method` |
