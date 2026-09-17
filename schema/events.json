@@ -142,7 +142,12 @@
       "type": "object",
       "required": ["code", "message"],
       "properties": {
-        "code": { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/errorCode" },
+        "code": {
+          "anyOf": [
+            { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/errorCode" },
+            { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/extensionCode" }
+          ]
+        },
         "message": { "type": "string", "minLength": 1 }
       }
     }
