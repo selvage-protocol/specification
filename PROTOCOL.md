@@ -129,6 +129,10 @@ These words carry obligations, and the protocol uses them precisely.
 - **set** — an array whose order the protocol does not promise: `peers`, `capabilities`,
   `wire_versions`, `roles` (§2, §6.2, §10, `CANONICAL.md` §2.7). `documents` and a grant's
   `paths` are the only arrays this protocol orders (§5, §6.3).
+- **blank** — empty after removing leading and trailing Unicode whitespace. A `doc.open` or
+  `doc.close` path and a `display_name`, wherever either appears, are held to this one rule;
+  the schema patterns built on `\S` are a necessary-only approximation of it, as `maxLength`
+  is of the UTF-16 bound (§5).
 
 ## 2. Transport
 
@@ -421,7 +425,7 @@ A `doc.grant` publishes the room's **grant**: the host's listing of the files in
 as an array of workspace-relative paths. Each is the same kind of value as `doc.open`'s `path` and
 is held to the same rule — it **MUST** be non-blank, and it is otherwise unvalidated in this slice
 (§12, [`NOTES.md`](NOTES.md) §B.8). A `paths` that is not an array, a member of it that is not a
-string, or one whose `trim()` is empty is `bad_params`; so is a request with no `paths` at all,
+string, or a blank one is `bad_params`; so is a request with no `paths` at all,
 because the member is required.
 
 The listing **replaces** the room's grant wholesale: it is a snapshot, not a delta, so a host that
@@ -651,7 +655,9 @@ peer **MUST NOT** depend on either.
   send one for an empty grant: a joiner of a room that grants nothing receives `room.joined` alone
   and has nothing to miss. A fresh room's grant is always empty, so a mint never produces this
   event. This is how a joiner learns the room's listing without a round trip and without a fifth
-  member in `room.joined`.
+  member in `room.joined`. The listing sent is the snapshot at seating, taken under the seating
+  lock: publications are serialised with seatings, and every publication after that snapshot
+  follows it on the joining connection.
 - **It names no peer.** A grant is the host's and a room has one host, so the event carries the
   room's listing and not its author; a receiver that wants to know who published it reads the
   roster.
@@ -945,7 +951,8 @@ awareness client id for every connection, which is what keeps the mapping one-to
 
 When a peer leaves, its awareness state **SHOULD** be dropped locally rather than left to expire
 by the clock — the room's roster is the authority on who is present, and a state whose peer has
-gone has no cursor to show.
+gone has no cursor to show — but only the state for the awareness id it last claimed, and only
+while no other seated peer still claims that id.
 
 ## 9. Rooms and the lifecycle
 
@@ -1110,7 +1117,10 @@ its grace period whether or not any peer is left in it — only the deadline rem
   (§11).
 - **Compatibility rule**: same major, and while at `0.x` also the same minor. This document
   defines `selvage/1`, so the rule in force is *same major* alone: every `selvage/1.x` is
-  accepted, including `selvage/1.9` and the bare `selvage/1`, whose minor defaults to `0`. The
+  accepted, including `selvage/1.9` and the bare `selvage/1`, whose minor defaults to `0`. Same-major
+  acceptance is not a promise that binary frames interoperate across minors: a minor **MUST NOT**
+  change the binary encoding without a handling rule both sides share, since binary frames carry
+  no version to check. The
   grammar is the one [`schema/negotiation.json`](schema/) encodes as `wireVersion`: `selvage/`
   then a major, then optionally a minor, each a plain decimal with no leading zero and nothing
   after it — so `selvage/2` and `selvage/x` are refused for their major, and `selvage/01`,
