@@ -551,7 +551,7 @@ and awareness (§9.1): a reconnecting client is a new peer and its name is whate
 
 ### What a client owes a request
 
-Three obligations on the request side, none of which changes the wire:
+Four obligations on the request side, none of which changes the wire:
 
 - **Every request is answered, and the wait has to be bounded.** `doc.open`, `doc.close`,
   `doc.grant` and `session.rename` are answered with a result or an error, and nothing obliges a
