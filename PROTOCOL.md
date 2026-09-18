@@ -200,8 +200,12 @@ its policy, not a peer's contract. Five consequences do bind a peer.
 
 - **A server bounds the wait for `session.hello`** and closes a connection that stays silent past
   it (§5). A client **MUST NOT** expect an unseated connection to live indefinitely.
-- **A server does not close a connection for silence after the handshake.** It pings (§9); it
-  never treats a missing Pong as a fault, and it never times a session out for inactivity.
+- **A server does not close a connection for silence alone, and it MAY end one that stops
+  answering.** The keepalive (§9) is how liveness is established: a server pings, and it **MAY**
+  close a connection whose pings have gone unanswered for a stated number of intervals — the
+  reference waits two, so a slow link is not mistaken for a dead one. Closing for silence is an
+  ordinary drop: the room is told `peer.left`, the grace arms when the peer was the host, and no
+  session close code is sent.
 - **A server MAY bound the size of an inbound frame or message.** A frame over the bound is a
   transport failure and not a session fault: it ends the connection the way a dropped socket ends
   — no `session.error`, no session close code (§11) — and the room learns of it as `peer.left`
@@ -229,9 +233,9 @@ The reference server's numbers, for a reader who needs to know what to expect in
 |---|---|---|
 | HTTP request head | 16 KiB, and `head_timeout` — 5 s — to arrive | an over-size head is answered `431 Request Header Fields Too Large`; a head that does not finish inside `head_timeout` is closed without a response. Neither is admitted |
 | `session.hello` after the upgrade | 10 s | `hello_required`, then close 4000 |
-| WebSocket ping | every 30 s | the server pings; it never closes a connection for silence |
+| WebSocket ping | every 30 s, and two unanswered intervals end the connection | the server pings; a peer that stops answering is closed as an ordinary drop, and the room is told `peer.left` |
 | outbound queue, per connection | 32 frames and 32 MiB | a peer past either cap is disconnected and the room is told `peer.left` |
-| connections | 1024, counted past the head | past the cap a plain HTTP request is answered `503`, and a WebSocket upgrade is answered and then closed with **1013**; a half-sent head is bounded by `head_timeout` and not counted. Still no idle reaper, no per-source rate limit |
+| connections | 1024, counted past the head | past the cap a plain HTTP request is answered `503`, and a WebSocket upgrade is answered and then closed with **1013**; a half-sent head is bounded by `head_timeout` and not counted. Still no idle reaper — a connection that answers its pings is never closed for being quiet — and no per-source rate limit |
 | inbound WebSocket frame | 8 MiB | the connection ends the way a dropped socket ends: no `session.error`, no session close code |
 | inbound WebSocket message | 8 MiB | the same |
 
@@ -1048,9 +1052,13 @@ while no other seated peer still claims that id.
 - **A guest disconnecting produces `peer.left` and nothing else.**
 - **Keepalive.** The server sends a WebSocket Ping every `ping_interval_ms`. A client answers it
   with a Pong (every mainstream WebSocket library does this for you). Protocol-level pings are not
-  session messages and are never relayed. The same `keepalive` object carries the awareness window
-  that clients run on (§8.2): the server's numbers are the session's, and a client that overrides
-  them is choosing to disagree, not negotiating.
+  session messages and are never relayed. A connection that leaves its pings unanswered for a
+  stated number of intervals **MAY** be closed as an ordinary drop — the room is told `peer.left`,
+  the grace arms when the peer was the host, and no session close code is sent — because a host
+  that has silently stopped answering would otherwise hold a room open forever: the reference
+  waits two intervals, and its number is policy (§2.1). The same `keepalive` object carries the
+  awareness window that clients run on (§8.2): the server's numbers are the session's, and a
+  client that overrides them is choosing to disagree, not negotiating.
 
 ### 9.1 Reconnecting
 
@@ -1345,7 +1353,8 @@ the same token already grants read access to the whole working copy, this grants
 devices. ([`NOTES.md`](NOTES.md) §B.2.)
 
 **The denial-of-service posture is a v1 posture.** §2.1's capacity rows are the reference
-server's own policy: a 1024-connection cap counted past the request head, no idle reaper, no
+server's own policy: a 1024-connection cap counted past the request head, no idle reaper (only
+the ping bound above, which closes a connection that has stopped answering), no
 per-source rate limit, a per-connection outbound queue of 32 frames and 32 MiB past which the slow
 peer is disconnected, and a frame over the transport's bound ends a connection with nothing on the
 wire to say why. A room's peers can be flooded at whatever rate their sockets accept. What a peer
