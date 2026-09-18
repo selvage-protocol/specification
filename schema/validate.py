@@ -683,6 +683,7 @@ def check_control_refusal(reg: Registry) -> int:
 
 
 def main() -> int:
+    """Checks every schema and every claim the corpus makes, and reports what it found."""
     global CHECKS
     reg = registry()
     check_method_map()
