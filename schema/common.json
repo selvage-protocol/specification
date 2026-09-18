@@ -41,6 +41,10 @@
       "type": "string",
       "minLength": 1,
       "pattern": "\\S",
+      "not": {
+        "pattern": "[\\u0000-\\u001F\\u007F-\\u009F]",
+        "description": "The `Cc` category, negated: C0 (U+0000–U+001F), DELETE (U+007F) and C1 (U+0080–U+009F). A `pattern` is a search and the dialect has no negation of its own, so the exclusion is `not` around one that matches a control character anywhere in the string. Anchoring a single pattern instead would have to agree with every implementation about `$` and a trailing newline, which Python's `re` does not: it matches `$` before one, so a path ending in LF would pass."
+      },
       "description": "A workspace-relative path: non-empty after trimming, free of control characters (the Unicode `Cc` category), and otherwise unvalidated in this slice (`PROTOCOL.md` §5, `NOTES.md` §B.8). The reference server answers `bad_params` for a blank one or one carrying a control character, and `doc.open` and `doc.close` carry the same field, as does each member of a grant's `paths`. Document identity is the path; it is not encoded inside the CRDT."
     },
     "awarenessClientId": {
@@ -54,6 +58,10 @@
       "minLength": 1,
       "maxLength": 32,
       "pattern": "\\S",
+      "not": {
+        "pattern": "[\\u0000-\\u001F\\u007F-\\u009F]",
+        "description": "The `Cc` category, negated: C0 (U+0000–U+001F), DELETE (U+007F) and C1 (U+0080–U+009F), the same exclusion `documentPath` carries and for the same reason."
+      },
       "description": "At most 32 UTF-16 code units (PROTOCOL.md §5), so an astral character costs two, and free of control characters (the Unicode `Cc` category); `maxLength` counts Unicode code points, so an implementation that enforces the protocol's UTF-16 bound counts UTF-16 code units itself. The server answers `bad_params` for a blank, longer or control-carrying name, and never truncates one."
     },
     "peer": {

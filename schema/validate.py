@@ -12,6 +12,11 @@ An `expect` or `expectBody` frame is additionally checked for the canonical byte
 its own bytes have to be the ones it claims. That is the half of the byte agreement the
 replay enforces against a running server, and this checks it without one.
 
+The exclusion `PROTOCOL.md` §5 fixes on a `display_name`, a `path` and each grant member —
+no Unicode `Cc` character — is the schema's to enforce, and this file runs the shipped
+schema against values that carry one, so that a dropped constraint is a red run here
+rather than a machine-readable model that quietly permits what the prose forbids.
+
 The count of vectors, of frame checks and of assertion steps is pinned, because a corpus
 that shrinks silently reads exactly like a corpus that passes: a deleted assertion changes
 the numbers, and the numbers are a check.
@@ -62,9 +67,9 @@ BASE = "https://selvageprotocol.com/schema/1/"
 # deliberate edit, and these three numbers are what makes the opposite edit — a silent
 # deletion — a red run instead of a smaller number in a line of output. Update them in the
 # same commit that changes the corpus.
-EXPECTED_VECTORS = 28
-EXPECTED_FRAME_CHECKS = 34766
-EXPECTED_ASSERTIONS = 8617
+EXPECTED_VECTORS = 31
+EXPECTED_FRAME_CHECKS = 34858
+EXPECTED_ASSERTIONS = 8642
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
 # closed vocabulary is schema-valid and count-identical, so this census is what makes one a
@@ -109,6 +114,12 @@ EXPECTED_CODES = {
             "session.error:unsupported_version"],
     "028": ["close:4000", "close:4000", "close:4005", "error:unsupported_version",
             "session.error:bad_message", "session.error:bad_message"],
+    "029": ["close:4000", "close:4000", "error:bad_params", "error:bad_params",
+            "error:bad_params", "session.error:bad_params", "session.error:bad_params"],
+    "030": ["close:4000", "close:4000", "session.error:bad_message",
+            "session.error:bad_message", "session.error:bad_message"],
+    "031": ["close:4000", "session.error:bad_message", "session.error:bad_message",
+            "session.error:bad_message"],
 }
 
 # A step that reads or asserts something. Every other step only produces input for one, so
@@ -457,11 +468,18 @@ def check_vector(reg: Registry, document: object, name: str) -> tuple[int, list[
                 fail(at, "no text")
             elif op == "send" and step.get("refused"):
                 # A vector sends a malformed frame on purpose when it is testing the
-                # refusal: the frame is *meant* not to conform.
+                # refusal: the frame is *meant* not to conform. One whose malformation is
+                # that it is not JSON at all says so, so that the bytes a parser refuses
+                # are a deliberate transcript and not a vector written wrong — and so
+                # that the marker cannot be left on a frame that does parse.
                 try:
                     json.loads(step["text"])
                 except json.JSONDecodeError as error:
-                    fail(at, f"refused frame is not JSON: {error}")
+                    if not step.get("unparsable"):
+                        fail(at, f"refused frame is not JSON: {error}")
+                else:
+                    if step.get("unparsable"):
+                        fail(at, "marked `unparsable`, but the frame parses")
             else:
                 check_frame(reg, step["text"], at)
                 if op == "expect":
@@ -602,11 +620,78 @@ def check_method_map() -> None:
                 )
 
 
+# The values `PROTOCOL.md` §5 refuses — a control character in a `display_name`, a `path`
+# and each member of a grant's `paths` is `bad_params` — and conforming values of the same
+# shape to validate beside them, so that a constraint which refuses everything fails here
+# too. The `Cc` category is C0 (U+0000–U+001F), DELETE (U+007F) and C1 (U+0080–U+009F).
+CONTROL_CARRYING = {
+    "U+0000": "src/main\u0000.rs",
+    "U+0001": "src/main\u0001.rs",
+    "TAB": "src/main\t.rs",
+    "LF": "src/main.rs\n",
+    "U+001F": "src/main\u001f.rs",
+    "DEL": "src/main\u007f.rs",
+    "C1 U+0080": "src/main\u0080.rs",
+    "C1 U+0085": "src/main\u0085.rs",
+    "C1 U+009F": "src/main\u009f.rs",
+}
+CONFORMING = {
+    "a plain path": "src/main.rs",
+    "a space inside": "src/my main.rs",
+    "non-ASCII": "src/main\u00e9.rs",
+    "non-BMP": "src/main\U0001f600.rs",
+}
+# Where §5 holds the rule: the two values themselves, and one list, because a grant's
+# `paths` and the room's open-document set are lists of the same value.
+REFUSAL_SITES = (
+    ("a `path`", "common.json#/$defs/documentPath", lambda text: text),
+    ("a `display_name`", "common.json#/$defs/displayName", lambda text: text),
+    ("a list member", "common.json#/$defs/documentList", lambda text: [text]),
+)
+
+
+def check_control_refusal(reg: Registry) -> int:
+    """Runs the schema's own refusal of the control characters `PROTOCOL.md` §5 forbids.
+
+    §5 makes a control-carrying `display_name`, `path` or grant member `bad_params`, and
+    the machine-readable model has to refuse it too: an implementation that reads
+    `common.json` and not this file must not conclude such a value is legal. Nothing else
+    here sends the schema one — a refused frame in the corpus is deliberately not
+    schema-checked — so without this the exclusion could be deleted from the model with
+    every other check still green.
+    """
+    checks = 0
+    for label, ref, wrap in REFUSAL_SITES:
+        validator = Draft202012Validator({"$ref": f"{BASE}{ref}"}, registry=reg)
+        for name, text in CONTROL_CARRYING.items():
+            checks += 1
+            if not list(validator.iter_errors(wrap(text))):
+                fail(
+                    "schema",
+                    f"{label} accepts {name} ({text!r}), which `PROTOCOL.md` §5 refuses "
+                    "with `bad_params`",
+                )
+        for name, text in CONFORMING.items():
+            checks += 1
+            errors = list(validator.iter_errors(wrap(text)))
+            if errors:
+                fail(
+                    "schema",
+                    f"{label} refuses the conforming {name} ({text!r}): {errors[0].message}",
+                )
+    return checks
+
+
 def main() -> int:
+    """Checks every schema and every claim the corpus makes, and reports what it found."""
     global CHECKS
     reg = registry()
     check_method_map()
-    print(f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas")
+    refusals = check_control_refusal(reg)
+    print(
+        f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas, {refusals} values "
+        "checked against the control-character refusal"
+    )
 
     vectors = sorted(VECTOR_DIR.glob("*.json"))
     assertions = 0
