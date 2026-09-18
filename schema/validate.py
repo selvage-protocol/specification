@@ -67,9 +67,9 @@ BASE = "https://selvageprotocol.com/schema/1/"
 # deliberate edit, and these three numbers are what makes the opposite edit — a silent
 # deletion — a red run instead of a smaller number in a line of output. Update them in the
 # same commit that changes the corpus.
-EXPECTED_VECTORS = 28
-EXPECTED_FRAME_CHECKS = 34766
-EXPECTED_ASSERTIONS = 8617
+EXPECTED_VECTORS = 31
+EXPECTED_FRAME_CHECKS = 34858
+EXPECTED_ASSERTIONS = 8642
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
 # closed vocabulary is schema-valid and count-identical, so this census is what makes one a
@@ -114,6 +114,12 @@ EXPECTED_CODES = {
             "session.error:unsupported_version"],
     "028": ["close:4000", "close:4000", "close:4005", "error:unsupported_version",
             "session.error:bad_message", "session.error:bad_message"],
+    "029": ["close:4000", "close:4000", "error:bad_params", "error:bad_params",
+            "error:bad_params", "session.error:bad_params", "session.error:bad_params"],
+    "030": ["close:4000", "close:4000", "session.error:bad_message",
+            "session.error:bad_message", "session.error:bad_message"],
+    "031": ["close:4000", "session.error:bad_message", "session.error:bad_message",
+            "session.error:bad_message"],
 }
 
 # A step that reads or asserts something. Every other step only produces input for one, so
@@ -462,11 +468,18 @@ def check_vector(reg: Registry, document: object, name: str) -> tuple[int, list[
                 fail(at, "no text")
             elif op == "send" and step.get("refused"):
                 # A vector sends a malformed frame on purpose when it is testing the
-                # refusal: the frame is *meant* not to conform.
+                # refusal: the frame is *meant* not to conform. One whose malformation is
+                # that it is not JSON at all says so, so that the bytes a parser refuses
+                # are a deliberate transcript and not a vector written wrong — and so
+                # that the marker cannot be left on a frame that does parse.
                 try:
                     json.loads(step["text"])
                 except json.JSONDecodeError as error:
-                    fail(at, f"refused frame is not JSON: {error}")
+                    if not step.get("unparsable"):
+                        fail(at, f"refused frame is not JSON: {error}")
+                else:
+                    if step.get("unparsable"):
+                        fail(at, "marked `unparsable`, but the frame parses")
             else:
                 check_frame(reg, step["text"], at)
                 if op == "expect":

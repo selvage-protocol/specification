@@ -102,7 +102,11 @@ It prints one line per schema, the frame checks it made, and `result OK`. It che
   not schema-checked.
 
 A frame a vector sends *on purpose* knowing it is malformed — that is how a refusal is tested —
-carries `"refused": true`, and its params are not schema-checked.
+carries `"refused": true`, and its params are not schema-checked. One whose malformation is that
+it is not JSON at all carries `"unparsable": true` as well, because the two are different
+claims: the first says the frame is well formed and refused for what it says, the second says a
+parser refuses it, and a marker left on a frame that does parse is a red run rather than an
+assertion that never runs.
 
 ## Replaying the vectors against a server
 
