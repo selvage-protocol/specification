@@ -130,9 +130,9 @@ python3 runner/run_vectors.py
 ```
 
 It prints one line per vector and ends with a summary — `28 files, 34766 frame checks, 28 vectors
-passed, 0 failed` once the `selvaged` it runs implements every frame the corpus covers, so
-`021`-`023` are red against a server that does not yet speak `doc.grant` — and exits non-zero if
-any vector fails. `SELVAGE_VECTORS=DIR` reads the transcripts from another directory — replaying a
+passed, 0 failed` against a `selvaged` that implements every frame the corpus covers, and exits
+non-zero if any vector fails. A vector that pins behaviour newer than the server you point it at is
+where a red line comes from: the summary names the file and the frame it disagreed about. `SELVAGE_VECTORS=DIR` reads the transcripts from another directory — replaying a
 corrupt *copy* is how a failure is shown to be caught — and both halves honour it. The counts
 `schema/validate.py` pins are this repository's, so either half fails on a directory that does
 not hold them rather than checking less of it quietly.

@@ -60,8 +60,14 @@ The implementations this document describes:
 
 ### A.3 The TypeScript client (VS Code, and the Neovim companion)
 
-- Bounded reconnection matches the Rust policy: 500 ms doubling to a 10 s ceiling, five attempts,
-  no retry on the first connection.
+- Bounded reconnection: 500 ms doubling to a 10 s ceiling, with the **attempt budget sized from the
+  server's advertised `room_grace_ms`** (`/meta`, §2) so the cumulative backoff spans the grace the
+  room actually has — seven attempts, ≈35 s, for the 30 s default. `PROTOCOL.md` §9.1 asks for the
+  shape — a bounded retry, an observable give-up, no retry of a refusal — and these numbers are
+  policy. A server that advertises no grace (or an unreachable `/meta`) falls back to the previous
+  five attempts, and a caller's own `maxAttempts` still wins; the budget is capped at about an hour
+  of backoff rather than retrying forever. The Rust client predates the advertised grace and still
+  uses the flat five attempts (§A.2), so the two engines currently differ here.
 - Bounds a request at ten seconds and fails every pending request when the socket goes.
 - **The outbound queue is unbounded** (a `QueuedFrame[]` drained when the socket opens).
 - Rotates its awareness client id on every reconnect (`rotateIdentity` before `session.hello`),
