@@ -92,10 +92,10 @@ members in ascending order.
 ### A.6 Reconnection status, and what it costs
 
 Both clients implement the bounded policy of `PROTOCOL.md` §9.1 and both rotate their awareness
-client ids, so a reconnecting peer is never mistaken for the peer it replaces. What no client can
-express is the retry itself: nothing is emitted while a reconnect is being attempted, so an adapter
-that wants to show "reconnecting…" has to infer it from the silence (`PROTOCOL.md` §9.1, *Known
-gap*).
+client ids, so a reconnecting peer is never mistaken for the peer it replaces. Both reference
+engines now emit a local `reconnecting` event while a retry is in flight, so an adapter does not
+have to infer it from the silence; what remains a wire gap is the retry itself, because
+`selvage/1`'s event vocabulary has no name for it (`PROTOCOL.md` §9.1, *Known gap*).
 
 ### A.7 The second client
 
@@ -372,3 +372,35 @@ defensible rather than complete — a path absent from the listing can still be 
 knows it, so staleness is a discoverability problem and not a protocol fault — but whether
 `selvage/1` wants a file-created/file-removed event, or a republish policy it states, is unowned
 for now.
+
+**B.24 `awareness_client_id` is not an identity.** `PROTOCOL.md` §8.4 now states normatively what
+the id is not: a receiver **MUST NOT** treat it as identity, because a client chooses it, the
+server carries it, and any holder of the room's token may claim an id a seated peer is already
+using — to publish a cursor under that peer's name, or to publish nothing and suppress the peer's
+own state behind the claim. The session layer's identity is `peer_id` together with the display
+name attached to it. Whether the server should mint or validate the id — taking the choice out of a
+client's hands, at the cost of the id no longer matching a client's local `Awareness` instance — or
+refuse a second claim of an id already in force, is **unresolved**. The statement in §8.4 is what
+stands until one of those is chosen.
+
+**B.25 A repeated query parameter is refused.** `PROTOCOL.md` §5.1 now forbids a URL that repeats
+`room` or `token`, because last-wins and first-wins parsers would name two different rooms from one
+URL. §11 has no code for a malformed URL, so the refusal is `token_invalid`, the code a room whose
+named token is not the room's already gets — a distinction a client cannot see, the same cost §B.23
+records for `doc.grant`'s `bad_params`. **Decided** as the code to use; whether `selvage/1` wants a
+URL-fault code of its own is open, and §5.1, §11 and any vector that pins one move together if it
+is wanted.
+
+**B.26 A one-sided drop has no liveness bound.** A socket can die at one end while the other stays
+open — a roaming client, a hung relay, a half-open TCP connection — and every party is individually
+conformant. The server never ends a session for silence (`PROTOCOL.md` §2.1, §9), so it goes on
+holding the connection as the room's host; the remaining guests never receive `host.detached`, so
+no grace period starts; the real host reconnects and is refused `host_present`; and the room stays
+hosted by a peer it cannot displace while its guests keep editing into a room nobody can reclaim.
+`PROTOCOL.md` says nothing about detecting liveness, so the composition hangs where each half is
+right — the server for keeping the session, the client for stopping at a refusal. Whether
+`selvage/1` should require a liveness bound, and where it belongs (the server treating a missed
+WebSocket Pong as a fault after some window, or a `host_present` claim becoming reclaimable by the
+token holder) is **unresolved**, and it is wire-visible because it decides whether a session ends,
+so it is a decision and not wording. The reference server is adding a liveness bound; the spec does
+not yet bind one.
