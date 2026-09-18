@@ -138,6 +138,8 @@ one such bound on a value — a `display_name` is at most 32 **UTF-16 code units
 §5) — counted in the unit a JavaScript string's `.length` reports and the unit §8.1 of that document
 counts offsets in, so an astral character costs two. A name over the bound is refused `bad_params`,
 the code a blank one gets; it is not a canonical-form fault, and the frame is not `bad_message`.
+The control characters `PROTOCOL.md` §5 forbids in a `display_name` and a `path` are the same kind
+of value refusal: the string is canonical, and it is the value a server will not carry.
 
 A server's own limit on what it will carry is a different thing, and `PROTOCOL.md` §5 fixes no
 number for it: the size of an inbound frame or message (§2.1), a listing it will not store whole, a

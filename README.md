@@ -129,7 +129,7 @@ Then, from this directory:
 python3 runner/run_vectors.py
 ```
 
-It prints one line per vector and ends with a summary — `27 files, 34748 frame checks, 27 vectors
+It prints one line per vector and ends with a summary — `28 files, 34766 frame checks, 28 vectors
 passed, 0 failed` once the `selvaged` it runs implements every frame the corpus covers, so
 `021`-`023` are red against a server that does not yet speak `doc.grant` — and exits non-zero if
 any vector fails. `SELVAGE_VECTORS=DIR` reads the transcripts from another directory — replaying a

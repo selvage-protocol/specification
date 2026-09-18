@@ -21,7 +21,7 @@
     },
     "keepalive": {
       "type": "object",
-      "description": "The session's clocks, advertised by the server. The advertised values are the session's: a client that substitutes its own disagrees with its peers about when a cursor is stale (§8.2, §9).",
+      "description": "The session's clocks, advertised by the server. The advertised values are the session's: a client that substitutes its own disagrees with its peers about when a cursor is stale (§8.2, §9). `/meta`'s object carries `room_grace_ms` in addition to the three clocks the handshake reply also carries.",
       "required": [
         "ping_interval_ms",
         "awareness_renew_ms",
@@ -42,6 +42,11 @@
           "type": "integer",
           "minimum": 1,
           "description": "How often the server sends a WebSocket Ping. Protocol-level pings are not session messages and are never relayed (§9)."
+        },
+        "room_grace_ms": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "The server's default room grace period: how long a room survives its host disconnecting. Advertised in `GET /meta`'s `keepalive` (§2), and carried per room as `grace_ms` in `host.detached` (§9). A client reads it to size its reconnect retry so that it does not give up inside a window the room still exists for (§9.1); the number is policy."
         }
       }
     },

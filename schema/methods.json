@@ -77,7 +77,7 @@
       "properties": {
         "paths": {
           "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentList",
-          "description": "The room's grant: the host's listing of the files in its working tree, workspace-relative and `/`-separated, in ascending order by UTF-16 code unit as the host wrote it. No directory entry is carried: a receiver that presents a tree derives each directory by splitting the paths it was given (\u00a75). The listing replaces the room's grant wholesale, so a shorter array is a smaller grant and a delta was never sent; `[]` is a valid grant, and a missing or non-array `paths` is `bad_params`. The server carries the order it receives and does not sort, deduplicate or normalise it, and it resolves none of the names."
+          "description": "The room's grant: the host's listing of the files in its working tree, workspace-relative and `/`-separated, each non-blank and free of control characters (the Unicode `Cc` category), in ascending order by UTF-16 code unit as the host wrote it. No directory entry is carried: a receiver that presents a tree derives each directory by splitting the paths it was given (\u00a75). The listing replaces the room's grant wholesale, so a shorter array is a smaller grant and a delta was never sent; `[]` is a valid grant, and a missing or non-array `paths`, or a member that is not a non-blank, control-free string, is `bad_params`. The server carries the order it receives and does not sort, deduplicate or normalise it, and it resolves none of the names."
         }
       }
     },

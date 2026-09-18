@@ -148,7 +148,8 @@ These words carry obligations, and the protocol uses them precisely.
     "keepalive": {
       "ping_interval_ms": 30000,
       "awareness_renew_ms": 15000,
-      "awareness_expire_ms": 30000
+      "awareness_expire_ms": 30000,
+      "room_grace_ms": 30000
     },
     "roles": ["host", "guest"]
   }
@@ -159,7 +160,7 @@ These words carry obligations, and the protocol uses them precisely.
   | `server` | string | free-form identification, e.g. `selvaged/0.1.0`. For diagnostics only, and not stable; a peer **MUST NOT** depend on it |
   | `wire_versions` | array of string | the wire versions this server accepts (§10). A client that can speak none of them **MUST NOT** open the socket |
   | `capabilities` | array of string | what the server believes it has; the same list the handshake reply advertises (§10) |
-  | `keepalive` | object | the session's clocks — `ping_interval_ms`, `awareness_renew_ms`, `awareness_expire_ms` — which are the ones the handshake reply carries too (§8.2) |
+  | `keepalive` | object | the session's clocks — `ping_interval_ms`, `awareness_renew_ms`, `awareness_expire_ms` — which are the ones the handshake reply carries too (§8.2), and, in `/meta` alone, `room_grace_ms`, the server's default grace period (§9) |
   | `roles` | array of string | the roles this server seats (§9) |
 
   Unknown members are ignored, like an unknown member anywhere else. What a client needs is
@@ -172,7 +173,9 @@ These words carry obligations, and the protocol uses them precisely.
 
   - **Reachable and compatible** — `wire_versions` holds a version the client can speak: connect.
     The advertised `keepalive` **MAY** be adopted at once, without waiting for the handshake,
-    since `/meta` and the handshake reply advertise the same thing (§8.2, §10).
+    since the three clocks are the ones the handshake reply carries too (§8.2, §10); `/meta`
+    carries `room_grace_ms` in addition, so that a client can size its reconnect retry to the
+    grace before it has a session to be detached from (§9.1).
   - **Reachable and incompatible** — no version in the list: **do not connect**. The client
     refuses locally, with the reason the server would have given (`unsupported_version`, §11),
     before a socket is opened at all.
@@ -193,7 +196,7 @@ These words carry obligations, and the protocol uses them precisely.
 ### 2.1 Limits
 
 Nothing here is negotiated, and the protocol fixes none of the numbers: what a server bounds is
-its policy, not a peer's contract. Four consequences do bind a peer.
+its policy, not a peer's contract. Five consequences do bind a peer.
 
 - **A server bounds the wait for `session.hello`** and closes a connection that stays silent past
   it (§5). A client **MUST NOT** expect an unseated connection to live indefinitely.
@@ -209,19 +212,34 @@ its policy, not a peer's contract. Four consequences do bind a peer.
   produced, so a client **SHOULD** bound what it holds — by failing the session, or by not
   committing a CRDT transaction until there is room — rather than queue without limit. The level
   is a settled decision rather than an oversight ([`NOTES.md`](NOTES.md) §B.20).
+- **A server is bounded at both ends of its state.** A server **MUST** enforce a finite
+  configured bound on the bytes one connection may send and on the state one room may store,
+  and **MUST** refuse deterministically past each rather than grow without limit. The numbers
+  are policy, as the opening sentence says; that a bound exists is what a peer is held to,
+  because a second implementation cannot be held to a protocol whose other end allocates without
+  limit. The per-connection bound is the frame and message bound below — past it the connection
+  ends the way a dropped socket ends — and a room's stored state is its peers, its open-document
+  set and its grant: a request that would exceed a bound the server sets is refused with
+  `bad_params` or an `x.` capacity code (§10.1, §11), leaving the room as it was.
 
 The reference server's numbers, for a reader who needs to know what to expect in practice
 *(informative)*:
 
 | bound | reference value | what happens when it is reached |
 |---|---|---|
-| HTTP request head | 16 KiB, and 5 s to arrive | the connection is closed without a response |
+| HTTP request head | 16 KiB, and `head_timeout` — 5 s — to arrive | an over-size head is answered `431 Request Header Fields Too Large`; a head that does not finish inside `head_timeout` is closed without a response. Neither is admitted |
 | `session.hello` after the upgrade | 10 s | `hello_required`, then close 4000 |
 | WebSocket ping | every 30 s | the server pings; it never closes a connection for silence |
 | outbound queue, per connection | 32 frames and 32 MiB | a peer past either cap is disconnected and the room is told `peer.left` |
-| connections | 1024 | past the cap a connection is closed without an answer; still no idle reaper, no per-source rate limit |
+| connections | 1024, counted past the head | past the cap a plain HTTP request is answered `503`, and a WebSocket upgrade is answered and then closed with **1013**; a half-sent head is bounded by `head_timeout` and not counted. Still no idle reaper, no per-source rate limit |
 | inbound WebSocket frame | 8 MiB | the connection ends the way a dropped socket ends: no `session.error`, no session close code |
 | inbound WebSocket message | 8 MiB | the same |
+
+The head bound applies before admission, and it has two halves: `head_timeout` bounds how long
+the whole request head may take — not merely the gap between reads — and the 16 KiB bounds its
+size. A connection is counted against the connection cap only after its head has been read, so a
+half-sent head occupies a descriptor but neither a slot nor the 16 KiB bound, and it is
+`head_timeout` that reclaims it.
 
 The frame and message bounds are the server's own configured values rather than the
 WebSocket library's defaults, and the queue and connection rows are enforced caps rather
@@ -238,6 +256,14 @@ peer to peer through the relay, not against the server.
 ## 4. Session envelope
 
 Every text frame is one JSON object. Three shapes exist, distinguished by which keys are present.
+
+A JSON object in a text frame is also a *set* of member names: the same name **MUST NOT** appear
+twice in one object, at any depth. A receiver **MUST** refuse a frame that repeats one as
+`bad_message` — before seating that closes the connection (§11) — rather than let a parser's
+last-wins or first-wins decide what the frame says. RFC 8259 admits the duplicate syntax and only
+*recommends* unique names; this document makes uniqueness a rule, because two receivers that
+resolve a duplicate differently re-derive two different frames from one set of bytes, which is
+exactly the disagreement this document exists to close.
 
 ### 4.1 Request (client → server)
 
@@ -339,6 +365,20 @@ string is the field a client sends, the `PeerInfo` a server stores and echoes, a
 **SHOULD** check the bound before sending, so that its person is asked for a shorter name rather
 than refused after typing it.
 
+A `display_name` **MUST NOT** contain a control character — the Unicode `Cc` category: C0
+(U+0000–U+001F), DELETE (U+007F) and C1 (U+0080–U+009F) — and a server **MUST** refuse one that
+does with `bad_params` — before seating, the refusal a blank name already gets: `session.error`,
+then close **4000**. The bound above exists because every client draws the name somewhere, and a
+control character is exactly what a client cannot draw: a terminal escape or a carriage return
+hides inside a string whose owner did not write what a peer sees, and two clients that render one
+differently disagree about who is present. The same rule holds a `path` — in `doc.open` and
+`doc.close` below, and each member of a grant's `paths` — for that reason and one more: a path
+becomes a file name in a client that mirrors the working tree, and a control character in one is
+read differently by the filesystem, the terminal and the next tool than by the receiver that
+rendered it. The rule is about the characters and not the shape: `..`, an absolute path and a name
+that escapes the working copy remain names the server carries unvalidated (§12,
+[`NOTES.md`](NOTES.md) §B.8), and confinement stays where §12 puts it.
+
 The reply is a single `room.created` or `room.joined` event (§6.1, §6.2), and it is guaranteed to
 be the first frame on the connection after the handshake, before any relayed payload or other
 event. Refusals are a `session.error` event followed by a WebSocket close with the matching code
@@ -358,9 +398,17 @@ ws://host:port/session                          → mint a room; the connection 
 ws://host:port/session?room=<room_id>&token=<tok> → join an existing room
 ```
 
-`room` and `token` are percent-encoded. Unknown query parameters are ignored, so a client **MAY**
-attach its own parameters without a protocol change. Which of the two cases a URL is depends on
-`room` alone:
+`room` and `token` are percent-encoded, and the decoding is **RFC 3986**: `%XX` is the only
+escape, and a literal `+` is the character `+`, never a space. (`+` means space only under the
+`application/x-www-form-urlencoded` rule, which this query does not use. A producer that encodes
+by RFC 3986's unreserved set writes a `+` in a value as `%2B`; one that leaves it literal writes
+`+`. A receiver **MUST** read a literal `+` as `+` either way rather than refuse it, because
+otherwise one implementation's token is another's `token_invalid`.) Unknown query parameters are
+ignored, so a client **MAY** attach its own parameters without a protocol change. `room` and
+`token` each appear **at most once**: a URL that repeats either is malformed, and the server
+refuses it rather than let one of two values win. There is no code for a malformed URL in §11's
+vocabulary, so that refusal is the join refusal `token_invalid`, the code a room whose named token
+is not the room's already gets. Which of the two cases a URL is depends on `room` alone:
 
 - **A `room` without a `token`**, or with a token that is not the room's, is a `token_invalid`
   refusal.
@@ -386,8 +434,9 @@ it can be told the room exists, and it cannot be seated in it.
 { "v": "selvage/1", "id": 2, "method": "doc.open", "params": { "path": "src/main.rs" } }
 ```
 
-`path` is a workspace-relative path. It **MUST** be non-blank: a blank path is
-`bad_params`, and, beside length, a path is otherwise unvalidated in this slice (§12, [`NOTES.md`](NOTES.md)
+`path` is a workspace-relative path. It **MUST** be non-blank and free of control characters
+(§5): a blank path is `bad_params`, and so is one carrying a control character, and
+— beside length and that — a path is otherwise unvalidated in this slice (§12, [`NOTES.md`](NOTES.md)
 §B.8). A server **MAY** bound the length of a path as its own policy, as it may bound a grant
 listing, and a path over that bound is `bad_params`. The connection declares that it holds `path` open, and the room's open-document set gains
 the path if it was not already in it.
@@ -423,7 +472,8 @@ held stay in the room's set: a hold belongs to a connection and the set belongs 
 
 A `doc.grant` publishes the room's **grant**: the host's listing of the files in its working tree,
 as an array of workspace-relative paths. Each is the same kind of value as `doc.open`'s `path` and
-is held to the same rule — it **MUST** be non-blank, and it is otherwise unvalidated in this slice
+is held to the same rule — it **MUST** be non-blank and free of control characters (§5), and it
+is otherwise unvalidated in this slice
 (§12, [`NOTES.md`](NOTES.md) §B.8). A `paths` that is not an array, a member of it that is not a
 string, or a blank one is `bad_params`; so is a request with no `paths` at all,
 because the member is required.
@@ -949,6 +999,16 @@ last-claimant-wins: a client that reuses an id after reconnecting makes the id n
 a stale state carrying the old clock can still be in flight. A client **SHOULD** use a fresh
 awareness client id for every connection, which is what keeps the mapping one-to-one (§9.1).
 
+An `awareness_client_id` is **not an identity**, and a receiver **MUST NOT** treat it as one. It
+is a number a client chooses and the server carries: nothing on the wire binds it to a `peer_id`,
+and because the token is the whole permission (§12), any holder may claim an id a seated peer is
+already speaking with — to publish a cursor under that peer's name, or to publish nothing and so
+hide the peer's own state behind the claim. The session layer's identity is `peer_id` and the
+display name attached to it, and a name is only as trustworthy as the token that allowed the
+claim; an adapter that keys presence to the awareness id alone is reading a number two peers can
+hold. Whether the server should mint the id or refuse a claim already in force is open
+([`NOTES.md`](NOTES.md) §B.24).
+
 When a peer leaves, its awareness state **SHOULD** be dropped locally rather than left to expire
 by the clock — the room's roster is the authority on who is present, and a state whose peer has
 gone has no cursor to show — but only the state for the awareness id it last claimed, and only
@@ -1041,13 +1101,19 @@ a reconnecting client is a new peer that has to say who it is again. What it mus
   bounded, giving up **MUST** be a decision a caller can observe, and a refusal **MUST NOT** be
   retried. A client that has never had a session has nothing to recover, and a failure before the
   first connection is reported to whoever asked for one rather than retried behind its back. (The
-  reference client's backoff parameters are [`NOTES.md`](NOTES.md) §A.2.)
-- **A client has to be able to tell its user which of the two happened, and the event vocabulary
-  cannot express it today.** A refusal reaches an adapter as `session.error` (§6) and then, if the
-  server closed the connection, as a disconnection. A recoverable drop the client is retrying
-  produces **no event at all**, and one that gave up produces the same disconnection an orderly
-  close produces. An adapter that wants to show "reconnecting…" has to infer it from the silence.
-  **Known gap**, and the fix is an event, not a wire change.
+  reference client's backoff parameters are [`NOTES.md`](NOTES.md) §A.2.) A client that knows the
+  room's grace — `room_grace_ms` from `/meta` (§2), or the `grace_ms` a `host.detached` carried
+  (§9) — **SHOULD** keep retrying at least until that window has passed, because the room survives
+  its host's absence for exactly that long and a retry that gives up inside it abandons a room
+  that was still joinable. The grace is policy, like the retry's own numbers; what the wire fixes
+  is that both exist and that a client uses the one it was told.
+- **A client has to be able to tell its user which of the two happened, and the wire vocabulary
+  still cannot express it.** A refusal reaches an adapter as `session.error` (§6) and then, if the
+  server closed the connection, as a disconnection. A recoverable drop the client is retrying is
+  now visible to an adapter as a local `reconnecting` event in both reference engines, so it no
+  longer has to be inferred from the silence; what the *wire* cannot express is the retry itself,
+  and one that gave up produces the same disconnection an orderly close produces. **Known gap** on
+  the wire, and the fix there is an event, not a change to any existing frame.
 - **Nothing survives the room.** After `room.gone` there is no room to rejoin, on any URL, with any
   token (§9).
 
@@ -1055,7 +1121,9 @@ a reconnecting client is a new peer that has to say who it is again. What it mus
 
 The two machines a reader has to build, derived from the transitions above and checked against the
 corpus. Each row reads: in this state, this frame or this timer moves the machine here, and this is
-what goes out.
+what goes out. Where one frame carries more than one fault, the order §11 fixes decides which row
+it reads as — the envelope and its `id` first, then `v`, then the method and its params — so a frame
+is never judged by a fault later in that order than one it also carries.
 
 **The connection.**
 
@@ -1068,7 +1136,7 @@ what goes out.
 | unseated | a first text frame that is not `session.hello` | closed | `session.error{hello_required}`, close 4000 |
 | unseated | a first frame that is binary, unparsable, or an envelope with no `id` | closed | `session.error{bad_message}`, close 4000 |
 | unseated | `session.hello` whose params do not parse, including no `display_name` | closed | `session.error{bad_message}`, close 4000 |
-| unseated | `session.hello` whose `display_name` is blank | closed | `session.error{bad_params}`, close 4000 |
+| unseated | `session.hello` whose `display_name` is blank or carries a control character (§5) | closed | `session.error{bad_params}`, close 4000 |
 | unseated | `session.hello` whose `display_name` is over 32 UTF-16 code units | closed | `session.error{bad_params}`, close 4000 |
 | unseated | `session.hello` with an incompatible `v` | closed | `session.error{unsupported_version}`, close 4005 |
 | unseated | a join naming a room that does not exist | closed | `session.error{room_unknown}`, close 4001 |
@@ -1077,9 +1145,11 @@ what goes out.
 | unseated | no frame within the server's hello timeout | closed | `session.error{hello_required}`, close 4000 |
 | seated | `session.hello` | seated | the error response `already_seated` |
 | seated | `doc.open` / `doc.close` with a non-blank `path` | seated | the result, then `doc.opened`/`doc.closed` to the room |
-| seated | `doc.open` / `doc.close` with a blank or over-long `path`, or params that do not parse | seated | the error response `bad_params` |
+| seated | `doc.open` / `doc.close` with a blank, over-long or control-carrying `path`, or params that do not parse | seated | the error response `bad_params` |
+| seated | `doc.grant` with a `paths` array of non-blank, control-free strings | seated | the result, then `doc.granted` to the room |
+| seated | `doc.grant` from a connection the server does not hold as the room's host, or with malformed `paths` | seated | the error response `bad_params` |
 | seated | `session.rename` with a non-blank `display_name` within the bound | seated | `{ "result": {} }` to the caller, then `peer.renamed` to the room, the caller included |
-| seated | `session.rename` with params that do not parse, or a blank or over-long `display_name` | seated | the error response `bad_params` |
+| seated | `session.rename` with params that do not parse, or a blank, over-long or control-carrying `display_name` | seated | the error response `bad_params` |
 | seated | any other method | seated | the error response `unknown_method` |
 | seated | a text frame that is not an envelope, or has no `id` | seated | `session.error{bad_message}` |
 | seated | a request whose `v` is incompatible | closed | the error response `unsupported_version` for that request, then close 4005 |
@@ -1188,8 +1258,8 @@ same vocabulary is used in both, and the state a connection is in decides what a
 | code | meaning | unseated | seated |
 |---|---|---|---|
 | `unknown_method` | no such method | — (a non-hello first method is `hello_required`) | error response; the connection stays open |
-| `bad_message` | not a session envelope / no `id` / undecodable | refusal: `session.error`, then close **4000** | `session.error`; the connection stays open |
-| `bad_params` | method params missing or malformed | refusal for a blank or over-long `display_name`: `session.error`, then close **4000** | error response; the connection stays open |
+| `bad_message` | not a session envelope / no `id` / duplicate member name / undecodable | refusal: `session.error`, then close **4000** | `session.error`; the connection stays open |
+| `bad_params` | method params missing or malformed | refusal for a blank, over-long or control-carrying `display_name`: `session.error`, then close **4000** | error response; the connection stays open |
 | `hello_required` | the first text frame was not `session.hello`, or none arrived in time | refusal: `session.error`, then close **4000** | — |
 | `unsupported_version` | version refused | refusal: `session.error`, then close **4005** | the error response to the offending request, then close **4005** |
 | `room_unknown` | no such room (never minted, or destroyed) | refusal: `session.error`, then close **4001** | — |
@@ -1220,6 +1290,21 @@ with a peer yet and has nothing to keep open. A first frame that is not a text f
 frame, say — is reported as `bad_message` and the connection closes with 4000, not
 `hello_required`: what was wrong is the *shape* of the frame, and the client is told the same code
 it would get for an unparsable envelope.
+
+**When one frame carries more than one fault, one order decides which is answered.** A receiver
+**MUST** judge a frame in the order it is read: the envelope must parse and carry an `id`
+(`bad_message`), then its `v` must be compatible (`unsupported_version`), then the method must
+resolve — `hello_required` for a first frame that is not `session.hello`, `unknown_method`,
+`already_seated` — and only then are its `params` read, with the code each method's params rule
+gives (§5). The first fault in that order is the only one answered, and before seating it is the
+one whose close code is used. So
+`{"v":"selvage/2","id":5,"method":"cursor.teleport"}` on a seated connection is
+`unsupported_version` and close **4005**, never `unknown_method` and a live connection; a first
+frame with neither `id` nor a compatible `v` is `bad_message` and close **4000**, never
+`hello_required` or `unsupported_version`; and a frame that repeats a member name is `bad_message`
+before any of them. Two implementations that dispatch in a different order answer differently — on
+this wire one answer closes the connection where the other keeps it — so the order above is the one
+`selvage/1` fixes (`vectors/028` pins a frame of each pairing).
 
 The codes above are `selvage/1`'s. An implementation **MUST NOT** reuse one with a different
 meaning, and an implementation that needs a code of its own **SHOULD** name it in the reserved
@@ -1260,10 +1345,12 @@ the same token already grants read access to the whole working copy, this grants
 devices. ([`NOTES.md`](NOTES.md) §B.2.)
 
 **The denial-of-service posture is a v1 posture.** §2.1's capacity rows are the reference
-server's own policy: a 1024-connection cap, no idle reaper, no per-source rate limit, a
-per-connection outbound queue of 32 frames and 32 MiB past which the slow peer is disconnected,
-and a frame over the transport's bound ends a connection with nothing on the wire to say
-why. A room's peers can be flooded at whatever rate their sockets accept. A deployment on the
+server's own policy: a 1024-connection cap counted past the request head, no idle reaper, no
+per-source rate limit, a per-connection outbound queue of 32 frames and 32 MiB past which the slow
+peer is disconnected, and a frame over the transport's bound ends a connection with nothing on the
+wire to say why. A room's peers can be flooded at whatever rate their sockets accept. What a peer
+*can* rely on is §2.1's bound: a conforming server refuses deterministically past a finite
+configured limit on a connection's inbound bytes and on a room's stored state. A deployment on the
 public internet **MUST** put a terminator or a proxy in front that supplies a connection cap, an
 idle deadline and a rate limit.
 

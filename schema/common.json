@@ -41,7 +41,7 @@
       "type": "string",
       "minLength": 1,
       "pattern": "\\S",
-      "description": "A workspace-relative path: non-empty after trimming, and otherwise unvalidated in this slice (`NOTES.md` §B.8). The reference server answers `bad_params` for a blank one, and `doc.open` and `doc.close` carry the same field. Document identity is the path; it is not encoded inside the CRDT."
+      "description": "A workspace-relative path: non-empty after trimming, free of control characters (the Unicode `Cc` category), and otherwise unvalidated in this slice (`PROTOCOL.md` §5, `NOTES.md` §B.8). The reference server answers `bad_params` for a blank one or one carrying a control character, and `doc.open` and `doc.close` carry the same field, as does each member of a grant's `paths`. Document identity is the path; it is not encoded inside the CRDT."
     },
     "awarenessClientId": {
       "type": "integer",
@@ -54,7 +54,7 @@
       "minLength": 1,
       "maxLength": 32,
       "pattern": "\\S",
-      "description": "At most 32 UTF-16 code units (PROTOCOL.md §5), so an astral character costs two; `maxLength` counts Unicode code points, so an implementation that enforces the protocol's bound counts UTF-16 code units itself. The server answers `bad_params` for a blank or longer name, and never truncates one."
+      "description": "At most 32 UTF-16 code units (PROTOCOL.md §5), so an astral character costs two, and free of control characters (the Unicode `Cc` category); `maxLength` counts Unicode code points, so an implementation that enforces the protocol's UTF-16 bound counts UTF-16 code units itself. The server answers `bad_params` for a blank, longer or control-carrying name, and never truncates one."
     },
     "peer": {
       "type": "object",
