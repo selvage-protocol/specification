@@ -183,11 +183,14 @@ the listing its engine reports on `doc.granted` and opens a granted path on dema
 Neovim guest mirrors the listing into a directory and reads a file only when something opens it.
 
 **B.8 Open-document paths are unvalidated.** `path` is an opaque string, and `PROTOCOL.md` §5 only
-requires it to be non-blank (`trim()` non-empty, and the schema's `documentPath` says the same in
-its description; the JSON Schema itself is a `minLength` and cannot express "non-blank"). The
+requires it to be non-blank and free of control characters. The first is `trim()` non-empty, which
+the schema's `documentPath` describes and approximates with a `minLength` and a `\S` pattern; the
+second is carried exactly, as a `not` around a pattern that matches a control character anywhere in
+the string. Everything past those two is unvalidated, and that is what this item is about. The
 room's grant is no longer missing from the protocol: `PROTOCOL.md` §5 defines `doc.grant` and
-`B.23` describes it, a listing of paths carrying that same non-blank rule and no other, and both
-reference clients now speak it — vectors `021`–`023` pin the exchange. A listing is not a
+`B.23` describes it, a listing of paths carrying that same non-blank, control-free rule and no
+other, and both reference clients now speak it — vectors `021`–`023` pin the exchange. A listing
+is not a
 confinement, and the three rules this item is about are implemented host-side, where the design
 puts them, by `isGrantedPath` and the per-segment directory checks: a read is held under the
 session's captured folders, the exclude globs (`.env`, `.git/**`) bind a peer-named path as they

@@ -95,7 +95,11 @@ It prints one line per schema, the frame checks it made, and `result OK`. It che
 - that every vector asserts something, and that the corpus still holds the number of vectors,
   frame checks and assertion steps it is pinned to, so a deleted assertion is a red run
   rather than a smaller number in a line of output;
-- that a vector is bound to `selvage/1` and `SJ-C/1`.
+- that a vector is bound to `selvage/1` and `SJ-C/1`;
+- that the schema itself refuses a control character in a `display_name`, a `path` and each
+  member of a `paths` or `documents` list, which is `PROTOCOL.md` §5's Unicode `Cc` exclusion:
+  nothing else in the corpus exercises it, because a frame sent on purpose to test a refusal is
+  not schema-checked.
 
 A frame a vector sends *on purpose* knowing it is malformed — that is how a refusal is tested —
 carries `"refused": true`, and its params are not schema-checked.

@@ -12,6 +12,11 @@ An `expect` or `expectBody` frame is additionally checked for the canonical byte
 its own bytes have to be the ones it claims. That is the half of the byte agreement the
 replay enforces against a running server, and this checks it without one.
 
+The exclusion `PROTOCOL.md` §5 fixes on a `display_name`, a `path` and each grant member —
+no Unicode `Cc` character — is the schema's to enforce, and this file runs the shipped
+schema against values that carry one, so that a dropped constraint is a red run here
+rather than a machine-readable model that quietly permits what the prose forbids.
+
 The count of vectors, of frame checks and of assertion steps is pinned, because a corpus
 that shrinks silently reads exactly like a corpus that passes: a deleted assertion changes
 the numbers, and the numbers are a check.
@@ -602,11 +607,77 @@ def check_method_map() -> None:
                 )
 
 
+# The values `PROTOCOL.md` §5 refuses — a control character in a `display_name`, a `path`
+# and each member of a grant's `paths` is `bad_params` — and conforming values of the same
+# shape to validate beside them, so that a constraint which refuses everything fails here
+# too. The `Cc` category is C0 (U+0000–U+001F), DELETE (U+007F) and C1 (U+0080–U+009F).
+CONTROL_CARRYING = {
+    "U+0000": "src/main\u0000.rs",
+    "U+0001": "src/main\u0001.rs",
+    "TAB": "src/main\t.rs",
+    "LF": "src/main.rs\n",
+    "U+001F": "src/main\u001f.rs",
+    "DEL": "src/main\u007f.rs",
+    "C1 U+0080": "src/main\u0080.rs",
+    "C1 U+0085": "src/main\u0085.rs",
+    "C1 U+009F": "src/main\u009f.rs",
+}
+CONFORMING = {
+    "a plain path": "src/main.rs",
+    "a space inside": "src/my main.rs",
+    "non-ASCII": "src/main\u00e9.rs",
+    "non-BMP": "src/main\U0001f600.rs",
+}
+# Where §5 holds the rule: the two values themselves, and one list, because a grant's
+# `paths` and the room's open-document set are lists of the same value.
+REFUSAL_SITES = (
+    ("a `path`", "common.json#/$defs/documentPath", lambda text: text),
+    ("a `display_name`", "common.json#/$defs/displayName", lambda text: text),
+    ("a list member", "common.json#/$defs/documentList", lambda text: [text]),
+)
+
+
+def check_control_refusal(reg: Registry) -> int:
+    """Runs the schema's own refusal of the control characters `PROTOCOL.md` §5 forbids.
+
+    §5 makes a control-carrying `display_name`, `path` or grant member `bad_params`, and
+    the machine-readable model has to refuse it too: an implementation that reads
+    `common.json` and not this file must not conclude such a value is legal. Nothing else
+    here sends the schema one — a refused frame in the corpus is deliberately not
+    schema-checked — so without this the exclusion could be deleted from the model with
+    every other check still green.
+    """
+    checks = 0
+    for label, ref, wrap in REFUSAL_SITES:
+        validator = Draft202012Validator({"$ref": f"{BASE}{ref}"}, registry=reg)
+        for name, text in CONTROL_CARRYING.items():
+            checks += 1
+            if not list(validator.iter_errors(wrap(text))):
+                fail(
+                    "schema",
+                    f"{label} accepts {name} ({text!r}), which `PROTOCOL.md` §5 refuses "
+                    "with `bad_params`",
+                )
+        for name, text in CONFORMING.items():
+            checks += 1
+            errors = list(validator.iter_errors(wrap(text)))
+            if errors:
+                fail(
+                    "schema",
+                    f"{label} refuses the conforming {name} ({text!r}): {errors[0].message}",
+                )
+    return checks
+
+
 def main() -> int:
     global CHECKS
     reg = registry()
     check_method_map()
-    print(f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas")
+    refusals = check_control_refusal(reg)
+    print(
+        f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas, {refusals} values "
+        "checked against the control-character refusal"
+    )
 
     vectors = sorted(VECTOR_DIR.glob("*.json"))
     assertions = 0
