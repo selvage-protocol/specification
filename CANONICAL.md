@@ -232,4 +232,4 @@ version the client can speak **is** a failure, and it is a failure before the so
   runner for another implementation compares canonical forms rather than bytes if it prefers;
   the vectors are byte-exact so that it can.
 - A second implementation that emits SJ-C bytes for the same members emits **the same bytes** as
-  the reference server. That is the whole purpose of this document.
+  the reference server.

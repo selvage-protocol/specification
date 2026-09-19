@@ -186,7 +186,7 @@ Neovim guest mirrors the listing into a directory and reads a file only when som
 requires it to be non-blank and free of control characters. The first is `trim()` non-empty, which
 the schema's `documentPath` describes and approximates with a `minLength` and a `\S` pattern; the
 second is carried exactly, as a `not` around a pattern that matches a control character anywhere in
-the string. Everything past those two is unvalidated, and that is what this item is about. The
+the string. Everything past those two is unvalidated. The
 room's grant is no longer missing from the protocol: `PROTOCOL.md` §5 defines `doc.grant` and
 `B.23` describes it, a listing of paths carrying that same non-blank, control-free rule and no
 other, and both reference clients now speak it, with vectors 021 to 023 pinning the exchange. A
