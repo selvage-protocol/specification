@@ -38,11 +38,11 @@ result         OK
 Those three numbers (31 vectors, 34858 frame checks, 8642 assertion steps) are pinned in
 `schema/validate.py`, so a deleted vector, frame check or assertion is a red run rather than a
 smaller number in a line of output. Green means every schema is a valid JSON Schema 2020-12
-document, every frame in every vector that is not marked `refused` parses and validates against the
-schema for the concern it belongs to, every frame a vector claims the server produces is written in
+document, every schema-eligible frame in every vector parses and validates against the schema for
+the concern it belongs to, every frame a vector claims the server produces is written in
 the canonical byte form of `CANONICAL.md` §2, and the corpus still holds the pinned counts and the
 pinned per-vector census of asserted error and close codes. A frame a vector sends on purpose
-knowing it is malformed is not schema-checked; the run checks that it parses, and that its
+knowing it is malformed is not schema-checked; the run checks whether it parses, and that its
 `unparsable` marker is truthful. The [section below](#validating-the-schemas-and-the-vectors)
 lists the checks in full.
 
@@ -161,7 +161,8 @@ alone cannot carry: a byte-level rule and a suite.
 
 ## Validating the schemas and the vectors
 
-The schemas are checked as schemas, and every frame in every vector is checked against them:
+The schemas are checked as schemas, and every schema-eligible frame in every vector is checked
+against them:
 
 ```
 pip install jsonschema referencing     # or: nix develop  (the same package, pinned)
@@ -171,10 +172,11 @@ python3 schema/validate.py
 It prints a line for the schemas, a line for the corpus counts, and `result OK`. It checks:
 
 - every `*.json` in `schema/` is a valid JSON Schema 2020-12 document;
-- every `send` and `expect` text frame in every vector that is not marked `refused` parses,
-  validates against `schema/session.json`, and validates against the params schema of the method
-  or event it names;
-- that a frame marked `refused` parses, and that a frame marked `unparsable` does not;
+- every `send` text frame not marked `refused` and every `expect` text frame in every vector
+  parses, validates against `schema/session.json`, and validates against the params schema of the
+  method or event it names;
+- that a refused `send` frame parses unless it is also marked `unparsable`, in which case it must
+  not parse;
 - every `expect` and `expectBody` frame is written in the canonical byte form of
   `CANONICAL.md` §2, since the bytes a vector claims are the bytes it has to be written in, and
   every `expect` carries the canonical spelling of the version (§2.5);
