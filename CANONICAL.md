@@ -1,4 +1,4 @@
-# Canonical form for session frames — SJ-C/1
+# Canonical form for session frames: SJ-C/1
 
 **Status: DRAFT.** This document fixes the *byte* form of the JSON session frames that
 [`PROTOCOL.md`](PROTOCOL.md) §4–§6, §10 describe, so that two independent implementations can
@@ -24,7 +24,7 @@ and relayed byte for byte (§6 below), or to the WebSocket framing itself.
 ## 2. The rule
 
 A frame is conformant with SJ-C when it is the UTF-8 encoding of one JSON object with the
-following properties, and nothing else — no leading or trailing whitespace, no byte-order mark,
+following properties, and nothing else: no leading or trailing whitespace, no byte-order mark,
 no trailing newline.
 
 ### 2.1 Member order
@@ -35,8 +35,8 @@ and byte order.
 
 > **Why not the order of the tables in `PROTOCOL.md`?** Because the tables are prose, and a
 > second implementation reads them; sorting is a rule that cannot be misread. The reference server
-> arrived at sorted order for every nested object by accident — `serde_json::Value` maps are
-> `BTreeMap`s — while its envelope and `/meta` did not yet sort.
+> arrived at sorted order for every nested object by accident (`serde_json::Value` maps are
+> `BTreeMap`s), while its envelope and `/meta` did not yet sort.
 
 ### 2.2 Whitespace
 
@@ -62,8 +62,8 @@ it adds no new obligation to either of the two implementations that exist.
 
 ### 2.4 Numbers
 
-A member whose type in `PROTOCOL.md` is a count — `id`, `*_ms`, and the `awareness_client_id`
-of a `PeerInfo` — is a **non-negative integer** and is written in plain decimal: no `+`, no
+A member whose type in `PROTOCOL.md` is a count (`id`, `*_ms`, and the `awareness_client_id`
+of a `PeerInfo`) is a **non-negative integer** and is written in plain decimal: no `+`, no
 leading zero, no fraction, no exponent, no `-0`. `1.0` and `1e2` are not SJ-C, even though they
 are the same number; a producer **must not** emit them and the reference server answers one with
 `bad_message` because its types for those members are unsigned integers.
@@ -71,7 +71,7 @@ are the same number; a producer **must not** emit them and the reference server 
 `assoc` is the one signed number `PROTOCOL.md` names, and it is not a count: §8.1 gives it the
 values `0` (the element *after* the position), `-1` (the element *before* it) and absent (the
 same as `0`). A producer that wants the other policy on one edge of a selection writes `-1` for
-it, and the rule above — a rule about counts — does not forbid that.
+it, and the rule above, a rule about counts, does not forbid that.
 
 `id` and `awareness_client_id` **must not exceed 2 53 − 1** (9007199254740991). Above that a
 JavaScript receiver (`JSON.parse` → IEEE 754 double) cannot hold the value and would answer the
@@ -88,7 +88,7 @@ round-trip. Both are non-negative.
 
 with `major` and `minor` written as in §2.4. **The canonical spelling of the current version is
 `selvage/1`: a zero minor is omitted, so a producer must not write `selvage/1.0`.** A receiver
-must accept both spellings — `PROTOCOL.md` §10 makes `selvage/1.0` and `selvage/1.9` the same
+must accept both spellings: `PROTOCOL.md` §10 makes `selvage/1.0` and `selvage/1.9` the same
 version as `selvage/1`, because the compatibility rule at major 1 is same-major.
 
 ### 2.6 Absent members
@@ -111,9 +111,9 @@ are in that position:
   at, which is the only thing that distinguishes it from `documents` here: the order is still a
   claim, and a comparison holds the bytes to it.
 
-Every other array this protocol defines — `peers` ("No order is promised for it", §6.2),
-`capabilities` (§2, §6.2, §10), `wire_versions` and `roles` (§2) — is a **set**, and there is
-no order to write it in that follows from its members. There is no analogue of §2.1 here:
+Every other array this protocol defines is a **set**: `peers` ("No order is promised for it",
+§6.2), `capabilities` (§2, §6.2, §10), `wire_versions` and `roles` (§2). There is no order to write
+it in that follows from its members. There is no analogue of §2.1 here:
 member names give an object a total order that is a function of its members, and an array of
 `PeerInfo` has no such name. Sorting `peers` by `peer_id` does not help either, because a
 `peer_id` is minted by the server and a vector that claims a frame cannot contain the value
@@ -134,8 +134,8 @@ follow:
 
 SJ-C fixes a string's bytes, not its length: a value longer than a receiver's bound is still
 canonical, and a receiver that refuses it refuses the value, not the encoding. `selvage/1` fixes
-one such bound on a value — a `display_name` is at most 32 **UTF-16 code units** (`PROTOCOL.md`
-§5) — counted in the unit a JavaScript string's `.length` reports and the unit §8.1 of that document
+one such bound on a value: a `display_name` is at most 32 **UTF-16 code units** (`PROTOCOL.md`
+§5), counted in the unit a JavaScript string's `.length` reports and the unit §8.1 of that document
 counts offsets in, so an astral character costs two. A name over the bound is refused `bad_params`,
 the code a blank one gets; it is not a canonical-form fault, and the frame is not `bad_message`.
 The control characters `PROTOCOL.md` §5 forbids in a `display_name` and a `path` are the same kind
@@ -144,7 +144,7 @@ of value refusal: the string is canonical, and it is the value a server will not
 A server's own limit on what it will carry is a different thing, and `PROTOCOL.md` §5 fixes no
 number for it: the size of an inbound frame or message (§2.1), a listing it will not store whole, a
 path longer than it will hold. A server refuses one of those with `bad_params`, and the value is
-still canonical — the limit is policy, and the refusal is about the value.
+still canonical: the limit is policy, and the refusal is about the value.
 
 ## 3. Unknown members: dropped
 
@@ -154,8 +154,8 @@ deserialize into a fixed set of named members (`serde` and a plain object read, 
 ignore the rest), and the server never copies a client's object into a frame it sends: `PeerInfo`
 and the session params are built member by member.
 
-Dropping is what makes `PROTOCOL.md` §4.1's promise true — a receiver that keeps working when a
-*later* version adds a member — and it is why the vectors in [`vectors/`](vectors/) can assert the
+Dropping is what makes `PROTOCOL.md` §4.1's promise true (a receiver that keeps working when a
+*later* version adds a member), and it is why the vectors in [`vectors/`](vectors/) can assert the
 *exact* member set of a frame: a version-locked vector is checking that no member has been silently
 added or renamed. Within `selvage/1` the member set of every frame is fixed; tolerance is what
 makes the transition to `selvage/2` soft, not a licence to add one now.
@@ -178,7 +178,7 @@ unknown member back, which §4.1 forbids in effect by making every frame's membe
 - **`x.` prefixed method, event and capability names**: reserved (`PROTOCOL.md` §10.1) and treated
   exactly like any other unknown name.
 - **A `v` with an explicit zero minor**, and any minor at major 1 (§2.5).
-- **A missing `params`**, which means the same as `params: {}` — for a method that requires a
+- **A missing `params`**, which means the same as `params: {}`: for a method that requires a
   param, both are `bad_params`, and neither is a different code path.
 - **A frame carrying several concatenated y-protocols messages** (§7), handled in full.
 - **A close reason that is a truncation of the real message** (§11): the `session.error` event
@@ -189,8 +189,8 @@ unknown member back, which §4.1 forbids in effect by making every frame's membe
 Rejecting means the fault code `PROTOCOL.md` §11 gives for it; a malformed frame is never silently
 dropped, because silence is how version skew becomes a timeout.
 
-- A text frame that is not one JSON object — an array, a bare string, a number, or bytes that are
-  not JSON at all: `bad_message`.
+- A text frame that is not one JSON object (an array, a bare string, a number, or bytes that are
+  not JSON at all): `bad_message`.
 - A frame with no `v`: `bad_message`, because it is not a session envelope at all (§10). A
   frame with an incompatible `v`: `unsupported_version` (§10).
 - A request with no `id`: `bad_message` (§4.1).
@@ -227,7 +227,7 @@ version the client can speak **is** a failure, and it is a failure before the so
 - [`vectors/`](vectors/) carries transcripts of real bytes, each labelled with the wire version and
   the SJ-C version it was recorded under. Each frame in a transcript is in canonical form, and a
   test in the [reference server](https://github.com/selvage-protocol/reference_server) asserts that
-  it produces and accepts exactly those bytes — the bytes of §2, and for an array §2.7 leaves
+  it produces and accepts exactly those bytes: the bytes of §2, and for an array §2.7 leaves
   unordered, the multiset of its members rather than the order they arrived in. A conformance
   runner for another implementation compares canonical forms rather than bytes if it prefers;
   the vectors are byte-exact so that it can.
