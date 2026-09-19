@@ -107,7 +107,7 @@ alone cannot carry: a byte-level rule and a suite.
    with `client_id` set), and print the frames. A payload with a random client id in it is not a
    vector, it is a flaky test.
 2. **Write the file** as `vectors/NNN-<slug>.json`, where `NNN` is the next free number. A new
-   vector is numbered after the last one, `035` as this is written. The members are:
+   vector is numbered after the last one, which is `035` as this is written. The members are:
 
    ```json
    {
