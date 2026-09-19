@@ -103,9 +103,9 @@ particular `"params": null` is not the same as an absent `params`.
 An array's order is part of what a frame *says* only where `PROTOCOL.md` promises one. Two arrays
 are in that position:
 
-- **`documents`**, "the room's open-document set, in first-opened order" (\u00a76.2), which a
+- **`documents`**, "the room's open-document set, in first-opened order" (§6.2), which a
   comparison holds to that order; and
-- **a grant's `paths`** (`doc.grant`, `doc.granted`), which `PROTOCOL.md` \u00a75 requires its
+- **a grant's `paths`** (`doc.grant`, `doc.granted`), which `PROTOCOL.md` §5 requires its
   *publisher* to write in ascending order by UTF-16 code unit and requires a server to carry
   unchanged. This one is written in an order the sender chose rather than one the server arrived
   at, which is the only thing that distinguishes it from `documents` here: the order is still a
