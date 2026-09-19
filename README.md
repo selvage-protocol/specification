@@ -38,10 +38,12 @@ result         OK
 Those three numbers (31 vectors, 34858 frame checks, 8642 assertion steps) are pinned in
 `schema/validate.py`, so a deleted vector, frame check or assertion is a red run rather than a
 smaller number in a line of output. Green means every schema is a valid JSON Schema 2020-12
-document, every frame in every vector parses and validates against the schema for the concern it
-belongs to, every frame a vector claims the server produces is written in the canonical byte form
-of `CANONICAL.md` §2, and the corpus still holds the pinned counts and the pinned per-vector census
-of asserted error and close codes. The [section below](#validating-the-schemas-and-the-vectors)
+document, every frame in every vector that is not marked `refused` parses and validates against the
+schema for the concern it belongs to, every frame a vector claims the server produces is written in
+the canonical byte form of `CANONICAL.md` §2, and the corpus still holds the pinned counts and the
+pinned per-vector census of asserted error and close codes. A frame a vector sends on purpose
+knowing it is malformed is not schema-checked; the run checks that it parses, and that its
+`unparsable` marker is truthful. The [section below](#validating-the-schemas-and-the-vectors)
 lists the checks in full.
 
 To check that a real server produces those bytes, point the replay at a `selvaged`, which is not
@@ -169,9 +171,10 @@ python3 schema/validate.py
 It prints a line for the schemas, a line for the corpus counts, and `result OK`. It checks:
 
 - every `*.json` in `schema/` is a valid JSON Schema 2020-12 document;
-- every `send` and `expect` text frame in every vector parses, validates against
-  `schema/session.json`, and validates against the params schema of the method or event it
-  names;
+- every `send` and `expect` text frame in every vector that is not marked `refused` parses,
+  validates against `schema/session.json`, and validates against the params schema of the method
+  or event it names;
+- that a frame marked `refused` parses, and that a frame marked `unparsable` does not;
 - every `expect` and `expectBody` frame is written in the canonical byte form of
   `CANONICAL.md` §2, since the bytes a vector claims are the bytes it has to be written in, and
   every `expect` carries the canonical spelling of the version (§2.5);
@@ -205,8 +208,8 @@ less of it quietly.
 
 ## Replaying the vectors against a server
 
-`schema/validate.py` checks the shape of every frame; it cannot check that a server produces the
-bytes. `runner/run_vectors.py` does, and needs no Rust toolchain: it starts a `selvaged` on an
+`schema/validate.py` checks the shape of every schema-eligible frame; it cannot check that a server
+produces the bytes. `runner/run_vectors.py` does, and needs no Rust toolchain: it starts a `selvaged` on an
 ephemeral port, replays each transcript against it over a real WebSocket, and compares what comes
 back, the text frames structurally and then byte for byte, the binary frames byte for byte, and the
 document and awareness state once a frame is applied.
