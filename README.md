@@ -31,11 +31,11 @@ A green run prints one line for the schemas, one for the corpus counts, and `res
 
 ```
 schema ok      9 schemas, 39 values checked against the control-character refusal
-vectors        31 files, 34858 frame checks, 8642 assertion steps
+vectors        35 files, 34984 frame checks, 8669 assertion steps
 result         OK
 ```
 
-Those three numbers (31 vectors, 34858 frame checks, 8642 assertion steps) are pinned in
+Those three numbers (35 vectors, 34984 frame checks, 8669 assertion steps) are pinned in
 `schema/validate.py`, so a deleted vector, frame check or assertion is a red run rather than a
 smaller number in a line of output. Green means every schema is a valid JSON Schema 2020-12
 document, every schema-eligible frame in every vector parses and validates against the schema for
@@ -62,7 +62,7 @@ WebSocket, and ends with a summary. Against a `selvaged` that implements every f
 covers:
 
 ```
-summary        31 files, 34858 frame checks, 31 vectors passed, 0 failed
+summary        35 files, 34984 frame checks, 35 vectors passed, 0 failed
 ```
 
 A vector that pins behaviour newer than the server you point it at is where a red line comes from,
@@ -107,7 +107,7 @@ alone cannot carry: a byte-level rule and a suite.
    with `client_id` set), and print the frames. A payload with a random client id in it is not a
    vector, it is a flaky test.
 2. **Write the file** as `vectors/NNN-<slug>.json`, where `NNN` is the next free number. A new
-   vector is numbered after the last one, `031` as this is written. The members are:
+   vector is numbered after the last one, `035` as this is written. The members are:
 
    ```json
    {
