@@ -1,0 +1,158 @@
+name: release
+
+# A release is the protocol itself: the schema, the vectors, the canonical-form
+# definition and the prose that binds them, pinned and downloadable as one
+# bundle. There is no registry and no image; the tag plus the GitHub Release
+# carrying the bundle IS the release.
+#
+# The owner triggers a release from this workflow. `workflow_dispatch` (with a
+# `version` input) is the manual button; pushing a tag `v*` runs the same job
+# for a release cut by hand. Either way the job is idempotent: an existing
+# tag must point at this run's commit before any asset is attached, and an
+# existing release gets the bundle refreshed rather than a second release.
+# A pull request runs validate.yml instead and can never publish or release.
+#
+# The wire version string is `selvage/1` and the canonical form is `SJ-C/1`.
+# Both are protocol CONSTANTS, not release versions; the release version is
+# the `version` input on dispatch, or the tag name on a tag push. The typo
+# guard names the near-homophone `salvage/1`, one keystroke away.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version, without the leading v (the tag v<version> is created)"
+        required: true
+        default: "0.1.0"
+      dry_run:
+        description: "Validate and build the bundle without tagging or releasing"
+        required: false
+        default: false
+        type: boolean
+  push:
+    tags:
+      - "v*"
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+# `contents: write` creates and pushes the tag and the GitHub Release. Nothing
+# else is granted.
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.14.7"
+
+      # The release version comes from the dispatch input, or from the tag
+      # name on a tag push. It passes through `env` rather than a workflow
+      # expression inside `run:`, and anything outside `X.Y.Z` stops the job
+      # before anything is built, tagged or released.
+      - name: resolve the release version
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$DISPATCH_VERSION" ]; then
+            version="$DISPATCH_VERSION"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          case "$version" in
+            [0-9]*.[0-9]*.[0-9]*)
+              ;;
+            *)
+              printf 'refusing: %s is not a release version\n' "$version" >&2
+              exit 1
+              ;;
+          esac
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+
+      # Same pins as validate.yml, so a bundle that passes here cannot fail there.
+      - name: install dependencies
+        run: python3 -m pip install jsonschema==4.26.0 referencing==0.37.0 websockets==16.1
+
+      # The bundle must hold what CI proves: only released what is green.
+      - name: validate the schemas and the vectors
+        run: python3 schema/validate.py
+
+      - name: check the runner's comparison code
+        run: python3 runner/test_runner.py
+
+      - name: check the binary decoder
+        run: python3 runner/test_yprotocols.py
+
+      - name: reject the wire-version typo
+        run: |
+          if grep -rn "salvage/1" PROTOCOL.md CANONICAL.md NOTES.md README.md schema vectors runner; then
+            printf 'found the near-homophone salvage/1; the wire version is selvage/1\n' >&2
+            exit 1
+          fi
+
+      # The bundle is what a consumer pins: the machine-readable model, the
+      # conformance corpus, the two normative documents, and the licence the
+      # prose, schema and vectors are released under (CC-BY-4.0).
+      - name: build the bundle
+        run: |
+          bundle="selvage-spec-v${RELEASE_VERSION}.zip"
+          zip -r "$bundle" schema vectors PROTOCOL.md CANONICAL.md LICENSE
+          unzip -l "$bundle"
+          echo "BUNDLE=$bundle" >> "$GITHUB_ENV"
+
+      - name: stop before tagging on a dry run
+        if: inputs.dry_run == true
+        run: |
+          echo "dry_run: built $BUNDLE, tagging and releasing nothing."
+
+      # Tags are resolved against `origin`, not local refs: the checkout may
+      # not have fetched them. An existing tag must point at this run's
+      # commit; anything else is someone else's release and stops the job.
+      - name: create and push the tag
+        if: inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if remote_sha=$(git ls-remote --exit-code --refs origin "refs/tags/v${RELEASE_VERSION}" 2>/dev/null | cut -f1); then
+            echo "tag v${RELEASE_VERSION} already exists at ${remote_sha}"
+            if [ "$remote_sha" != "$GITHUB_SHA" ]; then
+              printf 'refusing: tag v%s points at %s, not this run\n' "$RELEASE_VERSION" "$remote_sha" >&2
+              exit 1
+            fi
+          else
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git tag -a "v${RELEASE_VERSION}" -m "v${RELEASE_VERSION}"
+            git push origin "v${RELEASE_VERSION}"
+          fi
+
+      - name: create the GitHub Release
+        if: inputs.dry_run != true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > release-notes.md <<EOF
+          # Selvage session protocol specification v${RELEASE_VERSION}
+
+          The protocol itself, pinned and downloadable: the JSON Schema model
+          (\`schema/\`), the conformance corpus (\`vectors/\`), and the two normative
+          documents (\`PROTOCOL.md\`, \`CANONICAL.md\` defining the SJ-C/1 byte form),
+          exactly as validated on the tag's commit.
+
+          The wire version string is \`selvage/1\`. It is a protocol constant, not
+          this release's version.
+
+          Prose, schema and vectors are CC-BY-4.0 (see \`LICENSE\` in the bundle).
+          EOF
+          if gh release view "v${RELEASE_VERSION}" >/dev/null 2>&1; then
+            echo "release v${RELEASE_VERSION} already exists; refreshing the bundle asset."
+            gh release upload "v${RELEASE_VERSION}" "$BUNDLE" --clobber
+          else
+            gh release create "v${RELEASE_VERSION}" --title "v${RELEASE_VERSION}" --notes-file release-notes.md "$BUNDLE"
+          fi
