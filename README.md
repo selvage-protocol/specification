@@ -15,7 +15,7 @@ record, `DESIGN.md`, is not published; it is cited below by section.
 [`PROTOCOL.md`](PROTOCOL.md) is the specification and it is normative: §1.1 says which sentences
 bind a reader and what a conforming implementation is. [`CANONICAL.md`](CANONICAL.md) is **SJ-C/1**,
 the byte form of a session text frame, normative for the bytes. The [table
-below](#what-lives-here) says what the rest of the repository is.
+below](#what-lives-here) lists the rest of the repository.
 
 Checking the corpus takes a couple of minutes and needs no server and no Rust:
 
@@ -32,20 +32,13 @@ vectors        35 files, 34984 frame checks, 8669 assertion steps
 result         OK
 ```
 
-Those three numbers (35 vectors, 34984 frame checks, 8669 assertion steps) are pinned in
-`schema/validate.py`, so a deleted vector, frame check or assertion is a red run rather than a
-smaller number in a line of output. Green means every schema is a valid JSON Schema 2020-12
-document, every schema-eligible frame in every vector parses and validates against the schema for
-the concern it belongs to, every frame a vector claims the server produces is written in
-the canonical byte form of `CANONICAL.md` §2, and the corpus still holds the pinned counts and the
-pinned per-vector census of asserted error and close codes. A frame a vector sends on purpose
-knowing it is malformed is not schema-checked; the run checks whether it parses, and that its
-`unparsable` marker is truthful. The [section below](#validating-the-schemas-and-the-vectors)
-lists the checks in full.
+Those three numbers are pinned in `schema/validate.py`, so a deleted vector, frame check or
+assertion fails the run. The [section below](#validating-the-schemas-and-the-vectors) lists what
+the run checks.
 
-`python3 schema/validate.py` checks what a vector claims; it cannot check that a server produces
-those bytes. To replay the corpus against a real server, see [Replaying the vectors against a
-server](#replaying-the-vectors-against-a-server).
+`python3 schema/validate.py` checks the frames the vectors contain; it cannot check that a server
+produces those bytes. To replay the corpus against a real server, see [Replaying the vectors
+against a server](#replaying-the-vectors-against-a-server).
 
 `scripts/ci-local.sh` runs the same commands as `.github/workflows/validate.yml`, one flake check
 per step, plus actionlint over the workflow files, and needs `nix`:
@@ -56,12 +49,13 @@ scripts/ci-local.sh validate # the flake checks alone
 ```
 
 Its `validate` half refuses to run when `schema/`, `vectors/`, `runner/` or the flake files differ
-from `HEAD`, because CI checks out the committed ref. Commit before running it, not just stage.
+from `HEAD`, because CI checks out the committed ref. Commit before running it; staging is not
+enough.
 
 ## What lives here
 
 Six things live here, and they are meant to be read together. The first is the specification; the
-rest are what an independent implementation can *check itself against*, and read where the first is
+other five are what an implementation checks itself against and reads where the specification is
 silent, without reading the Rust.
 
 | Path | What it is |
@@ -108,12 +102,12 @@ in every vector against them. It prints a line for the schemas, a line for the c
   a substitution inside a closed vocabulary (`unknown_method` for `bad_params`, say) is a red run
   rather than a corpus that keeps every count and quietly asserts something else.
 
-A frame a vector sends *on purpose* knowing it is malformed, which is how a refusal is tested,
-carries `"refused": true`, and its params are not schema-checked. One whose malformation is that
-it is not JSON at all carries `"unparsable": true` as well, because the two are different
-claims: the first says the frame is well formed and refused for what it says, the second says a
-parser refuses it, and a marker left on a frame that does parse is a red run rather than an
-assertion that never runs.
+Testing a refusal means sending a frame the vector knows is malformed. Such a frame carries
+`"refused": true`, and its params are not schema-checked. When the malformation is that the frame
+is not JSON at all, it carries `"unparsable": true` as well: the two markers are different claims,
+the first that the frame is well formed and refused for what it says, the second that a parser
+refuses it. A marker left on a frame that does parse is a red run: otherwise the run reports OK
+with an assertion that never ran.
 
 `SELVAGE_VECTORS=DIR` reads the transcripts from another directory; both halves honour it.
 Replaying a corrupt *copy* is how a failure is shown to be caught. The counts are this
@@ -155,8 +149,8 @@ Against a `selvaged` that implements every frame the corpus covers, it ends with
 summary        35 files, 34984 frame checks, 35 vectors passed, 0 failed
 ```
 
-A vector that pins behaviour newer than the server you point it at is where a red line comes from,
-and the summary names the file and the frame it disagreed about.
+The red line to expect is a vector that pins behaviour newer than the server you point it at; the
+summary names the file and the frame it disagreed about.
 
 It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS`: the grace
 period is per-vector (`vectors/012` waits out 400 ms, `vectors/011` four seconds), and a runner
@@ -175,8 +169,7 @@ corpus, because this workflow has no Rust toolchain to build a `selvaged` with.
 
 ## Comparison rules
 
-Four of them are worth knowing before writing a vector, because they are what the runner
-enforces:
+Four are worth knowing before writing a vector, because the runner enforces them:
 
 - **Member sets are exact, in both directions.** A frame with a member the vector does not
   mention fails. A version-locked vector is checking that nothing was silently added or renamed,
@@ -228,11 +221,10 @@ Three numbers move together, and nothing here is allowed to move independently o
    are commits, not version bumps.
 
 Each release tags the commit it was cut from and attaches one zip holding `schema/`, `vectors/`,
-`PROTOCOL.md`, `CANONICAL.md` and `LICENSE`, so an implementation can pin a released bundle rather
-than a moving branch.
+`PROTOCOL.md`, `CANONICAL.md` and `LICENSE`. That zip is what an implementation pins against.
 
 Every vector carries both versions in `selvage` and `canonical`, and the runner refuses to replay
-a vector bound to anything else. That is the whole version-binding mechanism: a vector set without
+a vector bound to anything else. That is the version binding: a vector set without
 one rots, because nothing can say whether it is out of date or the implementation is wrong.
 
 The compatibility rule itself is `PROTOCOL.md` §10: same major, and while at `0.x` also the same
@@ -302,9 +294,9 @@ minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this ver
 
 ## Why each one exists
 
-- **The schema** exists so a frame can be validated without a server, and so the shape of every
-  method, event, result and error is a thing a machine can read rather than a table a human has
-  to transcribe. It covers `/meta`, the version grammar and the capability grammar too.
+- **The schema** lets a frame be validated without a server, and makes the shape of every method,
+  event, result and error something a machine reads rather than a table a human transcribes. It
+  covers `/meta`, the version grammar and the capability grammar too.
 - **The canonicalisation rule** exists because "key order is not significant" is not enough to
   make two implementations produce the same bytes. A vector cannot be written without it, and
   neither can a test that compares bytes.
@@ -313,7 +305,7 @@ minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this ver
   have reproduced the bug. A transcript that asserts the intended semantics catches that, where a
   transcript that asserts only what the current code does cannot. Every vector is a real exchange
   against the reference server, recorded byte for byte, and that server's own test replays it.
-- **The runner** exists so replaying the vectors is not something only a Rust checkout can do.
+- **The runner** makes replaying the vectors possible without a Rust checkout.
   `runner/run_vectors.py` reads the same JSON, opens a WebSocket to a server it starts itself, and
   compares the bytes, so a second implementation in any language can be held to the transcripts
   without reading `reference_server/`.
