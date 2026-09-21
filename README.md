@@ -12,13 +12,10 @@ record, `DESIGN.md`, is not published; it is cited below by section.
 
 ## Get it working
 
-Read [`PROTOCOL.md`](PROTOCOL.md) for what the members mean. It is the specification and it is
-normative; §1.1 says which sentences bind a reader and what a conforming implementation is.
-[`CANONICAL.md`](CANONICAL.md) is **SJ-C/1**, the byte form of a session text frame, normative for
-the bytes. [`schema/`](schema/) is the machine-readable model, one JSON Schema 2020-12 file per
-concern. [`vectors/`](vectors/) is the conformance corpus: transcripts of real bytes that a server
-replays. [`NOTES.md`](NOTES.md) is informative, and its Part B lists the decisions this draft had
-to make and what is still open.
+[`PROTOCOL.md`](PROTOCOL.md) is the specification and it is normative: §1.1 says which sentences
+bind a reader and what a conforming implementation is. [`CANONICAL.md`](CANONICAL.md) is **SJ-C/1**,
+the byte form of a session text frame, normative for the bytes. The [table
+below](#what-lives-here) says what the rest of the repository is.
 
 Checking the corpus takes a couple of minutes and needs no server and no Rust:
 
@@ -46,27 +43,9 @@ knowing it is malformed is not schema-checked; the run checks whether it parses,
 `unparsable` marker is truthful. The [section below](#validating-the-schemas-and-the-vectors)
 lists the checks in full.
 
-To check that a real server produces those bytes, point the replay at a `selvaged`, which is not
-part of this repository:
-
-```
-cd ../reference_server
-nix develop . -c cargo build -p selvaged
-export SELVAGE_SELVAGED=$PWD/target/debug/selvaged
-cd ../specification
-python3 runner/run_vectors.py
-```
-
-It starts the server on an ephemeral port, replays every transcript against it over a real
-WebSocket, and ends with a summary. Against a `selvaged` that implements every frame the corpus
-covers:
-
-```
-summary        35 files, 34984 frame checks, 35 vectors passed, 0 failed
-```
-
-A vector that pins behaviour newer than the server you point it at is where a red line comes from,
-and the summary names the file and the frame it disagreed about.
+`python3 schema/validate.py` checks what a vector claims; it cannot check that a server produces
+those bytes. To replay the corpus against a real server, see [Replaying the vectors against a
+server](#replaying-the-vectors-against-a-server).
 
 `scripts/ci-local.sh` runs the same commands as `.github/workflows/validate.yml`, one flake check
 per step, plus actionlint over the workflow files, and needs `nix`:
@@ -98,78 +77,11 @@ silent, without reading the Rust.
 model to be built early because prose drifts. This repository is that, plus the two things prose
 alone cannot carry: a byte-level rule and a suite.
 
-## Adding a vector
-
-1. **Start the server the vector needs** and record what it actually says. The reference bytes for
-   the binary frames are produced by the reference server's
-   [`crates/harness/tests/vectors/runner.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors/runner.rs)
-   and its siblings: build the document you want with a *fixed* client id (`yrs::Doc::with_options`
-   with `client_id` set), and print the frames. A payload with a random client id in it is not a
-   vector, it is a flaky test.
-2. **Write the file** as `vectors/NNN-<slug>.json`, where `NNN` is the next free number. A new
-   vector is numbered after the last one, which is `035` as this is written. The members are:
-
-   ```json
-   {
-     "selvage": "selvage/1",
-     "canonical": "SJ-C/1",
-     "id": "013",
-     "title": "one line, in the present tense, saying what holds",
-     "spec": "PROTOCOL.md#the-section-it-pins",
-     "notes": "why this transcript is worth keeping, for a human",
-     "harness": { "room_grace_ms": 400 },
-     "steps": [ ... ]
-   }
-   ```
-
-   `harness` is optional; without it the server runs with the reference defaults. Set
-   `room_grace_ms` when the vector depends on the grace period, because the vectors are the only
-   place the number is written down.
-
-3. **Write the steps**, one of:
-
-   | `op` | what it does |
-   |---|---|
-   | `open` | opens a WebSocket at `target`, after substituting named bindings into it, and names it `conn` |
-   | `send` | sends `text` as a text frame on `conn` |
-   | `expect` | reads the next text frame on `conn` and compares it with `text` |
-   | `sendBinary` | sends the bytes in `hex`; `apply: true` also applies them to that connection's replica |
-   | `expectBinary` | reads a binary frame and compares it with `hex`, or with the `frame` description; `apply` as above |
-   | `expectClose` | reads until the connection closes and asserts the close `code` |
-   | `close` | closes the connection from the client's side |
-   | `wait` | sleeps `ms`; only for waiting out a server timer the vector is testing |
-   | `http` | issues `GET target` over plain HTTP and remembers the status and body |
-   | `expectStatus`, `expectBody` | assert on the last HTTP reply |
-   | `expectDoc` | asserts that `conn`'s replica holds `text` for `path` |
-   | `expectSameState` | asserts that the named connections have equal CRDT state vectors |
-
-4. **Where a value is not yours to know**, write a placeholder. `$room`, `$token`, `$host_peer` and
-   so on bind the first time they are seen and must be equal every later time, which is what makes
-   a later `room.joined` demonstrably the same room as an earlier `room.created`. `$_` matches
-   anything and is never remembered: use it for the members the prose calls unstable, such as
-   `error.message` and the `reason` of `room.gone`. Two connections that mint two different rooms
-   need two different placeholder names.
-5. **Run it** in a [`reference_server`](https://github.com/selvage-protocol/reference_server)
-   checkout: `cargo test -p selvage-harness --test vectors` (its flake provides `cargo`). Without
-   Rust, `python3 runner/run_vectors.py` does the same replay against a running server. Then run
-   the schema validator, which checks the vector's shape as well as its frames and pins the number
-   of vectors, frame checks and assertion steps, so a new vector or a deleted assertion is a red
-   run until those three constants in `schema/validate.py` are updated with it. A new vector also
-   needs its own entry in that file's `EXPECTED_CODES` census, or the run fails on the vector that
-   has no census. The counts and the census move in the same commit as the vector, not in one
-   after it.
-
 ## Validating the schemas and the vectors
 
-The schemas are checked as schemas, and every schema-eligible frame in every vector is checked
-against them:
-
-```
-pip install jsonschema referencing     # or: nix develop  (the same package, pinned)
-python3 schema/validate.py
-```
-
-It prints a line for the schemas, a line for the corpus counts, and `result OK`. It checks:
+`python3 schema/validate.py` checks the schemas as schemas, and checks every schema-eligible frame
+in every vector against them. It prints a line for the schemas, a line for the corpus counts, and
+`result OK`. It checks:
 
 - every `*.json` in `schema/` is a valid JSON Schema 2020-12 document;
 - every `send` text frame not marked `refused` and every `expect` text frame in every vector
@@ -236,6 +148,15 @@ Then, from this directory:
 ```
 python3 runner/run_vectors.py
 ```
+
+Against a `selvaged` that implements every frame the corpus covers, it ends with:
+
+```
+summary        35 files, 34984 frame checks, 35 vectors passed, 0 failed
+```
+
+A vector that pins behaviour newer than the server you point it at is where a red line comes from,
+and the summary names the file and the frame it disagreed about.
 
 It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS`: the grace
 period is per-vector (`vectors/012` waits out 400 ms, `vectors/011` four seconds), and a runner
@@ -306,6 +227,10 @@ Three numbers move together, and nothing here is allowed to move independently o
 3. **The spec revision**, the git history of this directory. Prose edits that change no bytes
    are commits, not version bumps.
 
+Each release tags the commit it was cut from and attaches one zip holding `schema/`, `vectors/`,
+`PROTOCOL.md`, `CANONICAL.md` and `LICENSE`, so an implementation can pin a released bundle rather
+than a moving branch.
+
 Every vector carries both versions in `selvage` and `canonical`, and the runner refuses to replay
 a vector bound to anything else. That is the whole version-binding mechanism: a vector set without
 one rots, because nothing can say whether it is out of date or the implementation is wrong.
@@ -313,6 +238,67 @@ one rots, because nothing can say whether it is out of date or the implementatio
 The compatibility rule itself is `PROTOCOL.md` §10: same major, and while at `0.x` also the same
 minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this version, but only
 `selvage/1` is how a conforming producer writes it (`CANONICAL.md` §2.5).
+
+## Adding a vector
+
+1. **Start the server the vector needs** and record what it actually says. The reference bytes for
+   the binary frames are produced by the reference server's
+   [`crates/harness/tests/vectors/runner.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors/runner.rs)
+   and its siblings: build the document you want with a *fixed* client id (`yrs::Doc::with_options`
+   with `client_id` set), and print the frames. A payload with a random client id in it is not a
+   vector, it is a flaky test.
+2. **Write the file** as `vectors/NNN-<slug>.json`, where `NNN` is the next free number. A new
+   vector is numbered after the last one, which is `035` as this is written. The members are:
+
+   ```json
+   {
+     "selvage": "selvage/1",
+     "canonical": "SJ-C/1",
+     "id": "013",
+     "title": "one line, in the present tense, saying what holds",
+     "spec": "PROTOCOL.md#the-section-it-pins",
+     "notes": "why this transcript is worth keeping, for a human",
+     "harness": { "room_grace_ms": 400 },
+     "steps": [ ... ]
+   }
+   ```
+
+   `harness` is optional; without it the server runs with the reference defaults. Set
+   `room_grace_ms` when the vector depends on the grace period, because the vectors are the only
+   place the number is written down.
+
+3. **Write the steps**, one of:
+
+   | `op` | what it does |
+   |---|---|
+   | `open` | opens a WebSocket at `target`, after substituting named bindings into it, and names it `conn` |
+   | `send` | sends `text` as a text frame on `conn` |
+   | `expect` | reads the next text frame on `conn` and compares it with `text` |
+   | `sendBinary` | sends the bytes in `hex`; `apply: true` also applies them to that connection's replica |
+   | `expectBinary` | reads a binary frame and compares it with `hex`, or with the `frame` description; `apply` as above |
+   | `expectClose` | reads until the connection closes and asserts the close `code` |
+   | `close` | closes the connection from the client's side |
+   | `wait` | sleeps `ms`; only for waiting out a server timer the vector is testing |
+   | `http` | issues `GET target` over plain HTTP and remembers the status and body |
+   | `expectStatus`, `expectBody` | assert on the last HTTP reply |
+   | `expectDoc` | asserts that `conn`'s replica holds `text` for `path` |
+   | `expectSameState` | asserts that the named connections have equal CRDT state vectors |
+
+4. **Where a value is not yours to know**, write a placeholder. `$room`, `$token`, `$host_peer` and
+   so on bind the first time they are seen and must be equal every later time, which is what makes
+   a later `room.joined` demonstrably the same room as an earlier `room.created`. `$_` matches
+   anything and is never remembered: use it for the members the prose calls unstable, such as
+   `error.message` and the `reason` of `room.gone`. Two connections that mint two different rooms
+   need two different placeholder names.
+5. **Run it** in a [`reference_server`](https://github.com/selvage-protocol/reference_server)
+   checkout: `cargo test -p selvage-harness --test vectors` (its flake provides `cargo`). Without
+   Rust, `python3 runner/run_vectors.py` does the same replay against a running server. Then run
+   the schema validator, which checks the vector's shape as well as its frames and pins the number
+   of vectors, frame checks and assertion steps, so a new vector or a deleted assertion is a red
+   run until those three constants in `schema/validate.py` are updated with it. A new vector also
+   needs its own entry in that file's `EXPECTED_CODES` census, or the run fails on the vector that
+   has no census. The counts and the census move in the same commit as the vector, not in one
+   after it.
 
 ## Why each one exists
 
