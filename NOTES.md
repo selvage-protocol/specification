@@ -39,6 +39,15 @@ The implementations this document describes:
 - The **awareness window** is 15 s / 30 s by default, and the conformance harness advertises 40 ms
   and 250 ms instead so that expiry is tested in under a second. The vectors' `harness.room_grace_ms`
   overrides the grace period per transcript (400 ms in `vectors/012`, four seconds in `011`).
+- The **room's peer cap is the one number a vector depends on and cannot set.** `vectors/026` pins
+  the refusal of a join to a full room by filling a room to the reference server's default cap of
+  128 peers, because `harness` carries `room_grace_ms` alone: the server takes
+  `--max-peers-per-room`, and neither replay passes it from a transcript. The transcript that fills
+  the room is quadratic as well — every join is announced to every peer already seated, so the
+  corpus grows by the square of the cap, and this one vector is most of the corpus and most of what
+  `schema/validate.py` spends its time on. It is therefore both the corpus's cost centre and the one
+  vector a second implementation cannot replay if its cap is not 128. A `harness` knob for the cap
+  would let the same claim be pinned with three peers.
 
 ### A.2 The Rust client
 
@@ -398,6 +407,15 @@ records for `doc.grant`'s `bad_params`. **Decided** as the code to use; whether 
 URL-fault code of its own is open, and §5.1, §11 and any vector that pins one move together if it
 is wanted.
 
+**No vector pins any of §5.1's URL rules**: not the repeated parameter, not the RFC 3986 decoding
+(`%XX` is the only escape, and a literal `+` is a `+`), and not the mint-on-a-token-alone rule of
+`B.17`. The reference server does all three — a join that repeats either parameter is
+`token_invalid`, and a join whose room id or token has its first character percent-encoded still
+reaches the same room — so the gap is the corpus's and not the implementation's. It is the corpus's
+gap that matters here: an implementation that reads only the prose is where the decoding would
+diverge, and §5.1's sentence about `+` exists because that divergence is silent — one peer's token
+is another's `token_invalid`, and neither can see why.
+
 **B.26 A one-sided drop has no liveness bound.** A socket can die at one end while the other stays
 open (a roaming client, a hung relay, a half-open TCP connection), and every party is individually
 conformant. The server never ends a session for silence (`PROTOCOL.md` §2.1, §9), so it goes on
@@ -411,3 +429,24 @@ WebSocket Pong as a fault after some window, or a `host_present` claim becoming 
 token holder) is **unresolved**, and it is wire-visible because it decides whether a session ends,
 so it is a decision and not wording. The reference server is adding a liveness bound; the spec does
 not yet bind one.
+
+**B.27 A string that decodes to a lone surrogate is refused `bad_message`, and only `CANONICAL.md`
+says so.** `CANONICAL.md` §2.3 requires the refusal: a `\u` escape that resolves to an unpaired
+surrogate is not representable in UTF-8, which is the encoding a frame's bytes are, so the escape is
+one a producer must not write and a receiver rejects. `PROTOCOL.md` §5's value rule for a `path` and
+a `display_name` — non-blank, and free of the Unicode `Cc` characters — admits one, so a frame
+carrying it satisfies §5 and fails `CANONICAL.md`, and §1.1's "a frame conforms when it satisfies
+both" is what makes the refusal the answer. The reference server does refuse it: a `doc.open` whose
+`path` is `"src/\ud800.rs"` and a `session.rename` to `"\ud800"` are each answered
+`session.error{bad_message}`, while the same character written as a proper surrogate pair
+(`"src/\ud83d\ude00.rs"`) is accepted, announced `doc.opened` and rendered. **Unresolved** is where
+that refusal is stated, because the parsers do not agree by default: `serde_json` refuses the escape
+in the whole frame, while JavaScript's `JSON.parse` accepts it (as does Python's `json.loads`, which
+is what the check tooling reads vectors with), and a value that came in that way is one a naive
+re-encoder writes as bytes that are not valid UTF-8 at all. `schema/common.json`'s `documentPath`
+and `displayName` accept the value today, so an implementation that reads the schema and not this
+would conclude it is legal. Stating the exclusion in a `pattern` is not portable: a pattern matching
+`[\uD800-\uDFFF]` matches both code units of a conforming astral character wherever the dialect
+reads the string without the `u` flag. No vector carries one, and an `expect` step could not:
+`CANONICAL.md` §2 makes a lone surrogate unrepresentable, so the tooling's canonical check refuses
+to let a vector claim those bytes.
