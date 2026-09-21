@@ -72,6 +72,27 @@ REFUSED = [
     "1.2.",
 ]
 
+# The `uses:` references the rule must accept and refuse, driven through it here as well as
+# against the workflows: a rule only reachable from a file the repository happens to have stops
+# being tested the moment that file changes, and the `$/<path>` form is not in a file here at
+# all. The third member is how many problems the reference must raise.
+CHECKOUT = "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1"
+SETUP_PYTHON = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
+REFERENCE_SHAPES = [
+    (CHECKOUT, "v7.0.1", 0),
+    (CHECKOUT, "v7.0.1 (verified against the tag)", 0),
+    (SETUP_PYTHON, "v7.0.0", 0),
+    (SETUP_PYTHON, None, 1),
+    ("actions/checkout@v7.0.1", "v7.0.1", 1),
+    ("actions/checkout", "v7.0.1", 1),
+    ("actions/checkout@3d3c42e5", "v7.0.1", 1),
+    ("./.github/actions/build", None, 0),
+    ("$/.github/actions/build", None, 0),
+    ("$/", None, 1),
+    ("$/.github/actions/build@main", None, 1),
+    ("", None, 1),
+]
+
 FAILURES: list[str] = []
 
 
@@ -84,6 +105,73 @@ def workflow_files(root: pathlib.Path) -> list[pathlib.Path]:
     return sorted(
         [*directory.glob("*.yml"), *directory.glob("*.yaml")] if directory.is_dir() else []
     )
+
+
+def reference_problems(
+    at: str, ref: str, comment: str | None, pins: dict[str, tuple[str, str]]
+) -> list[str]:
+    """What is wrong with one `uses:` reference, as a list of problems.
+
+    The rule the scan applies to every line, and the rule the table below drives: nothing to
+    pin for a reference to this repository, and a full commit sha with the release it is in a
+    comment for anything else. `$/<path>` is this repository at the running commit, which is
+    why it carries no pin and no `@ref`, and a bare `$/` names nothing at all. The comment is
+    the text after `#`, whose first word has to be the release; a note after it is allowed.
+    """
+    if not ref:
+        return ["`uses:` names nothing"]
+    if ref.startswith("./"):
+        return []
+    if ref.startswith("$/"):
+        if len(ref) > 2 and "@" not in ref:
+            return []
+        return [f"`{ref}` is a self-repository reference: it is `$/<path>`, with no `@ref`"]
+    action, _, revision = ref.partition("@")
+    if not revision:
+        return [f"`{ref}` names no revision"]
+    if not SHA.fullmatch(revision):
+        return [
+            f"`{ref}` is not pinned to a commit sha: a tag is a mutable ref, and the pin is "
+            f"what a runner resolves"
+        ]
+    words = comment.split() if comment else []
+    label = words[0] if words else None
+    problems = []
+    if label is None or not RELEASE.fullmatch(label):
+        problems.append(
+            f"`{ref}` has no `# v<major>.<minor>.<patch>` comment saying which release the "
+            f"sha is"
+        )
+    earlier = pins.setdefault(action, (revision, at))
+    if earlier[0] != revision:
+        problems.append(
+            f"`{action}` is pinned to …{revision[-8:]} here and to …{earlier[0][-8:]} at "
+            f"{earlier[1]}: one action, one pin"
+        )
+    return problems
+
+
+def check_reference_shapes() -> int:
+    """Drives the rule over the references above, returning how many values ran."""
+    cases = 0
+    for ref, comment, want in REFERENCE_SHAPES:
+        cases += 1
+        problems = reference_problems("probe", ref, comment, {})
+        if len(problems) != want:
+            fail(
+                "probe",
+                f"`{ref}` with comment {comment!r} raises {len(problems)} problem(s), and "
+                f"this check says it raises {want}: {problems}",
+            )
+    # One action at two revisions in one tree, which is the drift that put this rule here.
+    cases += 2
+    pins: dict[str, tuple[str, str]] = {}
+    reference_problems("a.yml:1", CHECKOUT, "v7.0.1", pins)
+    other = "actions/checkout@" + "9" * 40
+    second = reference_problems("b.yml:1", other, "v7.0.2", pins)
+    if not second:
+        fail("probe", "one action at two revisions is not reported")
+    return cases
 
 
 def check_pins(root: pathlib.Path) -> int:
@@ -103,38 +191,8 @@ def check_pins(root: pathlib.Path) -> int:
             seen += 1
             at = f"{where}:{number}"
             ref, _, comment = match.group("rest").partition("#")
-            ref = ref.strip()
-            words = comment.split()
-            label = words[0] if words else None
-            if not ref:
-                fail(at, "`uses:` names nothing")
-                continue
-            if ref.startswith("./"):
-                continue  # a step in this repository, and nothing to pin
-            action, _, revision = ref.partition("@")
-            if not revision:
-                fail(at, f"`{ref}` names no revision")
-                continue
-            if not SHA.fullmatch(revision):
-                fail(
-                    at,
-                    f"`{ref}` is not pinned to a commit sha: a tag is a mutable ref, and "
-                    f"the pin is what a runner resolves",
-                )
-                continue
-            if label is None or not RELEASE.fullmatch(label):
-                fail(
-                    at,
-                    f"`{ref}` has no `# v<major>.<minor>.<patch>` comment saying which "
-                    f"release the sha is",
-                )
-            earlier = pins.setdefault(action, (revision, at))
-            if earlier[0] != revision:
-                fail(
-                    at,
-                    f"`{action}` is pinned to …{revision[-8:]} here and to "
-                    f"…{earlier[0][-8:]} at {earlier[1]}: one action, one pin",
-                )
+            for problem in reference_problems(at, ref.strip(), comment, pins):
+                fail(at, problem)
     if seen == 0:
         fail(f"{WORKFLOW_DIR}", "no `uses:` line: the scan would report a clean tree")
     return seen
@@ -180,10 +238,14 @@ def run(script: pathlib.Path, value: str) -> tuple[int, str]:
 def main(argv: list[str]) -> int:
     root = pathlib.Path(argv[1]).resolve() if len(argv) > 1 else ROOT
     pins = check_pins(root)
+    shapes = check_reference_shapes()
     cases = check_guard(root)
     for problem in FAILURES:
         print(f"FAIL           {problem}")
-    print(f"workflows      {pins} `uses:` lines checked, {cases} release versions")
+    print(
+        f"workflows      {pins} `uses:` lines checked, {shapes} references, "
+        f"{cases} release versions"
+    )
     print(f"result         {'FAIL' if FAILURES else 'OK'}")
     return 1 if FAILURES else 0
 
