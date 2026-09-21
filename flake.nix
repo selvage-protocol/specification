@@ -29,9 +29,11 @@
         # failed. The command's output goes to stderr as the build runs; `$out` gets one stable
         # line, because the runner prints per-test timings and a derivation whose output differs
         # from build to build is one `nix build --rebuild` rightly calls non-deterministic.
+        # `bash` is here for the workflows check, which drives a shell guard; the other two need
+        # only the interpreter.
         mkCheck = name: command:
           pkgs.runCommand "specification-${name}" {
-            nativeBuildInputs = [python];
+            nativeBuildInputs = [python pkgs.bash];
           } ''
             cd ${self}
             # The source tree is the store's, which is read-only; a bytecode cache belongs
@@ -64,6 +66,9 @@
           runner = mkCheck "runner" "python3 runner/test_runner.py";
           # The y-protocols decoder the replay leans on, straight from vectors 009 and 010.
           yprotocols = mkCheck "yprotocols" "python3 runner/test_yprotocols.py";
+          # Every `uses:` in the workflows pinned to a commit sha, and the release-version
+          # guard of `release.yml` driven over the values it must take and refuse.
+          workflows = mkCheck "workflows" "python3 scripts/check-workflows.py";
         };
       }
     );
