@@ -3,7 +3,8 @@
 # Runs the steps of .github/workflows/validate.yml on this machine, without containers (this
 # host has no Docker or Podman, so `act` cannot run here).
 #
-#   scripts/ci-local.sh validate  # the `schemas` job: the schemas, the vectors, the runner, the decoder
+#   scripts/ci-local.sh validate  # the `schemas` job: the schemas, the vectors, the runner,
+#                                 # the decoder, the workflows
 #   scripts/ci-local.sh lint      # actionlint over the workflow files
 #   scripts/ci-local.sh all       # lint + validate
 #
@@ -11,7 +12,8 @@
 # here rather than on a runner. `lint` catches unknown actions, bad expressions and shell
 # mistakes statically; the workflow has no actionlint step of its own, so that one is local-only.
 #
-# `validate` is `nix build .#checks.<system>.{schemas,runner,yprotocols}`, one check per step.
+# `validate` is `nix build .#checks.<system>.{schemas,runner,yprotocols,workflows}`, one check per
+# step.
 # `flake.nix` supplies the pinned Python and the three packages the workflow installs with pip —
 # at the versions that workflow pins — so this needs no virtualenv, no `pip` and no network. Each
 # check's store path is the report of the command it ran, which is what is printed here: a check
@@ -41,7 +43,7 @@ say() { printf '\n=== %s ===\n' "$*"; }
 
 inputs_clean() {
   local dirty
-  dirty=$(git status --porcelain -- schema vectors runner flake.nix flake.lock)
+  dirty=$(git status --porcelain -- .github schema scripts vectors runner flake.nix flake.lock)
   if [[ -n $dirty ]]; then
     printf 'refusing: the validate inputs differ from HEAD, so this is not the run CI would do.\n' >&2
     printf 'commit these paths first, then re-run:\n' >&2
@@ -62,6 +64,7 @@ job_validate() {
   check schemas "the schemas and the vectors"
   check runner "the runner's comparison code"
   check yprotocols "the binary decoder"
+  check workflows "the workflows' pins and the release-version guard"
 }
 
 job_lint() {

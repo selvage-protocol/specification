@@ -67,9 +67,9 @@ BASE = "https://selvageprotocol.com/schema/1/"
 # deliberate edit, and these three numbers are what makes the opposite edit — a silent
 # deletion — a red run instead of a smaller number in a line of output. Update them in the
 # same commit that changes the corpus.
-EXPECTED_VECTORS = 35
-EXPECTED_FRAME_CHECKS = 34984
-EXPECTED_ASSERTIONS = 8669
+EXPECTED_VECTORS = 36
+EXPECTED_FRAME_CHECKS = 35022
+EXPECTED_ASSERTIONS = 8676
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
 # closed vocabulary is schema-valid and count-identical, so this census is what makes one a
@@ -125,6 +125,7 @@ EXPECTED_CODES = {
             "error:bad_params"],
     "034": [],
     "035": [],
+    "036": ["session.error:bad_message", "session.error:bad_message"],
 }
 
 # A step that reads or asserts something. Every other step only produces input for one, so
@@ -251,12 +252,35 @@ def registry() -> Registry:
     return loaded
 
 
+# The validator for each `$ref`, and the registry it was built against. Six refs cover
+# every frame in the corpus, while a build walks and meta-checks its schema, so building
+# one per check spends most of the run on the same few schemas. The registry is held
+# beside the validator it was built with, so a registry that is replaced — `test_runner`
+# builds a fresh one per case — rebuilds rather than reuses.
+_VALIDATORS: dict[str, tuple[Registry, Draft202012Validator]] = {}
+
+
+def validator_for(reg: Registry, ref: str) -> Draft202012Validator:
+    """The validator for one `$ref` in this registry, built once and reused.
+
+    A validator is stateless between `iter_errors` calls: it holds the registry and the
+    ref, and each call builds its own scope.
+    """
+    cached = _VALIDATORS.get(ref)
+    if cached is None or cached[0] is not reg:
+        cached = _VALIDATORS[ref] = (
+            reg,
+            Draft202012Validator({"$ref": ref}, registry=reg),
+        )
+    return cached[1]
+
+
 def check(reg: Registry, ref: str, instance: object, where: str, label: str) -> None:
     global CHECKS
     CHECKS += 1
     # The ref is resolved through the registry, never by extracting a subschema: a
     # relative `#/$defs/...` inside it must keep the base URI of the file it lives in.
-    validator = Draft202012Validator({"$ref": ref}, registry=reg)
+    validator = validator_for(reg, ref)
     errors = sorted(
         validator.iter_errors(instance),
         key=lambda error: (

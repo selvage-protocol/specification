@@ -52,10 +52,14 @@ jobs:
         with:
           python-version: "3.14.7"
 
-      # The release version comes from the dispatch input, or from the tag
-      # name on a tag push. It passes through `env` rather than a workflow
-      # expression inside `run:`, and anything outside `X.Y.Z` stops the job
-      # before anything is built, tagged or released.
+      # The release version comes from the dispatch input, or from the tag name on a tag
+      # push. It passes through `env` rather than a workflow expression inside `run:`, so
+      # no part of it is read as shell syntax, and the shape it must have lives in
+      # `scripts/check-release-version.sh` — where it has a test — rather than in a `case`
+      # here, because a `case` pattern's `*` matches `.` and `/`: the guard this replaced
+      # admitted `1.2.3-rc1`, `1.2.3.4`, `1x2.3.4` and a value carrying a newline, which
+      # `echo >> $GITHUB_ENV` would have written as a second line, setting a second
+      # variable for every later step.
       - name: resolve the release version
         env:
           DISPATCH_VERSION: ${{ inputs.version }}
@@ -65,14 +69,8 @@ jobs:
           else
             version="${GITHUB_REF_NAME#v}"
           fi
-          case "$version" in
-            [0-9]*.[0-9]*.[0-9]*)
-              ;;
-            *)
-              printf 'refusing: %s is not a release version\n' "$version" >&2
-              exit 1
-              ;;
-          esac
+          # Silent, and refuses with the reason it gives on stderr.
+          scripts/check-release-version.sh "$version"
           echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
 
       # Same pins as validate.yml, so a bundle that passes here cannot fail there.
@@ -88,6 +86,9 @@ jobs:
 
       - name: check the binary decoder
         run: python3 runner/test_yprotocols.py
+
+      - name: check the workflows and the release-version guard
+        run: python3 scripts/check-workflows.py
 
       - name: reject the wire-version typo
         run: |
