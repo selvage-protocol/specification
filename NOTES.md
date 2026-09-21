@@ -48,6 +48,16 @@ The implementations this document describes:
   `schema/validate.py` spends its time on. It is therefore both the corpus's cost centre and the one
   vector a second implementation cannot replay if its cap is not 128. A `harness` knob for the cap
   would let the same claim be pinned with three peers.
+- The **envelope bound and the room-state caps** are the bounds the corpus cannot reach at all, and
+  the ones a second implementation is most likely to get wrong because they are not all refusals of
+  the same kind: a text envelope past `--max-envelope-bytes` (5 MiB) is refused `bad_message` with
+  the connection left open, where a frame past the transport's 8 MiB bound is a drop with nothing on
+  the wire; a mint past `--max-rooms` is `x.server_full`, a join past `--max-peers-per-room` and an
+  open past `--max-documents-per-room` are `x.room_full`, a grant past its count, per-path or byte
+  bound is `bad_params`, and a connection past `--inbound-bytes-per-sec` / `--inbound-burst-bytes`
+  is told `x.rate_limited` and closed 1013. `PROTOCOL.md` §2.1's table carries the numbers and the
+  codes; `crates/harness/tests/session.rs` and `bounds.rs` pin the shapes. The corpus cannot, because
+  `harness` carries `room_grace_ms` alone (`B.29`).
 
 ### A.2 The Rust client
 
@@ -84,6 +94,26 @@ The implementations this document describes:
 - **Removes a departed peer's awareness state on `peer.left`** (`removeAwarenessStates`). The Rust
   client does the same in `peer_left`, so both clients drop a departed peer's state rather than
   leave it to expire on the advertised clock (`PROTOCOL.md` §8.4).
+- **An incoming awareness query is dropped, not answered** (`MESSAGE_QUERY_AWARENESS` in
+  `src/engine/sync.ts`), and a frame of query messages draws no answer at all. `PROTOCOL.md` §8.3
+  allows that and bounds the answering form, because answering one per message made a legal 256 KiB
+  frame of one-byte query messages cost 256 000 replies carrying the whole awareness set. The Rust
+  client still answers through `yrs`'s own protocol handler — one reply per query message in the
+  frame, with no per-frame cap — so the two engines differ here and the Rust one carries the
+  amplification.
+- **Its outgoing frames are not in SJ-C member order.** The envelope is serialised as
+  `{v, id, method, params}`, and `session.hello`'s params as
+  `{display_name, role, awareness_client_id, capabilities, client}`, because the engine hands
+  `JSON.stringify` a plain object. `CANONICAL.md` §2.1 makes ascending member order a producer rule
+  for requests as for events; a receiver must tolerate any order (§4), and the corpus compares only
+  a server's frames, so nothing in this repository catches it.
+- **It permits more than one request in flight.** `pending` is a map keyed by request id and each
+  request goes out as it is made, and `test/engine.test.ts` pins two in flight together, each
+  answered by its own id. `PROTOCOL.md` §5 makes one request at a time a MUST, because a seated
+  `session.error{bad_message}` carries no `id` and a client that pipelined cannot tell which request
+  it sank; the engine emits a `sessionError` event and leaves whatever is outstanding to its
+  ten-second timeout rather than failing it. The Rust client queues instead (`waiting` and
+  `inflight`), so the two engines differ here as well.
 
 ### A.4 The `x.` method surface
 
@@ -97,12 +127,16 @@ sort, because events reach a client that has already promised to ignore the ones
 
 ### A.5 `GET /meta`
 
-Hand-rolled on the WebSocket listener: no keep-alive, no routing, and the request method is not
-inspected, so `GET`, `POST` and `HEAD /meta` all answer `200` with the same body. Answering `HEAD`
-with a body deviates from RFC 9110. It is fine for negotiation, and it should be replaced rather
-than extended if a real HTTP surface is ever needed (`B.14`). The body is written in canonical
-member order (`CANONICAL.md` §2.1), which the server's `Meta` struct achieves by declaring its
-members in ascending order.
+Hand-rolled on the WebSocket listener: no keep-alive and no routing. `GET /meta` answers the body;
+`HEAD /meta` answers the same status line and headers, the body's `content-length` among them, with
+nothing after them, which is what RFC 9110 §9.3.2 asks for; and any other method is
+`405 Method Not Allowed` with `allow: GET, HEAD`. It is fine for negotiation, and it should be
+replaced rather than extended if a real HTTP surface is ever needed (`B.14`). The body is written in
+canonical member order (`CANONICAL.md` §2.1), which the server's `Meta` struct achieves by declaring
+its members in ascending order. With `--serve-page` the same listener serves a static page from
+`GET /` and every other plain path, on the same origin as `/session` and `/meta`, which is what
+makes a page-link invite (§5.1) open in a browser; that page is a deployment's and not this
+protocol's (`PROTOCOL.md` §2).
 
 ### A.6 Reconnection status, and what it costs
 
@@ -239,9 +273,12 @@ compressed scale.
 extended, if a real HTTP surface is ever needed. **Unresolved by design.**
 
 **B.15 `y-protocols` message types 2 (auth) and 3 (awareness query)** are never sent by either
-implementation: a query a client receives is answered, and an auth message is ignored
-(`PROTOCOL.md` §8.3). Whether `selvage/1` should *forbid* them, or keep them available for a future
-profile, is **unresolved**.
+implementation, an auth message is read and ignored, and a query may be ignored or answered at most
+once for the frame it arrived in (`PROTOCOL.md` §8.3). Whether `selvage/1` should *forbid* them, or
+keep them available for a future profile, is **unresolved**; so is whether a query should be
+answered at all, now that the answering form is bounded — answering costs one frame per query frame
+and gains a client nothing, since the three discovery steps of §8.3 are the whole story, while a
+peer that speaks y-protocols without Selvage may ask one and get nothing.
 
 **B.16 The second client implementation.** See `A.7`. **Unresolved.**
 
@@ -462,3 +499,37 @@ is the only side that can carry it: a `send` step's text can hold the escape, an
 `schema/common.json` accepts the frame it makes, while an `expect` step could not — `CANONICAL.md`
 §2 makes a lone surrogate unrepresentable, so the tooling's canonical check refuses to let a vector
 claim those bytes. Whether the model should refuse the value too, and where, is what is unresolved.
+
+**B.28 Which invite form a host hands on.** `PROTOCOL.md` §5.1 now states both forms: the
+connection URL a socket opens directly, and the page link whose origin is the server. The reference
+clients hand on the **page link** for every room, including a room on a server started without
+`--serve-page`, where the link opens a `404` in a browser and joins only when pasted into a client
+that reads page links; the Rust reference client builds the connection URL and cannot read a page
+link at all. Whether a host whose server serves no page should hand on the connection URL instead,
+and whether §5.1's both-forms requirement is what settles that divergence (the Rust client would
+then owe a page-link reader) or the page form should stay a client convention this document merely
+describes, is **unresolved**. A link is a handshake in the sense that one peer's link is the
+other's entry point, and the two reference client families currently disagree about which form a
+human is given.
+
+**B.29 The corpus cannot pin a server's policy bounds.** Every capacity row of `PROTOCOL.md` §2.1
+is enforced by the reference server and covered by `crates/harness/tests/session.rs` and
+`bounds.rs`, and none of them can be pinned by a transcript: `harness` carries `room_grace_ms`
+alone (`A.1`), so `--max-envelope-bytes`, `--max-rooms`, `--max-peers-per-room`,
+`--max-documents-per-room` and the inbound budget are all at their defaults for every vector, and
+a transcript that needed a small one — the way `vectors/012` needs a 400 ms grace — has no way to
+ask. The shapes worth a vector are the ones where the *kind* of refusal differs: an oversized text
+envelope (`bad_message`, connection open) against an oversized frame (a drop, nothing on the wire),
+and a capacity refusal (`x.room_full`, close 4000) against a malformed request (`bad_params`).
+Whether `harness` should carry those knobs — which is a change in `reference_server` plus a corpus
+re-baseline — or whether the harness tests are enough for a bound the opening sentence of §2.1
+calls policy and not a peer's contract, is **unresolved**.
+
+**B.30 Whether `selvage/1` should name a capacity fault.** `PROTOCOL.md` §2.1 and §11 leave every
+capacity refusal to the implementation's own `x.` code — `x.server_full`, `x.room_full`,
+`x.rate_limited` in the reference server — so a client cannot tell "the room is full" from "the
+request was malformed" without reading a code that is not this version's, and §9.1's rule for `x.*`
+is the only thing that makes either terminal. The same question is recorded for a non-host
+publisher in `B.23`. Whether a later version defines `room_full`, `server_full` and a rate-limit
+code as `selvage/1` codes with their own closes, or keeps them private and leaves a client to treat
+every refusal the same, is **unresolved**.
