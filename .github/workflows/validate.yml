@@ -19,11 +19,11 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@v7.0.0
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14.7"
 
@@ -51,3 +51,11 @@ jobs:
 
       - name: check the binary decoder
         run: python3 runner/test_yprotocols.py
+
+      # The two workflows, and the guard in `release.yml` that decides what a release is
+      # called. Checked here as well as at release time, because a pull request is where a
+      # wrong action revision would be tested and merged, while `release.yml` is reached
+      # only by a dispatch or a tag push, neither of which a pull request runs. This check
+      # needs neither the dependencies above nor a server.
+      - name: check the workflows and the release-version guard
+        run: python3 scripts/check-workflows.py
