@@ -45,6 +45,12 @@ jobs:
   release:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
+    # The checks import `schema/validate.py`, and an import writes a `__pycache__` beside it. The
+    # bundle is `zip -r schema vectors …`, so that bytecode cache rode into `v0.1.1`'s bundle: 38 KB
+    # of the runner's own Python in an artefact whose release notes say it holds the tag's commit.
+    # Nothing in this job needs a cache on disk.
+    env:
+      PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
