@@ -247,7 +247,11 @@ its policy, not a peer's contract. Six consequences do bind a peer.
   first two the connection ends the way a dropped socket ends, and past the envelope bound it is
   refused on the frame's own vocabulary — and a room's stored state is its peers, its open-document
   set and its grant: a request that would exceed a bound the server sets is refused with
-  `bad_params` or an `x.` capacity code (§10.1, §11), leaving the room as it was.
+  `bad_params` or an `x.` capacity code (§10.1, §11), leaving the room as it was. Which of the two
+  shapes a capacity refusal takes follows §11 rather than the code: before seating every fault is a
+  refusal, `session.error` and then the matching close — close 4000 for a code with no close of its
+  own, which is every `x.` code — while on a seated connection the fault is an error response for
+  the request that caused it and the connection stays open.
 
 The reference server's numbers, for a reader who needs to know what to expect in practice
 *(informative)*:
@@ -262,11 +266,11 @@ The reference server's numbers, for a reader who needs to know what to expect in
 | inbound WebSocket frame | 8 MiB | the connection ends the way a dropped socket ends: no `session.error`, no session close code |
 | inbound WebSocket message | 8 MiB | the same |
 | inbound text envelope | 5 MiB, judged on the frame before the JSON parse | refused `bad_message`, naming the bound and that the frame was not parsed: the event on a seated connection, which stays open, and the refusal plus close 4000 before seating |
-| room state: rooms | 1024 minted at once | a mint past it is refused `x.server_full`; the room is not created |
-| room state: peers per room | 128 | a further join is refused `x.room_full`; a connection reclaiming a hostless room as its host seats anyway, because the room's owner must be able to come back |
-| room state: the room's open-document set | 1024 paths | a `doc.open` for a path the set does not already hold is refused `x.room_full`, and the connection stays open |
+| room state: rooms | 1024 minted at once | a mint past it is refused `x.server_full`: a refusal, so `session.error` and then close **4000**, the generic close a code with no matching one uses (§11); the room is not created |
+| room state: peers per room | 128 | a further join is refused `x.room_full`, the same refusal shape (`session.error`, close 4000); a connection reclaiming a hostless room as its host seats anyway, because the room's owner must be able to come back |
+| room state: the room's open-document set | 1024 paths | a `doc.open` for a path the set does not already hold is answered with the error response `x.room_full`, correlated by the request's `id`, and the connection stays open — a seated fault is announced in the frame's own vocabulary, not as a refusal (§11) |
 | room state: the room's grant | 100 000 paths, 4096 bytes to a path, 4 MiB of path bytes in total | a `doc.grant` past any of the three is refused `bad_params`, and the connection stays open |
-| inbound budget, per connection | 2 MiB a second, refilled continuously, with a 64 MiB burst to spend | the peer is told `x.rate_limited` and closed **1013** (try again later); its reconnect starts with a fresh budget |
+| inbound budget, per connection | 2 MiB a second, refilled continuously, with a 64 MiB burst to spend | a seated connection is told `x.rate_limited` and closed **1013** (try again later); the same budget spent before seating is the ordinary refusal, `session.error` and close 4000; a reconnect starts with a fresh budget |
 
 The head bound applies before admission, and it has two halves: `head_timeout` bounds how long
 the whole request head may take, not merely the gap between reads, and the 16 KiB bounds its
@@ -1211,6 +1215,7 @@ is never judged by a fault later in that order than one it also carries.
 | unseated | a join naming a room that does not exist | closed | `session.error{room_unknown}`, close 4001 |
 | unseated | a join whose token is absent or wrong | closed | `session.error{token_invalid}`, close 4002 |
 | unseated | a host claim while a host is seated | closed | `session.error{host_present}`, close 4004 |
+| unseated | a mint or a join past a bound the server sets (§2.1) | closed | the refusal carrying that implementation's own `x.` code: `session.error`, then close 4000 |
 | unseated | no frame within the server's hello timeout | closed | `session.error{hello_required}`, close 4000 |
 | seated | `session.hello` | seated | the error response `already_seated` |
 | seated | `doc.open` / `doc.close` with a non-blank `path` | seated | the result, then `doc.opened`/`doc.closed` to the room |
@@ -1219,6 +1224,7 @@ is never judged by a fault later in that order than one it also carries.
 | seated | `doc.grant` from a connection the server does not hold as the room's host, or with malformed `paths` | seated | the error response `bad_params` |
 | seated | `session.rename` with a non-blank `display_name` within the bound | seated | `{ "result": {} }` to the caller, then `peer.renamed` to the room, the caller included |
 | seated | `session.rename` with params that do not parse, or a blank, over-long or control-carrying `display_name` | seated | the error response `bad_params` |
+| seated | `doc.open` past a bound the server sets on the room's state (§2.1) | seated | the error response carrying that implementation's own `x.` code; the connection stays open |
 | seated | any other method | seated | the error response `unknown_method` |
 | seated | a text frame that is not an envelope, or has no `id` | seated | `session.error{bad_message}` |
 | seated | a text frame longer than the server's envelope bound (§2.1) | seated | `session.error{bad_message}`, naming the bound; the connection stays open |
