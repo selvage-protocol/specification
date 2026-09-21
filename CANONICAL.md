@@ -36,7 +36,8 @@ and byte order.
 > **Why not the order of the tables in `PROTOCOL.md`?** Because the tables are prose, and a
 > second implementation reads them; sorting is a rule that cannot be misread. The reference server
 > arrived at sorted order for every nested object by accident (`serde_json::Value` maps are
-> `BTreeMap`s), while its envelope and `/meta` did not yet sort.
+> `BTreeMap`s), while its envelope and `/meta` are structs whose members are declared in ascending
+> order, which is the same rule kept by hand where a map does not keep it.
 
 ### 2.2 Whitespace
 
