@@ -463,19 +463,24 @@ that matters: an implementation that read only the prose is where the decoding w
 §5.1's sentence about `+` exists because that divergence is silent — one peer's token is another's
 `token_invalid`, and neither can see why.)
 
-**B.26 A one-sided drop has no liveness bound.** A socket can die at one end while the other stays
-open (a roaming client, a hung relay, a half-open TCP connection), and every party is individually
-conformant. The server never ends a session for silence (`PROTOCOL.md` §2.1, §9), so it goes on
-holding the connection as the room's host; the remaining guests never receive `host.detached`, so
-no grace period starts; the real host reconnects and is refused `host_present`; and the room stays
-hosted by a peer it cannot displace while its guests keep editing into a room nobody can reclaim.
-`PROTOCOL.md` says nothing about detecting liveness, so the composition hangs where each half is
-right: the server for keeping the session, the client for stopping at a refusal. Whether
-`selvage/1` should require a liveness bound, and where it belongs (the server treating a missed
-WebSocket Pong as a fault after some window, or a `host_present` claim becoming reclaimable by the
-token holder) is **unresolved**, and it is wire-visible because it decides whether a session ends,
-so it is a decision and not wording. The reference server is adding a liveness bound; the spec does
-not yet bind one.
+**B.26 A one-sided drop has no *required* liveness bound.** A socket can die at one end while the
+other stays open (a roaming client, a hung relay, a half-open TCP connection), and every party is
+individually conformant. `PROTOCOL.md` §2.1 and §9 bind a ping-based bound at **MAY**: a server
+pings every `ping_interval_ms`, and one that leaves its pings unanswered for a stated number of
+intervals may be closed as an ordinary drop. The reference server applies it — a peer that has not
+answered two successive pings by the time the third is due, which is 60 s of complete silence at
+the default interval, is ended — and the end is an ordinary drop: `peer.left`, `host.detached`
+when the peer held the room, and then the grace period. So a drop the pings can see does not hang,
+and two shapes are left. A peer whose WebSocket implementation still answers them while its session
+is not being served is never ended for it, at the reference or anywhere else (`PROTOCOL.md` §2.1:
+a connection that answers its pings is never closed for being quiet). A server that does not apply
+the bound at all is conformant, and its room then stays hosted by the peer whose socket is gone:
+the guests never receive `host.detached`, so no grace period starts, the real host reconnects and
+is refused `host_present`, and the room stays hosted by a peer it cannot displace while its guests
+keep editing into a room nobody can reclaim. Whether `selvage/1` should *require* a liveness bound,
+and where it binds (a **MUST** on the ping bound, or a `host_present` claim becoming reclaimable by
+the token holder) is **unresolved**, and it is wire-visible because it decides whether a session
+ends, so it is a decision and not wording.
 
 **B.27 A string that decodes to a lone surrogate is refused `bad_message`, and only `CANONICAL.md`
 says so.** `CANONICAL.md` §2.3 requires the refusal: a `\u` escape that resolves to an unpaired
