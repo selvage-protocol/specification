@@ -28,7 +28,7 @@ A green run prints one line for the schemas, one for the corpus counts, and `res
 
 ```
 schema ok      9 schemas, 39 values checked against the control-character refusal
-vectors        35 files, 34984 frame checks, 8669 assertion steps
+vectors        36 files, 35022 frame checks, 8676 assertion steps
 result         OK
 ```
 
@@ -146,7 +146,7 @@ python3 runner/run_vectors.py
 Against a `selvaged` that implements every frame the corpus covers, it ends with:
 
 ```
-summary        35 files, 34984 frame checks, 35 vectors passed, 0 failed
+summary        36 files, 35022 frame checks, 36 vectors passed, 0 failed
 ```
 
 The red line to expect is a vector that pins behaviour newer than the server you point it at; the
@@ -240,7 +240,7 @@ minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this ver
    with `client_id` set), and print the frames. A payload with a random client id in it is not a
    vector, it is a flaky test.
 2. **Write the file** as `vectors/NNN-<slug>.json`, where `NNN` is the next free number. A new
-   vector is numbered after the last one, which is `035` as this is written. The members are:
+   vector is numbered after the last one, which is `036` as this is written. The members are:
 
    ```json
    {

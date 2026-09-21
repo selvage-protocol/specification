@@ -407,14 +407,24 @@ records for `doc.grant`'s `bad_params`. **Decided** as the code to use; whether 
 URL-fault code of its own is open, and §5.1, §11 and any vector that pins one move together if it
 is wanted.
 
-**No vector pins any of §5.1's URL rules**: not the repeated parameter, not the RFC 3986 decoding
-(`%XX` is the only escape, and a literal `+` is a `+`), and not the mint-on-a-token-alone rule of
-`B.17`. The reference server does all three — a join that repeats either parameter is
-`token_invalid`, and a join whose room id or token has its first character percent-encoded still
-reaches the same room — so the gap is the corpus's and not the implementation's. It is the corpus's
-gap that matters here: an implementation that reads only the prose is where the decoding would
-diverge, and §5.1's sentence about `+` exists because that divergence is silent — one peer's token
-is another's `token_invalid`, and neither can see why.
+**No vector pinned any of §5.1's URL rules**, and two of the three cannot be pinned by this
+corpus at all. The **decoding** rule — `%XX` is the only escape, and a literal `+` is the
+character `+` — has no vocabulary to state it in: a placeholder binds one whole value, so a step
+cannot spell an encoding of a room id or a token the server minted. The **repeated parameter** is
+refused by the reference server before `session.hello`, at the upgrade — a connection that sends
+nothing at all is answered `session.error{token_invalid}` and closed 4002, while a wrong token, an
+unknown room and a missing token all stay silent until a hello arrives — and §5.1 does not say
+when the refusal goes out. A transcript of that refusal would therefore begin with its `expect`
+and hold a second implementation to the timing as well as to the rule, where §1.1's silence rule
+says a peer must not depend on what the prose does not state; a transcript that sent a hello first
+would fail against the reference server, because the socket is already gone. So the rule is
+**unpinned and unpinnable** in the corpus as it stands, and what settles it is prose: either §5.1
+says when the refusal goes out, or the seating rule of §9.2 does. (The reference server does all
+three — a join whose room id or token has its first character percent-encoded still reaches the
+same room — so the gap is the corpus's and not the implementation's, and it is the corpus's gap
+that matters: an implementation that read only the prose is where the decoding would diverge, and
+§5.1's sentence about `+` exists because that divergence is silent — one peer's token is another's
+`token_invalid`, and neither can see why.)
 
 **B.26 A one-sided drop has no liveness bound.** A socket can die at one end while the other stays
 open (a roaming client, a hung relay, a half-open TCP connection), and every party is individually
@@ -447,6 +457,8 @@ re-encoder writes as bytes that are not valid UTF-8 at all. `schema/common.json`
 and `displayName` accept the value today, so an implementation that reads the schema and not this
 would conclude it is legal. Stating the exclusion in a `pattern` is not portable: a pattern matching
 `[\uD800-\uDFFF]` matches both code units of a conforming astral character wherever the dialect
-reads the string without the `u` flag. No vector carries one, and an `expect` step could not:
-`CANONICAL.md` §2 makes a lone surrogate unrepresentable, so the tooling's canonical check refuses
-to let a vector claim those bytes.
+reads the string without the `u` flag. Vector `036` pins the refusal from the sending side, which
+is the only side that can carry it: a `send` step's text can hold the escape, and
+`schema/common.json` accepts the frame it makes, while an `expect` step could not — `CANONICAL.md`
+§2 makes a lone surrogate unrepresentable, so the tooling's canonical check refuses to let a vector
+claim those bytes. Whether the model should refuse the value too, and where, is what is unresolved.
