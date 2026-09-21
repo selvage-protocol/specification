@@ -102,11 +102,11 @@ in every vector against them. It prints a line for the schemas, a line for the c
   a substitution inside a closed vocabulary (`unknown_method` for `bad_params`, say) is a red run
   rather than a corpus that keeps every count and quietly asserts something else.
 
-Testing a refusal means sending a frame the vector knows is malformed. Such a frame carries
-`"refused": true`, and its params are not schema-checked. When the malformation is that the frame
-is not JSON at all, it carries `"unparsable": true` as well: the two markers are different claims,
-the first that the frame is well formed and refused for what it says, the second that a parser
-refuses it. A marker left on a frame that does parse is a red run: otherwise the run reports OK
+Testing a refusal means sending a frame the server must reject. Such a frame carries
+`"refused": true`, and its params are not schema-checked. When the frame is not JSON at all, it
+carries `"unparsable": true` as well: the two markers are different claims, the first that the
+frame is well formed and refused for what it says, the second that a parser refuses it. An
+`unparsable` marker left on a frame that does parse is a red run: otherwise the run reports OK
 with an assertion that never ran.
 
 `SELVAGE_VECTORS=DIR` reads the transcripts from another directory; both halves honour it.
