@@ -185,9 +185,18 @@ These words carry obligations, and the protocol uses them precisely.
     it, and the protocol already treats unknown members and unknown capabilities as ignorable,
     not fatal.
 
-  Other paths return `404`. Only `GET` is defined, and the negotiation endpoint does not support
-  keep-alive. *(informative)* A request method other than `GET` is answered with the same body
-  rather than refused, which is a deviation from RFC 9110.
+  `GET /meta` is the only request this document defines, and the negotiation endpoint does not
+  support keep-alive. A client **MUST NOT** send it another method. *(informative)* The reference
+  listener answers `HEAD /meta` with the `GET` headers, the body's `content-length` among them, and
+  no body, which is what RFC 9110 §9.3.2 asks for, and answers any other method
+  `405 Method Not Allowed` with `allow: GET, HEAD`: a `POST` answered `200` while creating nothing
+  would be a lie.
+
+  Other paths return `404`. An implementation **MAY** serve a static page there instead — the
+  reference server does, from `--serve-page`, on the same origin as `/session` and `/meta` — which
+  is what lets an invite link, whose origin is the server (§5.1), open in a browser. That page is
+  outside `selvage/1`: §1 covers no HTTP surface but `GET /meta`, and the protocol gives a room
+  exactly one wire endpoint.
 
 - **Frame types.** Text frames carry the JSON session envelope (§4–§6). Binary frames carry
   y-protocols payloads (§7, §8). The server routes binary frames by room membership and never
@@ -196,7 +205,7 @@ These words carry obligations, and the protocol uses them precisely.
 ### 2.1 Limits
 
 Nothing here is negotiated, and the protocol fixes none of the numbers: what a server bounds is
-its policy, not a peer's contract. Five consequences do bind a peer.
+its policy, not a peer's contract. Six consequences do bind a peer.
 
 - **A server bounds the wait for `session.hello`** and closes a connection that stays silent past
   it (§5). A client **MUST NOT** expect an unseated connection to live indefinitely.
@@ -206,10 +215,23 @@ its policy, not a peer's contract. Five consequences do bind a peer.
   reference waits two), so a slow link is not mistaken for a dead one. Closing for silence is an
   ordinary drop: the room is told `peer.left`, the grace arms when the peer was the host, and no
   session close code is sent.
-- **A server MAY bound the size of an inbound frame or message.** A frame over the bound is a
-  transport failure and not a session fault: it ends the connection the way a dropped socket ends,
-  with no `session.error` and no session close code (§11), and the room learns of it as `peer.left`
-  (§6, §9). There is no way in `selvage/1` to move a payload larger than a peer's bound.
+- **A server MAY bound the size of an inbound WebSocket frame or message.** A frame or message
+  over that bound is a transport failure and not a session fault: it ends the connection the way a
+  dropped socket ends, with no `session.error` and no session close code (§11), and the room learns
+  of it as `peer.left` (§6, §9). There is no way in `selvage/1` to move a payload larger than a
+  peer's transport bound. That bound is structural rather than policy: past it the transport cannot
+  resync mid-message, so there is no session left to refuse on.
+- **A server MAY bound the text envelope it will parse, below its transport bound, and that bound
+  is a session fault.** The frame arrived whole, so there is a session to refuse on: the server
+  judges the frame's own length, in wire bytes and before any JSON parser is handed it, and answers
+  `bad_message`, naming the bound and the fact that the frame was not parsed. A seated connection
+  gets the `session.error` event and stays open, exactly as §9.2 says of any other unreadable text
+  frame, because a peer that sent one oversized envelope can send a smaller one next; a frame that
+  arrives before `session.hello` gets the refusal every unseated fault gets, `session.error` and
+  close **4000** (§11). An implementation that sets the envelope bound below its frame bound is
+  telling a peer something it can act on — "send this again, smaller" — where the transport bound
+  can only end the session; one that sets no envelope bound parses every frame its own frame bound
+  admits.
 - **A client's own buffers are the mirror image, and they are the client's.** A client that writes
   faster than its peer reads is buffering in its own memory: the socket's backpressure does not
   remove the queue, it moves it. A y-protocols delta cannot be regenerated once it has been
@@ -221,8 +243,9 @@ its policy, not a peer's contract. Five consequences do bind a peer.
   and **MUST** refuse deterministically past each rather than grow without limit. The numbers
   are policy, as the opening sentence says; that a bound exists is what a peer is held to,
   because a second implementation cannot be held to a protocol whose other end allocates without
-  limit. The per-connection bound is the frame and message bound below (past it the connection
-  ends the way a dropped socket ends), and a room's stored state is its peers, its open-document
+  limit. The per-connection bounds are the frame, message and envelope bounds below — past the
+  first two the connection ends the way a dropped socket ends, and past the envelope bound it is
+  refused on the frame's own vocabulary — and a room's stored state is its peers, its open-document
   set and its grant: a request that would exceed a bound the server sets is refused with
   `bad_params` or an `x.` capacity code (§10.1, §11), leaving the room as it was.
 
@@ -238,6 +261,12 @@ The reference server's numbers, for a reader who needs to know what to expect in
 | connections | 1024, counted past the head | past the cap a plain HTTP request is answered `503`, and a WebSocket upgrade is answered and then closed with **1013**; a half-sent head is bounded by `head_timeout` and not counted. Still no idle reaper (a connection that answers its pings is never closed for being quiet) and no per-source rate limit |
 | inbound WebSocket frame | 8 MiB | the connection ends the way a dropped socket ends: no `session.error`, no session close code |
 | inbound WebSocket message | 8 MiB | the same |
+| inbound text envelope | 5 MiB, judged on the frame before the JSON parse | refused `bad_message`, naming the bound and that the frame was not parsed: the event on a seated connection, which stays open, and the refusal plus close 4000 before seating |
+| room state: rooms | 1024 minted at once | a mint past it is refused `x.server_full`; the room is not created |
+| room state: peers per room | 128 | a further join is refused `x.room_full`; a connection reclaiming a hostless room as its host seats anyway, because the room's owner must be able to come back |
+| room state: the room's open-document set | 1024 paths | a `doc.open` for a path the set does not already hold is refused `x.room_full`, and the connection stays open |
+| room state: the room's grant | 100 000 paths, 4096 bytes to a path, 4 MiB of path bytes in total | a `doc.grant` past any of the three is refused `bad_params`, and the connection stays open |
+| inbound budget, per connection | 2 MiB a second, refilled continuously, with a 64 MiB burst to spend | the peer is told `x.rate_limited` and closed **1013** (try again later); its reconnect starts with a fresh budget |
 
 The head bound applies before admission, and it has two halves: `head_timeout` bounds how long
 the whole request head may take, not merely the gap between reads, and the 16 KiB bounds its
@@ -245,9 +274,13 @@ size. A connection is counted against the connection cap only after its head has
 half-sent head occupies a descriptor but neither a slot nor the 16 KiB bound, and it is
 `head_timeout` that reclaims it.
 
-The frame and message bounds are the server's own configured values rather than the
-WebSocket library's defaults, and the queue and connection rows are enforced caps rather
-than the v1 posture they once stated; the background is in [`NOTES.md`](NOTES.md) §A.1.
+The frame, message, envelope, queue and connection bounds are the server's own configured
+values rather than the WebSocket library's defaults, and the queue, connection, room-state and
+budget rows are enforced caps rather than the v1 posture they once stated; the background is in
+[`NOTES.md`](NOTES.md) §A.1. A capacity code is the implementation's own: `x.server_full`,
+`x.room_full` and `x.rate_limited` are the reference server's, they live in the reserved `x.`
+namespace of §10.1, and a peer reads no `selvage/1` meaning into one — what a peer reads is the
+close code that follows it, and §9.1's rule that an `x.*` fault is not retried automatically.
 
 ## 3. Layering and opacity
 
@@ -425,7 +458,30 @@ is not the room's already gets. Which of the two cases a URL is depends on `room
   so. That is the accepted cost of the rule; [`NOTES.md`](NOTES.md) §B.17 records why the
   alternative was rejected.
 
-This is what makes the shared link literal: the host's invite URL **is** the WebSocket URL.
+**A URL carrying a room and its token is an invite, and it has two forms.** The first is the
+connection URL above, exactly as it stands: `ws://host:port/session?room=<room_id>&token=<tok>`.
+A socket can be opened on it directly, and it is the form an implementation that serves no page
+names. The second is the **page link**, which is what the reference clients hand a guest, because
+a link a browser can open is one that works for every guest: the page the room's server serves —
+an implementation **MAY** serve one (§2) — over the scheme a browser speaks, with the same host,
+port and path prefix and nothing else in it:
+
+```
+https://host/page/?room=<room_id>&token=<tok>
+http://host:port/?room=<room_id>&token=<tok>
+```
+
+Its origin **is** the server, so no member of the link names a second address and a link cannot
+point at a page that dials another. A receiver derives the connection URL from it by reading the
+scheme back — `http://` as `ws://`, `https://` as `wss://` — and appending `/session`, and the
+rules above apply to the page link's query unchanged: `room` and `token` are percent-decoded by
+RFC 3986, each appears at most once, and any other parameter, including a `server` written by an
+implementation that predates this form, is ignored. **A receiver MUST accept either form and join
+the room it names**, and a host **MAY** hand on either; a link that truncates either form is the
+truncated-invite case the `token`-without-`room` rule above describes.
+
+The two forms carry the same secret and differ only in which scheme names the same address, so
+§12's rule about an invite URL covers both.
 
 The token is **never echoed after the mint.** `room.created` is the only frame that carries it
 (§6.1) and nothing re-sends it, so a client that might have to reconnect has to keep the token it
@@ -767,7 +823,7 @@ Follows [`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/mast
   | 0 | sync | `varUint(sync_type)` then `varUint8Array(payload)`; `sync_type` is 0 = SyncStep1 (state vector), 1 = SyncStep2 (update), 2 = Update |
   | 1 | awareness | `varUint8Array(awareness update)` |
   | 2 | auth | not sent in this slice: there is no per-join approval. A receiver that gets one reads it and ignores it (§8.3) |
-  | 3 | awareness query | not sent in this slice, but a client **answers** one it receives with its own states (§8.3) |
+  | 3 | awareness query | not sent in this slice. A client **MAY** ignore one it receives, and a client that answers **MUST NOT** answer more than one such message for one frame (§8.3) |
 
   `varUint` is LEB128; `varUint8Array` is a `varUint` byte length followed by the bytes. The sync
   payloads are yjs v1 encodings.
@@ -987,10 +1043,15 @@ There is no awareness handshake in this slice:
 3. The newcomer publishes its own state as soon as it is seated.
 
 `message_type = 3` (awareness query) and its reply are part of y-protocols. Nothing in `selvage/1`
-sends one (the three steps above are the whole discovery story), but a client that receives one
-**MUST** answer it with every awareness state it holds, so it is a frame to handle and not one to
-drop. A `message_type = 2` (auth) message is read and ignored: this slice has no per-join approval
-for a denial to be about.
+sends one — the three steps above are the whole discovery story — and a client **MAY** ignore one
+it receives. Answering is a hazard rather than a courtesy: a binary frame is a stream of messages
+with no count (§7), so a receiver that answered each message could be made to answer a whole
+frame's worth of them, and a legal 256 KiB frame of one-byte query messages draws 256 000 replies
+from an implementation built on y-protocols' own protocol handler. A client that does answer
+**MUST NOT** answer more than one query message per frame, so that one frame costs one reply
+whatever it holds. A `message_type = 2` (auth) message is read and ignored: this slice has no
+per-join approval for a denial to be about, and a denial inside one neither ends the connection
+nor costs the frame's other messages.
 
 ### 8.4 Attributing a cursor to a person
 
@@ -1138,11 +1199,11 @@ is never judged by a fault later in that order than one it also carries.
 | in state | frame, or the clock | to | what goes out |
 |---|---|---|---|
 | (accepted) | a WebSocket upgrade on `/session` | unseated | — |
-| (accepted) | any other request line | closed | the plain-HTTP answer: `/meta`'s body, or `404` |
+| (accepted) | any other request line | closed | the plain-HTTP answer: `/meta`'s body or its headers for `HEAD`, the served page when one is configured, `405` for another method, or `404` |
 | (accepted) | no complete request head within the server's bound (§2.1) | closed | — |
 | unseated | `session.hello`, compatible, room and token valid or no room named | seated | `room.created` (mint) or `room.joined` (join), to the sender; `peer.joined` to the room, unless it minted |
 | unseated | a first text frame that is not `session.hello` | closed | `session.error{hello_required}`, close 4000 |
-| unseated | a first frame that is binary, unparsable, or an envelope with no `id` | closed | `session.error{bad_message}`, close 4000 |
+| unseated | a first frame that is binary, unparsable, over the server's envelope bound (§2.1), or an envelope with no `id` | closed | `session.error{bad_message}`, close 4000 |
 | unseated | `session.hello` whose params do not parse, including no `display_name` | closed | `session.error{bad_message}`, close 4000 |
 | unseated | `session.hello` whose `display_name` is blank or carries a control character (§5) | closed | `session.error{bad_params}`, close 4000 |
 | unseated | `session.hello` whose `display_name` is over 32 UTF-16 code units | closed | `session.error{bad_params}`, close 4000 |
@@ -1160,6 +1221,7 @@ is never judged by a fault later in that order than one it also carries.
 | seated | `session.rename` with params that do not parse, or a blank, over-long or control-carrying `display_name` | seated | the error response `bad_params` |
 | seated | any other method | seated | the error response `unknown_method` |
 | seated | a text frame that is not an envelope, or has no `id` | seated | `session.error{bad_message}` |
+| seated | a text frame longer than the server's envelope bound (§2.1) | seated | `session.error{bad_message}`, naming the bound; the connection stays open |
 | seated | a request whose `v` is incompatible | closed | the error response `unsupported_version` for that request, then close 4005 |
 | seated | a binary frame | seated | relayed to the rest of the room, byte for byte |
 | seated | the room is destroyed under it (§9) | closed | `room.gone`, then close 4003 |
@@ -1223,7 +1285,7 @@ infer:
 | name | meaning | what a peer may infer |
 |---|---|---|
 | `y-protocols/1` | the peer carries y-protocols document sync (§7) | it can decode the binary frames of §7 |
-| `awareness` | the peer carries y-protocols awareness (§8) | it publishes presence, and answers an awareness query with its states |
+| `awareness` | the peer carries y-protocols awareness (§8) | it publishes presence; an awareness query it receives it **MAY** ignore, or answer once for the frame (§8.3) |
 | `open-document-set` | the server keeps the room's open-document set and announces every change to it (§5) | `doc.open` and `doc.close` are available, and `doc.opened`/`doc.closed` will arrive |
 | `host-reclaim` | the server lets a host that returns inside the grace period reclaim the room (§9) | a reclaim is possible, and `host.attached` will announce one |
 
@@ -1237,13 +1299,14 @@ makes a peer honour it (§12).
 A namespace is reserved for implementation-private and hosted-only messages, so that adding one
 never has to mean splitting the protocol into a free one and a real one.
 
-- **Method names, event names and capability names beginning with `x.`** are reserved for exactly
-  that. None is defined by this document: no `x.` method, no `x.` event, no `x.` capability is
-  part of `selvage/1`.
+- **Method names, event names, capability names and error codes beginning with `x.`** are
+  reserved for exactly that. None is defined by this document: no `x.` method, no `x.` event, no
+  `x.` capability and no `x.` error code is part of `selvage/1`.
 - A peer that does not know an `x.` method answers it like any other unknown method, with
   `unknown_method`; an `x.` event is ignored, like an unknown field; an `x.` capability is
-  advertised and ignored like any other unknown capability. Nothing is negotiated by presence
-  alone.
+  advertised and ignored like any other unknown capability; an `x.` error code is an
+  implementation's own fault, carried where any code is (§11) and never given a `selvage/1`
+  meaning. Nothing is negotiated by presence alone.
 - An implementation that defines one documents it for its own users. A client **MUST NOT** assume
   any `x.` name exists, and **MUST** keep working when one is refused.
 - **Allocation.** `x.` is flat, so two implementations that both define `x.editor-state` collide
@@ -1278,10 +1341,14 @@ same vocabulary is used in both, and the state a connection is in decides what a
 | `already_seated` | `session.hello` sent twice | — | error response; the connection stays open |
 | `doc_not_open` | reserved; not produced by this slice | — | — |
 
-The **close** vocabulary is separate, and lives in the private-use range: 4000 `protocol_error`,
-4001 `room_unknown`, 4002 `token_invalid`, 4003 `room_gone`, 4004 `host_present`, 4005
-`unsupported_version`. A code with a matching close ends the connection; a code without one does
-not.
+The **close** vocabulary is separate, and `selvage/1`'s part of it lives in the private-use
+range: 4000 `protocol_error`, 4001 `room_unknown`, 4002 `token_invalid`, 4003 `room_gone`, 4004
+`host_present`, 4005 `unsupported_version`. A code with a matching close ends the connection; a
+code without one does not. That vocabulary is not the whole of what a peer can receive: a close
+outside it carries no session meaning and a client **MUST NOT** read one into it, because a
+capacity fault that is not about the session protocol is IANA's to name — the reference server
+closes **1013** (try again later) at its connection cap and when a connection has spent its
+inbound budget (§2.1, §12) — and 1013 is not in the private-use range at all.
 
 **A fault before seating is announced as a refusal**: a `session.error` event and then a close
 with the matching code, so a client that does not read close frames still learns why. **A fault on
@@ -1354,15 +1421,19 @@ the same token already grants read access to the whole working copy, this grants
 devices. ([`NOTES.md`](NOTES.md) §B.2.)
 
 **The denial-of-service posture is a v1 posture.** §2.1's capacity rows are the reference
-server's own policy: a 1024-connection cap counted past the request head, no idle reaper (only
-the ping bound above, which closes a connection that has stopped answering), no
-per-source rate limit, a per-connection outbound queue of 32 frames and 32 MiB past which the slow
-peer is disconnected, and a frame over the transport's bound ends a connection with nothing on the
-wire to say why. A room's peers can be flooded at whatever rate their sockets accept. What a peer
-*can* rely on is §2.1's bound: a conforming server refuses deterministically past a finite
-configured limit on a connection's inbound bytes and on a room's stored state. A deployment on the
-public internet **MUST** put a terminator or a proxy in front that supplies a connection cap, an
-idle deadline and a rate limit.
+server's own policy: a 1024-connection cap counted past the request head, a 1024-room cap, 128
+peers to a room, 1024 paths in a room's open-document set, no idle reaper (only the ping bound
+above, which closes a connection that has stopped answering), no per-source rate limit, a
+per-connection outbound queue of 32 frames and 32 MiB past which the slow peer is disconnected,
+and a per-connection inbound budget of 2 MiB a second with a 64 MiB burst, past which the peer is
+told `x.rate_limited` and closed 1013. A frame over the transport's bound ends a connection with
+nothing on the wire to say why; a text envelope over the server's own envelope bound is refused on
+the frame's own vocabulary instead, because a whole frame is something a session can answer
+(§2.1). What a peer *can* rely on is §2.1's bound: a conforming server refuses deterministically
+past a finite configured limit on a connection's inbound bytes and on a room's stored state. A
+room's peers can still be flooded at whatever rate one connection's budget allows, so a deployment
+on the public internet **MUST** put a terminator or a proxy in front that supplies a connection
+cap, an idle deadline and a rate limit.
 
 **Paths are not validated.** `doc.open` and `doc.close` carry an opaque, workspace-relative path
 that the server does not resolve, normalise or check against anything (§5), and a grant's `paths`
