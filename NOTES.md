@@ -1221,3 +1221,136 @@ no seat).
 **What is not here, and which step owns it.** The corpus still is **step 4b**'s
 (`docs/studies/e2ee-plan.md` §11). §13.11's fixture list grows with the pass's shapes. The wire
 version does not move, and no implementation speaks it.
+
+**B.38 The peer corpus: `vectors/peer/`, the runner that replays its frame layer, and the seeds
+of the decision layer.** `CANONICAL.md` §6.1's bytes had been frozen since §B.31 and there was
+nothing in the corpus that read them: `docs/studies/peer-corpus.md` designed the corpus, priced
+the tooling and wrote six vectors into a study, and no vector, no runner and no check in this
+repository touched a sealed frame. This pass is that corpus's first artifact, and it is the peer
+layer's frame half — the evidence that makes a client implementation checkable, runnable where
+the specification is read. **Decided** (2026-09-22), the implementation phases' step 4b, and
+recorded as it stands rather than as it was planned. **Nothing implements `selvage/2` on a
+wire**: no server speaks it, no client seals a frame, and the decision vectors in the corpus are
+written, declared and **not run**.
+
+*What the tooling does now.* `runner/sealed.py` is `CANONICAL.md` §6.1 in Python: the envelope's
+layout and both its byte strings, the key schedule, the fragment's encoding, the four sealed
+payloads as step 8 reads them, and the ten-step read with its verdicts. `runner/run_peer.py`
+replays `vectors/peer/*.json` with no socket in it, `--mutation-census` runs every frame vector
+twice, and `--list-mutations` prints what each removed guard is. `runner/subject.py` is the
+subject protocol the decision layer will be driven through — one JSON object per line, the runner
+doing the waiting, `dropped` as a list of `(frame, reason)` — tested against a scripted subject
+and against no vector. `runner/test_recipe.py` re-derives every frame in the corpus from the
+recipe the vector carries. `runner/run_vectors.py` gained a `layer` filter: it still replays the
+wire layer exactly as it did, `--layer all` reports every peer vector as **not attempted** with
+the reason, and `--layer peer` refuses rather than attempting nothing and exiting zero.
+
+*The one dependency.* `cryptography`, for AES-256-GCM, HKDF-SHA256 and Ed25519, in the flake's
+`python3.withPackages` and in the workflow's `pip install` at the same version (50.0.0). It is a
+wheel for every supported interpreter on both, and nixpkgs' is in the binary cache, so neither
+side builds a Rust extension: `nix build` substituted it in about a second. Hand-rolling either
+primitive was rejected for the reason the study gives — it is security code in the repository
+whose claim is that a stranger can trust its bytes. `schema/validate.py` remains key-free and
+still needs only `jsonschema` and `referencing`.
+
+*The corpus.* Twenty-three vectors. Seventeen are `frame` vectors (101–117) and six are
+`decision` vectors (151–156). The frame ones need no client at all and each declares the single
+guard it must go red under: 101 is the positive control (a sealed edit that applies); 102 a
+flipped tag byte, refused `bad_signature` — **not** `bad_tag`, and `expectPlaintext` on the
+following step is what shows the same counter arrives intact afterwards, so a refused frame
+never moves a mark; 103 a counter replay; 104 a state at the mark and one below it; 105 an
+announcement that is not a commitment; 106 a state that drops a key a previous one committed;
+107 a host state signed by a committed session key; 108 a replayed announcement; 109 a key whose
+final base64url character carries non-zero pad bits and one with a newline appended; 110 a
+plaintext that is not its kind's object; 111 a committed `viewer`'s content that decrypts and
+verifies and is refused `unauthorised_content`; 112 a closing above the mark and at it; 113 a
+frame with a byte left over and one short inside a field; 114 a holds message and its replay;
+115 an unknown kind; 116 an unknown epoch; 117 a path `PROTOCOL.md` §5 refuses, dropped from a
+listing and a hold set and refusing neither. Each one asserts the consequence and not only the
+verdict: the replica, the listing, the holds, or a later frame that must still apply.
+
+The decision vectors are §13.11's fixtures and nothing runs them: a committed `viewer` whose
+frame verifies, two states at one `issued` with different listings, an announcement the relay
+withholds and the client recovers on its renewal clock, a lease that expires a silent peer, a
+closing that must not end a stateless receiver, and the no-state window. `run_peer.py` reports
+each as **not attempted**, naming both things that are missing — no subject and no relay that
+speaks `selvage/2` — and the summary counts `not attempted` apart from `passed`.
+
+*The negative class.* No server-authored frame carries a path, a role or a byte of content, and
+`schema/validate.py`'s `check_absence` asserts it three ways: every `selvage/2` session shape is
+walked for a member of the forbidden list (the structural half — a `role` made a property of
+`session-v2.json` is a red run); every peer vector's sealed frames are searched for the strings
+its own plaintext names (the ciphertext is in the vector, so no key is needed); and the same
+walk is run over the `selvage/1` corpus as its **positive control**, where it finds 8,335 frames
+naming `role`, 397 `documents`, 10 `paths`, 197 an event this version deletes, 58 naming
+`src/main.rs` and 6 binary steps carrying its bytes — all pinned, because a scan that read
+nothing reports zero and an unpinned zero is a green line. The corpus study's §6 table counts
+`host` among the member names at 186; `host` is not a member name anywhere in this corpus, it
+begins two *event* names, and the member census and the event census are two measurements.
+
+*The counts.* `EXPECTED_VECTORS` is now `EXPECTED_WIRE_VECTORS`, and it is 36 — unmoved. Three
+pins are new and one is a rename: `EXPECTED_PEER_VECTORS` 23, `EXPECTED_PEER_CHECKS` 194,
+`EXPECTED_PEER_ASSERTIONS` 66. The wire layer's `EXPECTED_FRAME_CHECKS` 35022 and
+`EXPECTED_ASSERTIONS` 8676 are **unmoved**, because the wire layer's own checks and vectors did
+not change; the peer layer is counted apart so that one layer's loss cannot be paid by the
+other's gain, which is the argument the study makes for splitting the vector count. Two censuses
+are new: `EXPECTED_REFUSALS` (vector → the reasons it asserts) and `EXPECTED_MUTATIONS` (vector →
+the mutation it must go red under, `None` for the positive control) — the second is the only pin
+in this corpus that says what the corpus *catches* rather than what it contains.
+
+*The two halves of the tooling, which had disagreed.* `apply` was in `validate.py`'s
+pass-through op list while `run_vectors.py` raises on an op it does not know, so a step could
+validate here and fail the replay there. Both halves now name their ops in a table —
+`validate.WIRE_OPS`, `run_vectors.WIRE_OPS`, `validate.PEER_FRAME_OPS`, `run_peer.FRAME_OPS` —
+and `runner/test_runner.py` compares each pair, so the two cannot disagree about a step name
+again. `run_step`'s `else` clause is reached only by an op its dispatch has no branch for.
+
+*Mutations, all shown red.* Twelve receiver guards, each of which a named vector fails under and
+which 101 stays green under — the positive-control sweep is part of the census and is what
+refuses "drop everything and complain": `lenient-layout`, `lenient-kind`, `lenient-epoch`,
+`no-commit`, `kind-any`, `no-mark`, `no-verify`, `no-payload`, `lenient-key`, `no-issued`,
+`no-roles`, `refuse-bad-path`, `merge-peers` (thirteen, with two vectors sharing `no-mark` and
+two sharing `no-issued`). Six subject mutations are declared by the decision vectors and none can
+be exercised yet: `ignore-roles`, `ignore-issued`, `announce-once`, `no-lease`, `any-closing`,
+`wait-for-ever`. `test_runner.py` pins the two tables against what the corpus declares, so a
+guard with no vector and a vector naming no guard are each a red run.
+
+*What this pass had to choose, and which way.* The fixture is **generated** rather than adopted
+from the study's §2.6: those keys are real Ed25519 pairs and their `key_id`s reproduce §6.1's
+derivation, but `mallory-1` has no private half in the study and a vector that must sign with a
+key cannot be written without one, so the corpus's fixture is five complete pairs with the
+study's room id and room key kept. A **recipe** carries the plaintext as hex when the plaintext
+is a `kind = 0` stream or is deliberately not its kind's object, and as the JSON object itself
+otherwise, so a reader sees what the frame means; `test_recipe.py` ties whichever it is to the
+`hex` the vector carries. A **peer vector is numbered from 101** and the wire corpus's own
+numbering is untouched. A **corruption is a step** (`corrupt`, with `xor`/`truncate`/`append`,
+and an `as` name for the frame it produces) rather than literal bytes with a comment, so the one
+place a vector cannot carry a derivation still carries a re-derivable rule. `run_vectors.py`
+**refuses** `--layer peer` rather than exiting zero having attempted nothing, and `--layer all`
+reports every peer vector as not attempted — the study asked for the report and the refusal is
+added because a zero-exit run that ran nothing is the failure mode the report exists to prevent.
+
+*What is written and not runnable, said plainly.* The six decision vectors, and with them the
+decision half of the corpus, the `expectSubject` op, the `within_ms`/`at_least`/`frozen`
+members and the subject mutations. `runner/subject.py`'s framing, deadlines and report shape are
+tested, but **no vector has ever been run against a client**, and the report's members are
+therefore a proposal the first real subject will move. Nothing in the corpus demonstrates that
+two implementations agree; a vector can hold a client to a rule it states and cannot show two
+clients reaching the same state, which stays the interop test's job. And the byte layout's
+reading rules the spec leaves unstated are recorded below rather than invented as checks.
+
+**What this pass could not settle.** (1) **A non-minimal varint.** §6.1 says the envelope's
+`varUint` fields are LEB128 and does not forbid an overlong spelling, so `80 00` and `00` are two
+spellings of the counter `0` whose signature inputs are identical — one frame to a verifier, two
+to a byte comparison. The reader takes either and no vector pins one; if the version wants one
+spelling it has to say so. (2) **A `kind = 0` plaintext that is not a y-protocols stream.**
+Step 8's table row is written for the four JSON payloads and kind 0's plaintext is "that same
+stream, whole"; a receiver has to report *something* for bytes that are not one, and the reader
+reports `bad_payload` because it is the only reason that fits. No vector asserts it. (3) **A
+receiver tolerates another spelling of a payload.** §2 is a producer's rule and a receiver
+tolerates a differently-spelled text frame, so the reader parses a plaintext's JSON and reads
+its member set and types rather than comparing its bytes; nothing in §6.1 says otherwise and no
+vector pins it either way. (4) **Whether the subject protocol's report is the right shape** — the
+study's own largest uncertainty, and unchanged by writing it down. (5) **The lease and the
+no-state window are asserted by polls with deadlines in the decision vectors, and no poll has
+ever run**: `within_ms` is a member a runner has to implement and nothing has implemented it.
