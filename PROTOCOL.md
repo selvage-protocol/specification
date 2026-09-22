@@ -70,9 +70,14 @@ conforms when it satisfies both.
 **client** implements §4–§10 on the client side. Both implement `CANONICAL.md`, both are bound by
 §12 and §13, and both are bound by the [frames of the version they
 speak](#10-version-and-capability-negotiation): conformance is per wire version, and this document
-is `selvage/1`. The exception is `selvage/2`'s, and it is three passages: §7.1, §5.1's fragment
-paragraph, and [`CANONICAL.md`](CANONICAL.md) §6.1. A peer that speaks `selvage/1` is not held to
-them, and the rest of `selvage/2`'s session layer is not written yet.
+is `selvage/1`. The exception is `selvage/2`'s, and every passage of that version is named here so
+that nothing of it has to be discovered: [`CANONICAL.md`](CANONICAL.md) §6.1; §5.1's fragment,
+local-refusal and handover paragraphs; §7.1; and the passages of this document whose lead-in
+carries the version — §1.2's `host`, `guest` and `grace period` entries, §2's `/meta` passage,
+§4.1's fixed-member-set clause, §5's handshake and minting passages, §6.1's join passage, and
+§10's version-gate passage. A peer that speaks `selvage/1` is not held to any of them, and what is
+written of `selvage/2` is those passages: nothing else of the version is settled until the
+revision's server step.
 
 Two rules follow, and they are what makes the keywords worth reading:
 
@@ -107,13 +112,20 @@ These words carry obligations, and the protocol uses them precisely.
 - **mint**: to create a room. A connection whose URL carries no `room` mints one (§5.1).
 - **host**, **guest**: the two roles. `role` in `session.hello` is a **claim**, not a command
   (§9): minting is hosting whatever the claim says, and a claim of `host` on a join is honoured
-  only while the room has no host.
+  only while the room has no host. **In `selvage/2` there is no claim**, and the server seats
+  nobody as anything: the host is whoever holds the private half of the room's host keypair, and
+  the roles a room has are the host's to assign and sign ([`CANONICAL.md`](CANONICAL.md) §6.1,
+  §7.1).
 - **token**: the room's permission, minted with the room, carried in the invite URL, never echoed
   after `room.created` (§5.1). It is the whole authentication in this slice (§12).
 - **refusal**: a fault that ends a connection before it is seated, answered with `session.error`
   and then a close carrying the matching code (§11).
 - **grace period**: the interval after a host's connection ends during which the room still
   exists and can be reclaimed. `host.detached` announces it, with its length in `grace_ms` (§9).
+  **In `selvage/2` it is the interval after the room's *last* connection ends**, and its length is
+  the `room_grace_ms` a client reads from `/meta` (§2) rather than a number carried per room. What
+  arms and expires that timer in this version is not settled here — §9 is `selvage/1`'s, and §1.1
+  is where that version's passages are listed.
 - **hold**: one connection's claim on one path, made by `doc.open` and released by `doc.close` or
   by the connection ending. A hold belongs to a connection.
 - **the room's open-document set**: the paths the room has open, `documents`, in first-opened
@@ -206,6 +218,40 @@ These words carry obligations, and the protocol uses them precisely.
 - **Frame types.** Text frames carry the JSON session envelope (§4–§6). Binary frames carry
   y-protocols payloads (§7, §8). The server routes binary frames by room membership and never
   decodes them (§3).
+
+**`/meta` in `selvage/2`.** The body is not version-tagged and is read the same way in both
+versions, so what moves is its content and not its shape. No member leaves it but `roles`, which
+`selvage/1` uses to say which roles its server seats and which a `selvage/2` server has nothing to
+put in, because it seats nobody as anything (§1.2). A `selvage/2` server advertises:
+
+- **`wire_versions`, naming `selvage/2`.** It **MUST NOT** name a version below `selvage/2`: that
+  server cannot seat a `selvage/1` peer (§10), so a list offering one would be a downgrade a
+  compromised server could take a client down, which is the one failure a confidentiality feature
+  cannot have. Acceptance is unchanged — the same grammar and the [compatibility
+  rule](#10-version-and-capability-negotiation) — so a `selvage/2` server accepts any
+  `selvage/2.x`.
+- **`capabilities`, which carries the two names this version defines for a server, `y-protocols/1`
+  and `awareness`.** An implementation **MAY** advertise names of its own beyond them, as §10
+  allows, and the two names `selvage/1` adds are absent here because they are that version's server
+  machinery: `open-document-set` is a set this server does not keep, and `host-reclaim` is a
+  reclaim it does not have. Nothing is gated by a capability in either version — a peer **MUST
+  NOT** infer a failure from one it does not recognise — so the list says
+  which frame shapes a peer may expect and not what it may send (§10).
+- **`keepalive`, unchanged in shape and in membership.** `ping_interval_ms` is the server's: how
+often it pings, and those pings are not session messages. `awareness_renew_ms` and
+`awareness_expire_ms` are the session's: the server advertises them so that every peer renews and
+expires on one clock, a client **MUST NOT** substitute its own, and in `selvage/2` that clock is
+the version's only one (§8.2). `room_grace_ms`, in `/meta` alone, is the server's too, and it is
+where a `selvage/2` client reads the room's grace: in that version the number is how long a room
+survives its last connection ending (§1.2).
+
+**What a `selvage/1`-only client sees.** It sees a server it cannot talk to, and it sees it without
+a socket: `wire_versions` names no version it can speak, so it refuses locally with
+`unsupported_version`, which is the rule above and not a new one. Nothing else in the body is a
+signal to it, because the members it reads — `wire_versions`, and `capabilities` and `keepalive`
+for a better default — are the ones that stay: `roles` leaving and `capabilities` shrinking are
+both invisible to a client that reads `wire_versions` and connects. §10 says the same from the
+server's side.
 
 ### 2.1 Limits
 
@@ -335,6 +381,13 @@ Within `selvage/1` the member set of every frame is fixed (a producer **MUST NOT
 to a frame of this version), and that is what lets a vector assert an exact one (`CANONICAL.md`
 §3). Unknown *capabilities* are likewise ignored (§10).
 
+**`selvage/2` fixes its member sets the same way.** What those sets are is what that version's
+passages say, and the rule for a name they do not carry with them — a `role`, a `documents`, a
+`roles` — reads as a producer's obligation: a member this document gives `selvage/1` and that no
+passage of `selvage/2` carries is **not** a member of that version, so a producer of it **MUST
+NOT** write one and a receiver **MUST** ignore one it is handed, exactly as it ignores any other
+name it does not know.
+
 A request without `id` produces a `session.error` event (§6) with code `bad_message`; before
 seating, that fault closes the connection (§11).
 
@@ -442,6 +495,28 @@ here, before the handshake completes, where every fault closes the connection (�
 `session.hello` sent a second time on the same connection is an error response, code
 `already_seated`, and the connection stays open.
 
+**`session.hello` in `selvage/2`.** The frame is the one above with one optional param gone:
+`display_name` is still required, still non-blank, still free of control characters and still at
+most 32 UTF-16 code units, and still the only identity in the version. `awareness_client_id`,
+`capabilities` and `client` are unchanged. **`role` is gone**: there is no claim to make, because
+the server seats nobody as anything (§1.2), and a `selvage/2` hello that carries one is carrying a
+member the version does not have, which a receiver ignores like any other unknown name (§4.1).
+
+Everything around the frame holds as it stands, and this is why the version's handshake is a
+subtraction rather than a second handshake: it is the first text frame on the connection, the
+hello timeout and the unseated refusals are §11's, the reply is one `room.created` or
+`room.joined` and is the connection's first frame after the handshake, and a second hello is
+`already_seated` with the connection kept open.
+
+**Minting in `selvage/2`.** A connection whose URL names no room still mints one and is still
+seated by it, and it is still the room's host — but nothing on the server says so. The host is
+whoever holds the private half of the host keypair whose public half the invite's fragment carries
+(`h`), that connection is the one that minted the pair (§5.1), and the server records a peer like
+any other. So there is no claim for a minting connection to make or to have ignored, no host state
+for a later connection to conflict with, and no event for a reclaim: `selvage/1`'s rule that
+minting is hosting whatever the claim says, and its `host_present` refusal, are that version's and
+this one has neither.
+
 ### 5.1 Room and token in the connection URL
 
 ```
@@ -529,6 +604,22 @@ refusal happens; the sentence is the client's.
 
 In `selvage/1` the fragment carries nothing and no `selvage/1` frame is sealed: a link that carries
 `k` and `h` joins the same room in the clear, and neither value is read.
+
+**That refusal is local, and has no wire form.** It happens before a socket is opened, so there is
+no frame to refuse on and no code to carry it: it is not a `session.error`, it is paired with no
+close code, and §11's vocabulary is not involved, because the fault never reaches the server. What
+the version fixes is that the refusal happens and what it is about; the words are the clients',
+and the clients keep one set of them between them rather than one per editor.
+
+**The handover, in `selvage/2`.** A client **MAY** also accept the two values with no fragment at
+all: an invite a guest already holds, beside the room key and the host's public key said
+separately, in the fragment's own names and encoding. A client that accepts them joins exactly as
+one handed the link does, and owes the same local refusal when either value is absent, missing, or
+not 32 bytes; nothing about the handover reaches the server, as nothing about a fragment does. The
+two values are short and cost nothing to produce, so the handover is an escape hatch for a link a
+chat client or a shortener truncated — and it is **NOT RECOMMENDED** as the flow a host hands on,
+because it is a second channel whose two values have to be correlated by hand where the link is
+one action.
 
 The token is **never echoed after the mint.** `room.created` is the only frame that carries it
 (§6.1) and nothing re-sends it, so a client that might have to reconnect has to keep the token it
@@ -789,6 +880,43 @@ peer **MUST NOT** depend on either.
   depend on one. `documents` is the only array in this frame whose order means anything. The same
   four capabilities and the same keepalive triple appear in `GET /meta` (§2): a server advertises
   one list, in two places, and a client reads either.
+
+**`room.created` and `room.joined` in `selvage/2`.** Both replies are the shapes above with the
+members that carried the server's state gone and nothing put in their place:
+
+```json
+{
+  "v": "selvage/2",
+  "event": "room.joined",
+  "params": {
+    "room_id": "r-a0bca377bb4e",
+    "self": { "peer_id": "p-3d33…", "display_name": "Bob", "awareness_client_id": 42 },
+    "peers": [ { "peer_id": "p-852b…", "display_name": "Ada" } ],
+    "capabilities": ["y-protocols/1", "awareness"],
+    "keepalive": { "ping_interval_ms": 30000, "awareness_renew_ms": 15000, "awareness_expire_ms": 30000 }
+  }
+}
+```
+
+- **`documents` is not a member of either reply.** This version has no server-held open-document
+  set, so no frame says which documents are open, and a client reads nothing into a reply about
+  them.
+- **`PeerInfo` is `{ "peer_id": string, "display_name": string, "awareness_client_id"?: number }`**
+  and nothing more: no `role`, because the server seats nobody as anything (§1.2). `self` and every
+  member of `peers` are that shape, and `token` stays in `room.created` alone and is never echoed.
+- `capabilities` and `keepalive` are the same two members and are read the same way; §2 says what
+  they hold in this version, and `peers` and `capabilities` are still sets whose order means
+  nothing.
+
+**What a `selvage/2` peer learns at join.** `room.joined` is the whole of it: the room's id, the
+joiner's own peer record, the roster of peers already seated, and the session's advertisement. It
+does **not** carry the room's listing, the roles the host assigns, which documents are open, or who
+the host is, and no later server frame does either: every one of those is a peer's own statement,
+sealed under the frame key and signed. The host publishes the room state when a peer is seated, so
+the listing and the roles reach a joiner one relay hop late rather than inside its reply, and a
+joiner that arrives while the host is away gets no state until one arrives or the room is
+destroyed. Until a state verifies, the joiner knows nobody's key and **MUST NOT** apply content:
+§7.1's envelope is what makes a frame authentic, and there is no second rule beside it.
 
 ### 6.3 `doc.granted`
 
@@ -1383,6 +1511,42 @@ An implementation **MAY** advertise names beyond these. Nothing is gated by any 
 capability changes what a peer may send, and a peer **MUST NOT** infer a failure from a capability
 it does not recognise. A capability is a statement of intent and not a proof: nothing on the wire
 makes a peer honour it (§12).
+
+**The version gate in `selvage/2`.** The wire version moves to `selvage/2`, on the same grammar and
+the same compatibility rule, and the gate carries all of the weight this time because **there is no
+downgrade path**: a `selvage/2` peer and a `selvage/1` peer cannot share a room, since a
+`selvage/1` peer can neither read a sealed frame nor produce one, and a capability would be a
+silent downgrade a compromised server could take.
+
+- **A `selvage/2` server against a `selvage/1` client.** Two stops, and the first is the client's.
+  A client that reads a reachable `/meta` finds no version it can speak and refuses locally with
+  `unsupported_version` before it opens a socket (§2). One that connects anyway — because it could
+  not read `/meta`, or because it was written before `/meta` existed — sends `v: "selvage/1"`, and
+  the server refuses it on that member: `session.error{unsupported_version}`, then close **4005**,
+  on a connection that is never seated. The `role` such a client sends is not why it is refused:
+  `v` is judged before the method and its params (§11), and `role` is not this version's member.
+- **A `selvage/1` server against a `selvage/2` client.** The same two stops in the other
+direction. `/meta` names `selvage/1`, the client refuses locally, and a client that connects anyway
+is refused `unsupported_version` with close **4005** by the rule §10 already states: `selvage/2` is
+inside the grammar and outside the compatibility rule, so it is refused for its major, before
+seating. **Nothing is added to `selvage/1` for this direction** — the gate it already has is the
+one that does this — and the sentence a client says at the local stop is §2's.
+- **Nothing is refused before the hello.** The version is a member of the frame and not of the URL,
+so a server learns a client's version when it sends its first text frame and not before, and
+`/meta` is the only check that precedes a socket: it is the client's, and it is a refusal with no
+wire on it at all. There is no pre-hello negotiation to look for and no version in the connection
+URL (§5.1).
+- **A client that can speak `selvage/2` MUST NOT fall back.** It **MUST NOT** connect to a server
+whose reachable `/meta` does not name `selvage/2`, whatever else the body says, and a
+`session.hello` answered with `unsupported_version` **MUST NOT** be re-helloed as an earlier
+version. That is the whole of the no-downgrade rule, and it is a client rule because the server is
+the party it defends against; §9.1's rule that a refusal is terminal already names
+`unsupported_version`, and this is the version that needs it.
+
+Once a connection is seated the version is checked on every later request exactly as above,
+`unsupported_version` answered as an error response and the connection closed **4005** (§11). The
+close vocabulary is `selvage/1`'s without 4004: a `selvage/2` server does not produce
+`host_present`, because it does not know who the host is.
 
 ### 10.1 Reserved names
 

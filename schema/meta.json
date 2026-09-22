@@ -11,7 +11,10 @@
       "items": { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityName" },
       "description": "The same list the handshake reply advertises."
     },
-    "keepalive": { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/keepalive" },
+    "keepalive": {
+      "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/metaKeepalive",
+      "description": "The session's clocks plus `room_grace_ms`, which `/meta` carries and the handshake reply does not (PROTOCOL.md §2)."
+    },
     "roles": {
       "type": "array",
       "items": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/role" },
