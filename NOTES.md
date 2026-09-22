@@ -212,11 +212,13 @@ cheaper shape and it is **not** this one: under the threat the encryption is bei
 the server writes is a value the server can lie about, and a frame's sender has to be something a
 peer verifies for itself.
 
-**Two `MUST`s a later revision would state**, recorded here rather than in the prose because nothing
-implements them yet: **a frame MUST carry a signature verifiable against a key the room's host has
-committed**; and **a client MUST NOT apply content from a sender it cannot authenticate, nor from a
-sender whose committed role is `viewer`**. They are left out of what is normative today because a
-`MUST` with no implementation and no vector behind it is a claim the corpus cannot check.
+**Where the two `MUST`s this item asked for are now.** They are normative: a frame carries a
+signature verifiable against a key the room's host has committed (`PROTOCOL.md` §7.1,
+[`CANONICAL.md`](CANONICAL.md) §6.1), and a client **MUST NOT** apply content from a sender it cannot
+authenticate, nor document content from a sender the host's state commits as `viewer` (§13.2,
+§13.4, §13.5), reporting the second `unauthorised_content`. Nothing implements either yet — no client
+speaks `selvage/2` — so what they still lack is a vector, which is **step 4b** of
+`docs/studies/e2ee-plan.md` §11.
 
 **The residual, stated as it is.** Even with both, the honest sentence is "no conforming client
 applies a viewer's content", not "a viewer cannot edit": a viewer holds the room key once there is
@@ -229,9 +231,13 @@ the project's "a stranger can implement a client from the spec" property is genu
 (`docs/studies/e2ee-plan.md` §8). It buys what this item wanted without asking anything of the server:
 a role a peer cannot forge and a sender no relay can mislabel.
 
-**Not implemented, and what triggers it.** The role is a foundation: the value `viewer` in what the
-host signs, an invite parameter, and the signature's shape written down. It is implemented when the
-next revision lands; until then `DESIGN.md` §4.2's inversion stands in full — every holder of the
+**Not implemented, and what triggers it.** The role is specified and unimplemented. `viewer` is a
+value in what the host signs and assigns ([`CANONICAL.md`](CANONICAL.md) §6.1), and a rule a receiver
+refuses document content by (`PROTOCOL.md` §13.5); what the invite says about it is a convention
+between the host's client and the client that joins rather than a wire rule (§5.1 has a receiver
+ignore an unknown query parameter, which is the whole of what such a parameter can be), and a client
+learns its own role authoritatively from the state. It is implemented when the revision's
+implementations land; until then `DESIGN.md` §4.2's inversion stands in full — every holder of the
 invite token edits the session CRDT — and the page's claim gate keeps refusing "guests are read-only"
 for the reason it gives (`site/README.md`).
 
@@ -657,11 +663,11 @@ vector therefore asserts that a signature verifies and carries its own as litera
 envelope that has no derivation at all.
 
 **What is not here.** The holds and their lease (whose carrier is a `kind` this version leaves
-unused), the resume and what a returning host signs, and the rule that refuses a committed
-`viewer`'s content are the revision's remaining text rather than this item's; so is `selvage/2`'s
-session layer, and §B.32 is that item. `dropped`, the mutation switches and whether a client
-persists the host's private key are open where `docs/studies/peer-corpus.md` §9 and
-`docs/studies/e2ee-plan.md` §14 left them.
+unused) and `selvage/2`'s session layer, which is §B.32. The resume, the rule that refuses a
+committed `viewer`'s content and the client-behaviour section that stands where the server no longer
+enforces anything are §B.34; `dropped`, the mutation switches and whether a client persists the
+host's private key are open where `docs/studies/peer-corpus.md` §9 and `docs/studies/e2ee-plan.md`
+§14 left them.
 
 **B.32 `selvage/2`'s session layer: what is settled, and what is not.** `PROTOCOL.md` §1.1 names
 every passage of `selvage/2`, and this item's are the session layer's: what `/meta` advertises, the
@@ -704,13 +710,13 @@ and the grant, the host machinery, the roles and the full-set echo are deleted f
 rather than restated in `selvage/2`'s terms. That step has two halves and §B.33 is the first of
 them, the specification's; the second, deleting version 1's text, schema members and vectors and
 re-baselining the corpus, is **step 8** of the same plan (`docs/studies/e2ee-plan.md` §11) and lands
-after the release wave. The holds and the lease that replace the set, the resume
-and what a returning host signs, the rule that refuses a committed `viewer`'s content, the
-client-behaviour section, and §12's replaced wording are steps 4 and 4b of the same plan
-(`docs/studies/e2ee-plan.md` §8, §11). None of them is shaped here, not even the lease's clock,
-which may want a number `keepalive` does not carry today
-(`docs/studies/relay-only-spec.md` §8). The wire version itself does not move: `v: "selvage/1"` is
-what every implementation writes until the revision's implementations land together.
+after the release wave. The holds and the lease that replace the set are **step 4b**'s and not step
+4's, and so is the clock the lease runs on (`docs/studies/e2ee-plan.md` §8, §11). What step 4 wrote —
+the resume, the rule that refuses a committed `viewer`'s content and the client-behaviour section that
+stands where the server no longer enforces anything — is §B.34. The lease's clock may want a number
+`keepalive` does not carry today (`docs/studies/relay-only-spec.md` §8). The wire version itself does
+not move: `v: "selvage/1"` is what every implementation writes until the revision's implementations
+land together.
 
 **Two things this pass found rather than settled.** The capability *mechanism* is left with two
 names, both of which the version already fixes, so the array now tells a peer nothing it did not
@@ -805,7 +811,104 @@ ahead of the implementations, so version 1's passages stay where they are and ar
 version's (§1.1). Step 8 lands after the release wave, when no published client speaks `selvage/1`
 any more, and it is where the corpus is re-baselined onto version 2 and version 1's sections,
 schema members, vectors and glossary entries are deleted rather than scoped. The peer-side rules
-the version needs — the holds and their lease, the resume, the refusal of a committed `viewer`'s
-frames, and the client-behaviour section that stands where the server no longer enforces anything —
-are steps 4 and 4b, and none of them is shaped here; neither is §12's replaced wording, which is
-step 7.
+the version needs — the holds and their lease — are step 4b, and the clock they run on with them; the
+resume, the refusal of a committed `viewer`'s frames and the client-behaviour section are step 4's and
+are written (§B.34). §12's replaced wording is step 7, and step 4 scoped it as `selvage/1`'s and
+stated the version's own facts where §3's negative duties are.
+
+**B.34 `selvage/2`'s authority model: the room state, attribution, the resume and the viewer rule.**
+`PROTOCOL.md` §3's closing account of the relay, §7.1's room-state passage, §9.1's return passage,
+§12's scoping lead-in and the new §13 state the peer side of the version: who may say what, and how a
+peer knows it. **Decided** (2026-09-22), after the frame's bytes (§B.31) and the server's state
+(§B.33), and before the holds and the lease. **Nothing implements it**: no client speaks `selvage/2`,
+no vector is written against one, and §13 is the version's first normative text no implementation has
+exercised at all.
+
+What the passages settle:
+
+- **The room state is the room's authority, and the host key is the only thing that can publish one.**
+  §7.1 says when a host publishes (at mint, on every change, on every `peer.joined`), that a state
+  replaces wholesale, that `issued` is strictly increasing, that its own entry carries its
+  connection's *session* key — not the host key, which signs `kind = 1` and `kind = 2` and nothing
+  else — that a state names exactly one `host` entry, and that a peer holding a state **SHOULD**
+  re-send it unchanged when a peer is seated.
+- **Attribution is cryptographic, and a client's rule is a lookup.** §13.4: the `key_id` is an index,
+  a receiver resolves it by verifying, the frame belongs to the key that verified, the role is the one
+  the applied state gives that peer, and a key no state commits is `uncommitted_key`. The two
+  authorities are named: the server's roster decides *seated*, the host's state decides *keys and
+  roles* (`docs/studies/relay-only-spec.md` §7's demand, answered for the half that does not need the
+  lease).
+- **The viewer rule is two obligations and a residual.** §13.5: a `viewer` **MUST NOT** send document
+  content — a `kind = 0` frame carrying a SyncStep2 or an Update, while its SyncStep1 and its
+  awareness are still sent, answered and applied — and a receiver **MUST NOT** apply such a frame from
+  a committed `viewer`, refusing it `unauthorised_content`. The residual is §B.3's: the guarantee is
+  that no *conforming* client applies it.
+- **The resume dissolves.** §9.1: a returning host publishes a state signed by the host key with an
+  `issued` above the room's, which is both the proof — only that key can sign one — and the
+  anti-replay, because a state not above the mark is refused `stale_issued`. No fresh value, no
+  `resume` frame and no new carrier. What replaces it is a persistence rule: the host key is minted at
+  share time and **must be persisted** for as long as the host means to keep hosting, with its
+  `issued` beside it, and a client that does not persist it ends its own hosting on reload. That
+  retires the open question `docs/studies/e2ee-plan.md` §14 and
+  `docs/studies/relay-revision-brief.md` §7 leave as "where the host's private key lives".
+- **The tie is first-wins, and the divergence is stated.** §13.3: two connections of one host can
+  publish different states at one `issued`, and nothing tells a receiver which is later, so the
+  strictly-greater rule `CANONICAL.md` §6.1 had already fixed makes the first state a receiver accepts
+  the one it holds and the second a `stale_issued` refusal. What that leaves is two receivers on
+  different listings at one edition, repaired when a greater `issued` arrives; a client **SHOULD**
+  report the equal-`issued` case as a conflict and **MUST NOT** clear its listing, drop content or end
+  the session for it. Two producer rules — one host session per room at a time, and the `issued`
+  persisted with the key — are what keep it from arising.
+- **§12 is `selvage/1`'s**, its deployment duties hold in both versions, and the three wire properties
+  it states that version 2 does not share are named at its head. `selvage/2`'s own security facts are
+  where §3's negative duties are: what the relay cannot do, and what it still learns.
+- **The client-behaviour section is §13.** It holds the order of operations at a join — which answers
+  the question `docs/studies/relay-only-spec.md` §3 left open, because frames from a key no state has
+  committed are **dropped** and the client **MUST** re-run §7's handshake after its first verified
+  state, which is what makes the drop safe — verify-before-apply with a local report of every refusal,
+  the room state as a receiver, attribution, the viewer rule, and what a client owes convergence.
+
+What this pass found rather than settled:
+
+- **Only the host can re-announce a state.** `docs/studies/e2ee-plan.md` §7.2 has "the host (and any
+  peer holding a verified state)" re-announce the state "sealed and signed", and a guest cannot sign
+  one: `CANONICAL.md` §6.1 refuses a `kind = 1` frame from any key but the host's. What a guest can do
+  is re-send the host's own bytes, which verify because they are the host's; §7.1 says that, and makes
+  the re-send a **SHOULD** rather than a second flow.
+- **A refusal never reaches its publisher.** The relay sends a frame to the room's *other*
+  connections and a refusal is the receiver's local report, so a host whose state no peer applies —
+  the shape a lost `issued` counter makes — learns nothing from the wire. That is why the counter's
+  continuity is a **MUST** on the host, and why the re-send above exists: without either, a host that
+  lost its counter has no way back into a room that still holds one of its states.
+- **The report vocabulary gained one reason.** `unauthorised_content` is the ninth in
+  `CANONICAL.md` §6.1's table, and the only one that is not a property of the envelope's bytes.
+  `schema/sealed.json` now carries the vocabulary as a closed *value* and `validate.py`'s
+  `check_refusals` pins it against that table in both directions, so `bad_tag` — the reason a reader
+  expects and no conforming receiver can produce (`docs/studies/peer-corpus.md` §5.4) — is a red run
+  rather than a line in a vector. The counts did not move: `EXPECTED_VECTORS` is 36,
+  `EXPECTED_FRAME_CHECKS` 35022, `EXPECTED_ASSERTIONS` 8676 and `EXPECTED_CODES` is untouched, because
+  no vector was added, deleted or re-pointed.
+- **The invite's naming of a `viewer` is not a wire rule.** A host's client telling a guest's client
+  that it is read-only is a convention across the link — §5.1 has a receiver ignore a query parameter
+  it does not know, which is the whole of what such a parameter can be — and a client learns its own
+  role authoritatively from the state.
+- **The holds have no carrier in the frozen bytes, and step 4b has to choose one.**
+  `CANONICAL.md` §6.1 defines `kind` 0, 1 and 2 and leaves values above 2 to a later revision, which a
+  receiver of this version refuses `unknown_kind`; and §7's message table is y-protocols', whose free
+  values are not this protocol's to define. So a hold announcement is neither a `kind` this version
+  has nor a message inside a `kind = 0` frame, and the two studies disagree about which it is:
+  `docs/studies/e2ee-plan.md` §7.3 has it as "a sealed session message" and §B.31 as "a `kind` this
+  version leaves unused". Either answer is a change to a frozen file — a fourth `kind` in
+  `CANONICAL.md` §6.1, or a payload inside `kind = 0` — and the choice is step 4b's, because it is
+  made by the holds' text rather than by this pass's. What this pass fixes is that nothing here
+  depends on it: §13's state, attribution and viewer rules carry no hold.
+
+What is not here, and which step owns it: the holds and their lease, the presence clock a client runs
+on, the lifecycle rules that need it, and the viewer's own behaviour, which is where the convention
+above belongs if it is specified at all. Each is a further subsection of §13's subject, all of them
+**step 4b** of `docs/studies/e2ee-plan.md` §11. The sealed sub-corpus is 4b's too, and what this pass
+constrains is its fixture: a committed `viewer` whose frame verifies, two states at one `issued` with
+different listings, a state below and a state at the mark, a key no state commits, and a host entry
+whose key is not the host key. `docs/studies/peer-corpus.md` §5.3 was written before the bytes were
+frozen and its room states carry a `key_id` per peer where `CANONICAL.md` §6.1 fixes a 32-byte `key`;
+that shape is what the frozen layout corrects.

@@ -1,9 +1,25 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://selvageprotocol.com/schema/1/sealed.json",
-  "title": "Selvage Session Protocol — the two sealed payloads that are JSON",
-  "description": "`selvage/2`'s binary frame is an envelope of bytes, not a JSON frame, and its layout is CANONICAL.md §6.1's; what the envelope carries sealed is either opaque y-protocols bytes or one of these two objects. Valid against PROTOCOL.md §7.1: the room state the host publishes and the closing that ends the room. Neither is a session frame — neither carries `v` — and both are canonical when they follow CANONICAL.md §2, `listing` in the order §2.7 gives it, with §3's tolerance for a member the receiver does not know. Every object here tolerates a member it does not know, as every schema in this directory does.",
+  "title": "Selvage Session Protocol — the two sealed payloads that are JSON, and the vocabulary a refused frame is reported in",
+  "description": "`selvage/2`'s binary frame is an envelope of bytes, not a JSON frame, and its layout is CANONICAL.md §6.1's; what the envelope carries sealed is either opaque y-protocols bytes or one of these two objects. Valid against PROTOCOL.md §7.1: the room state the host publishes and the closing that ends the room. Neither is a session frame — neither carries `v` — and both are canonical when they follow CANONICAL.md §2, `listing` in the order §2.7 gives it, with §3's tolerance for a member the receiver does not know. Every object here tolerates a member it does not know, as every schema in this directory does. `refusalReason` is the third thing this file fixes and the only one that is not a payload: the local report a receiver answers a refused frame with, which no frame carries and which `PROTOCOL.md` §13.2 binds a client to produce.",
   "$defs": {
+    "refusalReason": {
+      "title": "the reason a refused frame is reported in",
+      "description": "The receiver's local report, and the check order it is read in: CANONICAL.md §6.1's table, whole. A frame is refused for the first of these that applies to it, and PROTOCOL.md §13.2 requires a client to report the reason rather than drop a frame silently. It is a closed *value* rather than a member — no frame carries it, and a receiver tolerates a member it does not know (§3) — so this is the one place in this file where a string an implementation invents is refused. `bad_tag` is the reason a reader would expect and cannot have: the signature covers the ciphertext, so a flipped tag byte reaches a verifier as a signature failure and no conforming receiver can report a tag failure at all (CANONICAL.md §6.1; `docs/studies/peer-corpus.md` §5.4 measured it). `unauthorised_content` is the one reason here that is not a property of the envelope: an authentic frame from a peer the host committed as `viewer` carrying document content is refused by the peer rules (PROTOCOL.md §13.5).",
+      "type": "string",
+      "enum": [
+        "bad_envelope",
+        "unknown_kind",
+        "unknown_epoch",
+        "uncommitted_key",
+        "replayed_counter",
+        "bad_signature",
+        "bad_aead",
+        "stale_issued",
+        "unauthorised_content"
+      ]
+    },
     "sealedIssued": {
       "type": "integer",
       "minimum": 0,
@@ -17,7 +33,7 @@
         "guest",
         "viewer"
       ],
-      "description": "The role the host assigns to a peer in the room state: `host`, `guest`, or `viewer`, the role the host denies a peer's edits to. It is `common.json`'s `role` with one more value and a different author — that one is the claim a `selvage/1` connection makes about itself in `session.hello` (`PROTOCOL.md` §9), this one is a fact the host states and signs, and no server seats it. What a receiver does with a committed `viewer` is the peer rules' business (`NOTES.md` §B.3)."
+      "description": "The role the host assigns to a peer in the room state: `host`, `guest`, or `viewer`, the role the host denies a peer's edits to. It is `common.json`'s `role` with one more value and a different author — that one is the claim a `selvage/1` connection makes about itself in `session.hello` (`PROTOCOL.md` §9), this one is a fact the host states and signs, and no server seats it. What a receiver does with a committed `viewer` is `PROTOCOL.md` §13.5's: it refuses document content from that peer and reports it `unauthorised_content`, while its SyncStep1 and its awareness are answered and applied."
     },
     "sealedPeerKey": {
       "type": "string",
