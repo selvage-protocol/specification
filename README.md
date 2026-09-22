@@ -30,8 +30,8 @@ and `result OK`:
 
 ```
 schema ok      11 schemas, 39 values checked against the control-character refusal
-sealed         28 values checked against the sealed payloads of selvage/2
-refusals       12 values checked against selvage/2's local report vocabulary
+sealed         39 values checked against the sealed payloads of selvage/2
+refusals       13 values checked against selvage/2's local report vocabulary
 session v2     42 values checked against selvage/2's session layer
 vectors        36 files, 35022 frame checks, 8676 assertion steps
 result         OK
@@ -107,7 +107,8 @@ in every vector against them. It prints a line for the schemas, a line for the c
   a substitution inside a closed vocabulary (`unknown_method` for `bad_params`, say) is a red run
   rather than a corpus that keeps every count and quietly asserts something else;
 - that `schema/sealed.json` describes what `selvage/2` carries sealed — the room state, the
-  closing and the holds — by running it against values that must validate and values that must not,
+  closing, the holds and the session-key announcement — by running it against values that must
+  validate and values that must not,
   and, beside them, the vocabulary a receiver reports a refused sealed frame in, which `PROTOCOL.md`
   §13.2 binds a client to produce. No vector reaches either yet: a sealed frame is bytes rather than JSON, and
   the vectors for one belong to the corpus layer that is not written. Until they exist this check is

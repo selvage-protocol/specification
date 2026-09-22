@@ -720,119 +720,66 @@ def check_control_refusal(reg: Registry) -> int:
 # The sealed payloads `selvage/2` carries, as `CANONICAL.md` §6.1 and `schema/sealed.json`
 # fix them. Nothing else here reads that file: a sealed frame is bytes and the corpus's vectors
 # for it are the next layer's, so without this check the state's member set could be relaxed
-# — `key` back to the `key_id` that verifies nothing, or a fourth role — with every other
-# check in this suite still green.
-SEALED_CONFORMING = {
-    "an empty room": {"issued": 0, "listing": [], "peers": {}},
-    "a listing of one path": {"issued": 1, "listing": ["src/main.rs"], "peers": {}},
-    "a host and a viewer": {
-        "issued": 1,
-        "listing": ["README.md", "src/main.rs"],
-        "peers": {
-            "p-0f1e2d3c4b5a6978": {
-                "key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM",
-                "role": "host",
-            },
-            "p-8796a5b4c3d2e1f0": {
-                "key": "laGjN1Xs9WCrmojozXGfP9_-1ppPlIwOcog-ef1AdIc",
-                "role": "viewer",
-            },
-        },
-    },
-    "a closing": {"closing": True, "issued": 2},
-}
-SEALED_REFUSED = {
-    "a state with no `issued`": {"listing": [], "peers": {}},
-    "a state that commits an id": {
-        "issued": 1,
-        "listing": [],
-        "peers": {"p-1": {"key_id": "efc57a77c8a86a55", "role": "host"}},
-    },
-    "a peer with no role": {"issued": 1, "listing": [], "peers": {"p-1": {"key": "GT" * 1 + "yGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM"}}},
-    "a role this version has not": {
-        "issued": 1,
-        "listing": [],
-        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM", "role": "admin"}},
-    },
-    "a key that is not 32 bytes": {
-        "issued": 1,
-        "listing": [],
-        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfe", "role": "host"}},
-    },
-    "a key with a character base64url has not": {
-        "issued": 1,
-        "listing": [],
-        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfe+", "role": "host"}},
-    },
-    "a listing that carries a control character": {
-        "issued": 1,
-        "listing": ["src/main\u0000.rs"],
-        "peers": {},
-    },
-    "a listing that is not a list": {"issued": 1, "listing": "README.md", "peers": {}}
-}
+# — the state's `peers` keyed by `peer_id` again, or a second role — with every other check in this
+# suite still green. The values below are per payload and there is one copy of each: the state's
+# shape is the one this pass changed most, and a second, dead copy of it is a copy that goes stale.
+SEALED_KEY_A = "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM"
+SEALED_KEY_B = "laGjN1Xs9WCrmojozXGfP9_-1ppPlIwOcog-ef1AdIc"
+
+
 SEALED_STATE_CONFORMING = {
-    "an empty room": {"issued": 0, "listing": [], "peers": {}},
-    "a listing of one path": {"issued": 1, "listing": ["src/main.rs"], "peers": {}},
-    "a host and a viewer": {
-        "issued": 1,
+    "a state at the first `issued` a host writes": {"issued": 1, "listing": [], "peers": {}},
+    "a listing of one path": {"issued": 2, "listing": ["src/main.rs"], "peers": {}},
+    "a host and a viewer, keyed by key": {
+        "issued": 3,
         "listing": ["README.md", "src/main.rs"],
         "peers": {
-            "p-0f1e2d3c4b5a6978": {
-                "key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM",
-                "role": "host",
-            },
-            "p-8796a5b4c3d2e1f0": {
-                "key": "laGjN1Xs9WCrmojozXGfP9_-1ppPlIwOcog-ef1AdIc",
-                "role": "viewer",
-            },
+            SEALED_KEY_A: {"peer_id": "p-0f1e2d3c4b5a6978", "role": "host"},
+            SEALED_KEY_B: {"peer_id": "p-8796a5b4c3d2e1f0", "role": "viewer"},
         },
     },
     "a state carrying a member this version does not define": {
         "issued": 1,
         "listing": [],
-        "peers": {
-            "p-1": {
-                "key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM",
-                "key_id": "efc57a77c8a86a55",
-                "role": "host",
-            }
-        },
+        # The shape before CANONICAL.md §6.1 keyed `peers` by `peer_id` and put `key` inside
+        # the entry. A receiver drops the unknown `key` member and reads the entry by its name,
+        # which is what tolerance means (CANONICAL.md §3), so this is conforming and not one of
+        # the refusals below: what a schema cannot do is forbid the older shape's member.
+        "peers": {SEALED_KEY_A: {"key": SEALED_KEY_A, "peer_id": "p-1", "role": "host"}},
     },
 }
 SEALED_STATE_REFUSED = {
     "a state with no `issued`": {"listing": [], "peers": {}},
-    "a state that commits an id instead of a key": {
+    "a state at `issued` 0, which a receiver's mark already refuses": {
+        "issued": 0,
+        "listing": [],
+        "peers": {},
+    },
+    "a state that names a `peer_id` where a key belongs": {
         "issued": 1,
         "listing": [],
-        "peers": {"p-1": {"key_id": "efc57a77c8a86a55", "role": "host"}},
+        "peers": {"p-1": {"peer_id": "p-1", "role": "host"}},
     },
-    "a peer with no key": {
-        "issued": 1,
-        "listing": [],
-        "peers": {"p-1": {"role": "host"}},
-    },
+    "a peer with no seat": {"issued": 1, "listing": [], "peers": {SEALED_KEY_A: {"role": "host"}}},
     "a peer with no role": {
         "issued": 1,
         "listing": [],
-        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM"}},
+        "peers": {SEALED_KEY_A: {"peer_id": "p-1"}},
     },
     "a role this version has not": {
         "issued": 1,
         "listing": [],
-        "peers": {
-            "p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM", "role": "admin"}
-        },
+        "peers": {SEALED_KEY_A: {"peer_id": "p-1", "role": "admin"}},
     },
     "a key that is not 32 bytes": {
         "issued": 1,
         "listing": [],
-        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfe", "role": "host"}},
+        "peers": {SEALED_KEY_A[:-1]: {"peer_id": "p-1", "role": "host"}},
     },
     "a key with a character base64url has not": {
         "issued": 1,
         "listing": [],
-        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfe+", "role": "host"}},
+        "peers": {SEALED_KEY_A[:-1] + "+": {"peer_id": "p-1", "role": "host"}},
     },
     "a listing that carries a control character": {
         "issued": 1,
@@ -848,6 +795,7 @@ SEALED_CLOSING_REFUSED = {
     "a closing whose `closing` is false": {"closing": False, "issued": 3},
     "a room state offered as a closing": {"issued": 2, "listing": [], "peers": {}},
     "an `issued` above the JavaScript bound": {"closing": True, "issued": 9007199254740992},
+    "a closing at `issued` 0": {"closing": True, "issued": 0},
 }
 SEALED_HOLDS_CONFORMING = {
     "a hold set of one path": {"holds": ["src/main.rs"]},
@@ -864,6 +812,19 @@ SEALED_HOLDS_REFUSED = {
     "a hold carrying a control character": {"holds": ["src/main\u0000.rs"]},
     "a hold that is blank": {"holds": [""]},
     "a room state offered as holds": {"issued": 1, "listing": [], "peers": {}},
+}
+SEALED_ANNOUNCEMENT_CONFORMING = {
+    "an announcement of a key": {"key": SEALED_KEY_A},
+    "one that declares `viewer`": {"key": SEALED_KEY_B, "role": "viewer"},
+    "one that declares `guest`": {"key": SEALED_KEY_A, "role": "guest"},
+    "one carrying a member this version does not define": {"key": SEALED_KEY_A, "peer_id": "p-1"},
+}
+SEALED_ANNOUNCEMENT_REFUSED = {
+    "an announcement with no `key`": {"role": "guest"},
+    "a key that is not 32 bytes": {"key": SEALED_KEY_A[:-1]},
+    "a declaration of `host`, which no peer can make": {"key": SEALED_KEY_A, "role": "host"},
+    "a declaration this version has not": {"key": SEALED_KEY_A, "role": "admin"},
+    "a room state offered as an announcement": {"issued": 1, "listing": [], "peers": {}},
 }
 
 SEALED_SITES = (
@@ -884,6 +845,12 @@ SEALED_SITES = (
         "sealed.json#/$defs/roomHolds",
         SEALED_HOLDS_CONFORMING,
         SEALED_HOLDS_REFUSED,
+    ),
+    (
+        "the sealed session-key announcement",
+        "sealed.json#/$defs/sessionAnnouncement",
+        SEALED_ANNOUNCEMENT_CONFORMING,
+        SEALED_ANNOUNCEMENT_REFUSED,
     ),
 )
 
@@ -1179,6 +1146,7 @@ def check_refusals(reg: Registry) -> int:
         "bad_aead",
         "stale_issued",
         "unauthorised_content",
+        "bad_payload",
     ]
     checks = 0
     try:

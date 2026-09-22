@@ -822,7 +822,8 @@ stated the version's own facts where §3's negative duties are.
 peer knows it. **Decided** (2026-09-22), after the frame's bytes (§B.31) and the server's state
 (§B.33), and before the holds and the lease. **Nothing implements it**: no client speaks `selvage/2`,
 no vector is written against one, and §13 is the version's first normative text no implementation has
-exercised at all.
+exercised at all. **Revised 2026-09-22 by §B.36**, which binds a role to a key: where an item below
+gives a role to a *peer*, read *key*.
 
 What the passages settle:
 
@@ -919,7 +920,7 @@ and §13.7–§13.11 complete §13; `schema/sealed.json` gained the holds payloa
 `schema/validate.py`'s `check_sealed_payloads` runs it. **Decided** (2026-09-22), after §B.34's
 authority model and before the corpus. **Nothing implements it**: no client speaks `selvage/2`, no
 vector is written against one, and every rule below was written from the design rather than observed
-on a wire.
+on a wire. **Revised 2026-09-22 by §B.36**, which adds a second `kind` to the frozen layout.
 
 **The carrier is a fourth `kind`, and it amends the frozen bytes deliberately.** §B.34 left the
 choice between a fourth `kind` in `CANONICAL.md` §6.1 and a payload inside `kind = 0`, and this pass
@@ -1000,3 +1001,97 @@ peer's `peer.left` with no state above it naming a seated host. `docs/studies/pe
 predates the frozen layout and its room states carry a `key_id` per peer where §6.1 fixes a 32-byte
 `key`: a fixture for this layer follows §6.1. Every implementation is later still, and the wire
 version does not move.
+
+**B.36 `selvage/2`'s key binding: the session-key announcement, a state keyed by key, and nine
+smaller fixes.** `PROTOCOL.md` §7.1, §8's awareness passage, §9.1 and the §13 subsections that
+name a key or a mark, `CANONICAL.md` §6.1 and `schema/sealed.json` now carry the version's second
+new sealed `kind` and the rules that depend on it. **Decided** (2026-09-22), in a fix pass over §B.34's text taken from
+an independent review of that pass. **Nothing implements it**: no client speaks `selvage/2`, no
+vector is written against one, and every rule below was written from the design rather than observed
+on a wire.
+
+**The hole, and why the state had to be re-keyed.** §B.34 has the host commit each peer's session
+key, and §13.1 forbids a client to send any binary frame before a state commits its own — and
+nothing carried a key to the host. No server frame can: `peer_id` is the server's word and it is
+public, so **any carrier that binds a key to a `peer_id` fails**, letting a peer claim another's
+`peer_id`, have its own key committed under it and silence the victim, and letting a `viewer` claim
+a guest's `peer_id` and have its edits applied. The only identity a room can trust is a key, so the
+state's `peers` is **keyed by the peer's public key** and the `peer_id` beside it is a **label** —
+the host's claim about which seat holds a key — that decides no attribution and no role. A sender's
+role is the one the applied state gives the key that verified (§13.4).
+
+**The carrier is `kind = 4`, the session-key announcement.** `{"key": …}` and an optional
+`"role"`, sealed under the frame key and **signed by the very key it names**: the first
+self-certifying carrier here, and the reason its read order is the one kind that is not §6.1's
+table — its signer is inside its plaintext, so a receiver opens the AEAD before it can verify
+anything. It is **exempt from §13.1's step 4**, and that is the whole of what it is for: it is the
+one binary frame a client may send before a state commits its key, and the frame that makes such a
+commitment possible. A peer **MUST** announce again when it applies a verified state that does not
+commit its key, because a relay may drop one; a host **MUST NOT** commit a key it cannot place in
+its roster, because an entry beyond the server's seats is a role nothing answers for.
+
+**The host assigns the role, and its pairing can be wrong.** Nothing on the wire joins a key to a
+seat with any authority, so a host can commit the wrong role for a key. A client **MAY** declare in
+its announcement the role it believes it has been given — `guest` or `viewer`, never `host` — and a
+host **SHOULD** honour the declaration: it is the one statement about a peer's role that comes from
+the peer's own key, and it is no weaker a source than the roster, which is the server's word about a
+name the server minted. Why honouring it is not a weakening: a role was never enforced by the
+assignment, only by the clients that honour it, which is §13.5's residual, so a client that
+declares a role it was not given is a non-conforming client exactly as one that ignores a `viewer`
+role it was given is. The residual a wrong pairing leaves is stated where it is decided: a key
+committed under the wrong role can make a guest read-only, or a `viewer` writable, for as long as
+the state stands.
+
+**The nine smaller findings, as they landed.** `issued` has a first value — `1`, because the mark
+starts at `0` and a state at or below it is refused, and `CANONICAL.md` §6.1's worked example and
+`sealed.json`'s `minimum` say so. The marks a receiver keeps — the `issued` it has accepted and the
+counter mark for each key — are **retained for as long as it holds the room's keys**, and a
+`kind = 2` closing is applied **only when the receiver already holds a verified state below it**:
+a replayed closing delivered to a fresh joiner passed the old rule and drove it out of a live room,
+and what stays unclosable is named with it — a replayed *state* is applied by a peer that holds
+none, and converges on the next state above it. The client's host-away threshold is the **host-away
+window**, one `awareness_expire_ms` on the session's own clock, and no longer the server's
+`room_grace_ms`, which counts a different event. §8 is scoped into `selvage/2` by a version passage
+that states what `path` means there and when a newcomer may publish, and §8.3's third step is
+`selvage/1`'s. A listing's paths are bounded at the receiver — a path over **4096 bytes** is
+dropped along with the excess of a size cap, never the state — which re-homes the bound the server
+used to hold. The equal-`issued` conflict stays **`stale_issued`** with the distinct report as a
+**local annotation beside** the named reason, because the vocabulary is closed. A `kind = 1`, `2`,
+`3` or `4` plaintext that is not its kind's object is refused **`bad_payload`**, a tenth reason:
+`bad_envelope` is step one's reason for the envelope's own bytes and widening it would put one
+reason at two steps of an order this document says is normative. The relay's ability to **lie about
+who is present** is stated in §3's account of what the relay cannot do, with the harm named and the
+one thing it cannot do with a roster frame: produce an edit, because content under an invented
+`peer_id` is refused `uncommitted_key`. Last, two wording fixes with observable consequences: the
+counter mark is "the highest counter it has **not refused**" rather than "accepted", so a frame
+refused at the `viewer` step does not move it and the same bytes are refused for the same reason
+every time; and §13.1's step 5 says a state is applied if it verifies **and** its `issued` is above
+the mark, because §13.3 orders states by `issued` and not by arrival.
+
+**Phase 1's frozen bytes gained a second `kind`, and nothing else about the envelope changed.**
+§6.1's field list, the widths, the AAD, the signature input and the key schedule are as §B.31 froze
+them; `kind = 3` (§B.35) and `kind = 4` are the two additions, and both are carried by the same
+envelope every other kind is. `kind = 4` is the one kind whose *reading* order differs from §6.1's
+table, and §6.1 says so where the table is, with the reason: a frame signed by the key it carries
+cannot be verified before it is opened.
+
+**The schema's gain, and the counts.** `sealed.json` gained `#/$defs/sessionAnnouncement` and
+`#/$defs/declaredRole`, `sealedIssued` gained the `minimum` of `1`, `sealedPeer` became the two
+members a seat has (`peer_id`, `role`) with the key now the object's name, and `check_sealed_payloads`
+runs eleven more values (four conforming, seven refused) while `check_refusals` gains the tenth
+reason. The published run moves on two lines and `README.md`'s transcript with it: `sealed` is 39
+where it was 28, and `refusals` is 13 where it was 12. Nothing in the corpus moved:
+`EXPECTED_VECTORS` is 36, `EXPECTED_FRAME_CHECKS` 35022, `EXPECTED_ASSERTIONS` 8676 and
+`EXPECTED_CODES` is untouched, because no vector was added, deleted or re-pointed and the
+transcripts are still `selvage/1`'s. Six mutations were shown red against the new checks: dropping
+`bad_payload` from the enum (both directions), `issued` back to a minimum of `0`, `peers` keyed by
+`peer_id` again, a declaration of `host` allowed, an announcement with no `key`, and a peer entry
+that requires a member this version no longer defines (which turns the *conforming* tolerance case
+red). The listing's 4096-byte path bound is the one rule here with no schema behind it, deliberately:
+`CANONICAL.md` §2.8 keeps a value over a bound canonical, so the model must not refuse it, and the
+checkable half is the receiver's drop (`PROTOCOL.md` §13.3).
+
+**What is not here, and which step owns it.** The corpus still is **step 4b**'s
+(`docs/studies/e2ee-plan.md` §11), and §13.11's fixture list gains what this pass added: an
+announcement signed by the key it names and one that is not, and a `kind = 1` plaintext that is not
+the room state's object. The wire version does not move, and no implementation speaks it.

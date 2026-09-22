@@ -236,7 +236,7 @@ follows it, and its bytes are these, in this order.
 | field | width | meaning |
 |---|---|---|
 | `key_id` | 8 bytes | the sender's key id |
-| `kind` | `varUint` | `0` a sealed y-protocols stream, `1` the sealed room state, `2` the sealed closing, `3` the sender's sealed holds |
+| `kind` | `varUint` | `0` a sealed y-protocols stream, `1` the sealed room state, `2` the sealed closing, `3` the sender's sealed holds, `4` the sender's sealed session-key announcement |
 | `epoch` | `varUint` | `0`; reserved and unused in this version |
 | `counter` | `varUint` | the sender's counter under the key it signed with |
 | `nonce` | 12 bytes | fresh for this frame |
@@ -269,9 +269,10 @@ anyway. The host key is **not** derived from the room key: a signing key every g
 from its own link is a key every guest can forge with.
 
 Each connection also mints a **session keypair**, Ed25519 again, in memory and never persisted,
-whose public key the host's room state commits (`PROTOCOL.md` §7.1). A session key signs one
-peer's `kind = 0` and `kind = 3` frames; the host key signs `kind = 1` and `kind = 2`, and a
-receiver refuses those two from any other key.
+whose public key the host's room state commits and which the connection announces in a `kind = 4`
+frame signed by that key (`PROTOCOL.md` §7.1). A session key signs one peer's `kind = 0`, `kind = 3`
+and `kind = 4` frames; the host key signs `kind = 1` and `kind = 2`, and a receiver refuses those
+two from any other key.
 
 **What is authenticated.** The AEAD is **AES-256-GCM**; the tag is the 16 bytes GCM appends to the
 ciphertext; the nonce is the envelope's 12 bytes, drawn fresh from the CSPRNG for every frame and
@@ -308,22 +309,30 @@ mis-attribution.
 
 **The counter, the mark and `issued`.** A sender **MUST** give its first frame under one key the
 counter `1`, and each later frame under that key a strictly greater one. A receiver keeps, for each
-key it holds, the highest counter it has accepted, starting at `0`, and advances that mark **only**
-for a frame whose signature verified: a frame that does not verify never moves a mark, so a relay
-cannot poison one with a forged frame and lock out the frames that follow it. A `kind = 0` or `3`
-frame at or below the mark is refused whatever else is right about it, and there is no window around
-the mark: the transport `PROTOCOL.md` §7 describes is ordered, one connection's frames arrive in the
-order they were sent, so a counter that does not advance is a replay. A **gap** is not a fault —
-the relay may drop frames — and a receiver **MUST** accept a counter above the mark however far
-above it is.
+key it holds — every key its applied state commits and every key it has accepted an announcement
+from — the highest counter it has **not refused**, starting at `0`: a frame it refuses never
+moves a mark, whatever step refused it, so a relay cannot poison one with a forged frame and lock
+out the frames that follow it, and the same bytes are refused for the same reason however often they
+arrive. A `kind = 0`, `3` or `4` frame at or below the mark is refused whatever else is right about
+it, and there is no window around the mark: the transport `PROTOCOL.md` §7 describes is ordered, one
+connection's frames arrive in the order they were sent, so a counter that does not advance is a
+replay. A **gap** is not a fault — the relay may drop frames — and a receiver **MUST** accept a
+counter above the mark however far above it is. **A receiver keeps both marks — this one and the
+`issued` mark below — for as long as it holds the room's keys**: they are what the room has told it
+rather than facts about the socket it heard them on, a reconnect does not reset them
+(`PROTOCOL.md` §9.1, §13.10), and a client that reset them would apply a replayed state and obey a
+replayed closing.
 
 The two kinds the host signs are ordered by the `issued` member of their own plaintext instead, and
 their counter is not read for that purpose: a room state and a closing come from the host key,
 which is minted with the room and outlives the connection any one of them was published on, so it
 is `issued` and not a per-key counter that says which of two states is the later. A receiver keeps
 the highest `issued` it has accepted from the host, also starting at `0`, and refuses a room state
-or a closing that is not above it. The host **MUST** publish a state whose `issued` is above the
-state it replaces, and a closing whose `issued` is above every state it has published.
+or a closing that is not above it. The host **MUST** write the `issued` `1` on the first state it
+publishes — the mark starts at `0`, so a host whose series began there would have every state it
+published refused `stale_issued` — a state whose `issued` is above the one it replaces, and a
+closing whose `issued` is above every state it has published, which makes `2` the first `issued` a
+closing can carry.
 
 **Reading an envelope.** A receiver reads the bytes in this order and reports the first step that
 refuses the frame.
@@ -333,12 +342,13 @@ refuses the frame.
 | 1 | the layout: every field present, nothing left over | `bad_envelope` |
 | 2 | `kind` is one this version defines | `unknown_kind` |
 | 3 | `epoch` is one this version defines | `unknown_epoch` |
-| 4 | the key: a `kind = 0` or `3` frame is signed by a committed session key, a `kind = 1` or `2` frame by the host key | `uncommitted_key` |
-| 5 | the mark, for `kind = 0` and `3` | `replayed_counter` |
+| 4 | the key: a `kind = 0` or `3` frame is signed by a committed session key, a `kind = 1` or `2` frame by the host key, and a `kind = 4` frame by the key it announces, whose 8-byte id the envelope's `key_id` must be | `uncommitted_key` |
+| 5 | the mark, for `kind = 0`, `3` and `4` | `replayed_counter` |
 | 6 | the signature | `bad_signature` |
 | 7 | the AEAD opens | `bad_aead` |
-| 8 | `issued`, for `kind = 1` and `2` | `stale_issued` |
-| 9 | the sender's role, for a `kind = 0` frame carrying document content: a peer committed as `viewer` may not send one | `unauthorised_content` |
+| 8 | the plaintext is the object its kind defines | `bad_payload` |
+| 9 | `issued`, for `kind = 1` and `2` | `stale_issued` |
+| 10 | the sender's role, for a `kind = 0` frame carrying document content: a key the state gives role `viewer` may not send one | `unauthorised_content` |
 
 Those reasons are the receiver's **local report** and not wire values. Nothing about a refused
 frame is sent, no connection is closed, no code of `PROTOCOL.md` §11 is involved, and a frame that
@@ -348,22 +358,43 @@ worth naming: a frame whose counter does not advance is a replay whether or not 
 would have verified, and `bad_aead` — reachable only by a sender that signs a ciphertext its own
 room's key cannot open — is a report about a sender's bug rather than about an attack.
 
-**Step 9 is the one reason here that is not a property of the envelope.** The frame is authentic,
+**`kind = 4` is read in its own order, and it is the one kind that is.** Its signer is inside its
+plaintext, so a receiver must open the AEAD before it can verify anything, and it walks the table's
+steps in this sequence instead: the layout, the kind, the epoch, the AEAD under the frame key (7),
+the plaintext as the announcement's object (8), the key (4) — the announced key's 8-byte id must be
+the envelope's `key_id`, or the frame is attributed to no key at all — the signature over that key
+(6), and last the mark for it (5). What is not read for this kind is the step-4 rule about
+*commitment*: the announcement is the frame that makes a key knowable in the first place, so a
+receiver accepts one from a key no state commits, which is the whole of what it is for
+(`PROTOCOL.md` §7.1, §13.1). Everything else above holds of it unchanged.
+
+**Step 10 is the one reason here that is not a property of the envelope.** The frame is authentic,
 its key is committed, its counter advanced and its AEAD opened; what refuses it is the peer rule
 that a `viewer`'s edits are not the room's (`PROTOCOL.md` §13.5). It is in this table because the
 report is one vocabulary, and it is read last and only for a `kind = 0` frame whose plaintext
-carries a SyncStep2 or an Update: a viewer's SyncStep1 and its awareness are applied. The two
-last steps are each reached by one kind — 8 only by `kind = 1` and `2`, which carry the `issued`
-that orders them, and 9 only by `kind = 0`, which does not.
+carries a SyncStep2 or an Update: a viewer's SyncStep1 and its awareness are applied. The last two
+steps are each reached by one kind — 9 only by `kind = 1` and `2`, which carry the `issued` that
+orders them, and 10 only by `kind = 0`, which does not.
+
+**Step 8 is the added one, and it closes a hole rather than widening one.** `kind = 1`, `2`, `3` and
+`4` each fix a plaintext that is one JSON object with a member set (`PROTOCOL.md` §7.1, below), and
+nothing else in this document refused a plaintext that is not that object: an authentic frame from a
+committed key, at an advancing counter, whose AEAD opens, and whose plaintext is a bare string or a
+list of the wrong shape. The reasons above are about the envelope and one peer rule, so none of them
+named it, and a receiver dropping it silently would be a refusal §13.2 does not let a client leave
+unreported (`PROTOCOL.md` §13.2, §13.11). `bad_payload` is that report. Reading the plaintext at
+step 8 rather than at step 1 is deliberate: the envelope's layout is what `bad_envelope` is about,
+and the plaintext is not visible until the AEAD opens.
 
 **The kinds.** `0` carries the y-protocols stream of `PROTOCOL.md` §7 as its plaintext, whole: one
 binary frame is one envelope, and the messages inside it are that section's, exactly as they are
-in `selvage/1`. `1`, `2` and `3` carry one JSON object each, as the UTF-8 bytes of its canonical
-form: `1` the room state, `2` the closing, `3` the sender's holds. Values above `3`, and every
-`epoch` but `0`, are this version's to leave unused: a later revision defines one, and a receiver
-of this version refuses a frame that uses one rather than reading it by the nearest rule it knows.
+in `selvage/1`. `1`, `2`, `3` and `4` carry one JSON object each, as the UTF-8 bytes of its canonical
+form: `1` the room state, `2` the closing, `3` the sender's holds, `4` the session-key
+announcement. Values above `4`, and every `epoch` but `0`, are this version's to leave unused: a
+later revision defines one, and a receiver of this version refuses a frame that uses one rather than
+reading it by the nearest rule it knows.
 
-**The three sealed payloads.** All three are JSON objects, read as §2 writes one, and none is a
+**The four sealed payloads.** All four are JSON objects, read as §2 writes one, and none is a
 session frame: none carries `v`, and §2.5 is not theirs. §3 is: a receiver drops a member it does
 not know and does not refuse the value. A producer **MUST NOT** write a member this version does not
 define — the member sets below are fixed, and §2.7's order for `listing` is part of them.
@@ -371,19 +402,25 @@ define — the member sets below are fixed, and §2.7's order for `listing` is p
 The **room state** has exactly three members. `PROTOCOL.md` §7.1 says what each means:
 
 ```json
-{"issued":1,"listing":["README.md","src/main.rs"],"peers":{"p-0f1e2d3c4b5a6978":{"key":"GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM","role":"host"}}}
+{"issued":1,"listing":["README.md","src/main.rs"],"peers":{"GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM":{"peer_id":"p-0f1e2d3c4b5a6978","role":"host"}}}
 ```
 
-- `issued`: a count in §2.4's form and inside its bound.
+- `issued`: a positive count in §2.4's form and inside its bound, `1` on the first state the host
+  publishes.
 - `listing`: an array of paths, each held to `PROTOCOL.md` §5's rule for one, written ascending by
   UTF-16 code unit.
-- `peers`: an object whose names are `peer_id`s, each value an object of two members: `key`, the
-  peer's public key in the fragment's encoding (base64url, 32 bytes), and `role`, one of `host`,
-  `guest` and `viewer`. Where one key is named under two `peer_id`s the receiver reads the role
-  from the entry whose `peer_id` comes first in UTF-16 code-unit order, so that two conforming
-  receivers read one state the same way. The same read applies to a state that names more than one
-  peer with role `host`: `PROTOCOL.md` §7.1 has a host write exactly one, and a receiver handed two
-  reads the host's connection as the one whose `peer_id` comes first in that order.
+- `peers`: an object whose names are **public keys** — 32 bytes of Ed25519 in the fragment's
+  encoding (base64url, unpadded, 43 characters) — each value an object of two members: `role`, one
+  of `host`, `guest` and `viewer`, and `peer_id`, the seat the host believes the key's holder is
+  seated under. The key is what attributes a frame and the key is what the role belongs to; the
+  `peer_id` is a **label** the host wrote and not a binding, because the server's `peer_id` is its
+  own word and it can be neither the key's source nor its authority (`PROTOCOL.md` §7.1, §13.4).
+  Where one `peer_id` is named under two keys — the shape a host's error takes here, since a key can
+  appear only once as a name — a receiver reads the entry whose key comes first in UTF-16 code-unit
+  order, so that two conforming receivers read one state the same way. The same read applies to a
+  state that gives more than one key the role `host`: `PROTOCOL.md` §7.1 has a host write exactly
+  one, and a receiver handed two reads the host's connection as the one whose key comes first in
+  that order.
 
 The **closing** has exactly two members:
 
@@ -406,7 +443,24 @@ in it is held to `PROTOCOL.md` §5's rule for one. No member names the peer the 
 sender is the key that signed the frame, so a receiver attributes it by the verification it already
 made rather than by a value inside the plaintext.
 
-All three objects are canonical as written — §2's form, with §2.7's order for `listing` — and a
+The **session-key announcement** has one required member and one optional one:
+
+```json
+{"key":"GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM","role":"guest"}
+```
+
+`key` is the announcing connection's session public key, 32 bytes in the fragment's encoding, and it
+**MUST** be the key that signed the frame: a receiver verifies the frame against the value it carries,
+and the envelope's `key_id` **MUST** be that key's id (the order above says where each of the two is
+read). Nothing else in the frame is a claim about identity, which is what makes the announcement
+self-certifying rather than an identification: it names no peer and no server-supplied value, so a
+receiver learns from it that a key exists and that whoever holds it speaks, and nothing more
+(`PROTOCOL.md` §7.1, §13.1, §13.4). `role`, when it is there, is the role the sender believes it has
+been given — `guest` or `viewer`, and never `host` — because a state names exactly one `host` entry
+and it is the host's own connection's, so the role is not a peer's to declare. A host **SHOULD**
+honour a declaration (`PROTOCOL.md` §7.1).
+
+All four objects are canonical as written — §2's form, with §2.7's order for `listing` — and a
 plaintext is the UTF-8 bytes of one.
 
 **The envelope's own cost.** A frame costs 104 bytes over its plaintext while the ciphertext's
