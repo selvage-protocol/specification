@@ -2110,8 +2110,10 @@ The state replaces what a receiver held, and it is ordered by its own `issued`.
   one there.
 - **The listing's paths are held to §5's rule.** A host **MUST NOT** write a blank path or one
   carrying a control character into a listing, and a receiver **MUST** refuse that path — not the
-  frame and not the state, whose remaining members are as authentic as they would have been. The
-  server enforced that rule in `selvage/1` and does not here, so it is re-homed at both ends, and
+  frame and not the state, whose remaining members are as authentic as they would have been. To
+  refuse a path is to drop it from what the client offers: it is not shown, not offered to a peer
+  and never written out as a name, while the rest of the listing and the state's roles are applied.
+  The server enforced that rule in `selvage/1` and does not here, so it is re-homed at both ends, and
   the receiver is the end that renders a name.
 - **Two publications at one edition.** Two connections of one host can publish states with the same
   `issued` and different contents, and nothing a receiver holds says which is the later: both
@@ -2162,7 +2164,10 @@ peer.**
 - **The host's own frames are the case worth spelling out.** A `kind = 1` or `kind = 2` frame
   verifies against the host key, and the host's ordinary frames verify against the session key its
   own `peers` entry commits. So it is the state's one `host` entry that tells a client **which
-  seated peer is the host's connection**; the host key is nobody's peer (§7.1).
+  seated peer is the host's connection**; the host key is nobody's peer (§7.1). A state that names
+  no `host` entry leaves a client with no identified host connection, and it **MUST NOT** guess one
+  — not itself, not the peer whose state it is, and not the peer it has seen longest — while
+  everything else the state says is applied as it stands.
 - **The server's roster and the state answer different questions.** The roster decides which
   connections are **seated**: `room.joined`, `peer.joined` and `peer.left` are what a client shows
   as participants (§6, §9). The state decides **keys and roles**: a role comes from no server frame
