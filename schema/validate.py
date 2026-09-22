@@ -860,6 +860,139 @@ SEALED_SITES = (
 )
 
 
+# `selvage/2`'s session-layer shapes, as `schema/session-v2.json` and `PROTOCOL.md`'s `selvage/2`
+# passages fix them. A `selvage/2` `/meta` body and its `session.hello` replies are not session
+# frames — `/meta` carries no `v`, and the transcripts are `selvage/1`'s until the corpus is
+# re-baselined — so nothing else here reaches them, and a `roles` made required again, a `documents`
+# readmitted, or a peer record's `display_name` dropped would leave every other check in this suite
+# green. Both directions are checked, so a shape that refuses everything fails too. A member these
+# values carry and the shape does not define is deliberate: a receiver tolerates one
+# (`PROTOCOL.md` §4.1), so the model must not forbid it, and what holds a *server* to the member
+# set of its version is the corpus's exact comparison rather than a schema.
+SESSION_V2_KEEPALIVE = {
+    "ping_interval_ms": 30000,
+    "awareness_renew_ms": 15000,
+    "awareness_expire_ms": 30000,
+}
+SESSION_V2_ADVERTISED = {
+    "server": "selvaged/0.2.0",
+    "wire_versions": ["selvage/2"],
+    "capabilities": ["y-protocols/1", "awareness"],
+    "keepalive": {**SESSION_V2_KEEPALIVE, "room_grace_ms": 30000},
+}
+SESSION_V2_META_CONFORMING = {
+    "a server of this version": dict(SESSION_V2_ADVERTISED),
+    "a body that still advertises `roles`": {
+        **SESSION_V2_ADVERTISED,
+        "roles": ["host", "guest"],
+    },
+}
+SESSION_V2_META_REFUSED = {
+    "a body with no `keepalive`": {
+        key: value for key, value in SESSION_V2_ADVERTISED.items() if key != "keepalive"
+    },
+    "a body with no `server`": {
+        key: value for key, value in SESSION_V2_ADVERTISED.items() if key != "server"
+    },
+    "a body that advertises no version at all": {**SESSION_V2_ADVERTISED, "wire_versions": []},
+}
+
+SESSION_V2_PEER_CONFORMING = {
+    "a peer as this version writes one": {"peer_id": "p-3d33", "display_name": "Bob"},
+    "a peer with an awareness id": {
+        "peer_id": "p-3d33",
+        "display_name": "Bob",
+        "awareness_client_id": 42,
+    },
+    "a peer still carrying a role": {"peer_id": "p-3d33", "display_name": "Bob", "role": "guest"},
+}
+SESSION_V2_PEER_REFUSED = {
+    "a peer with no `display_name`": {"peer_id": "p-3d33"},
+    "a peer with no `peer_id`": {"display_name": "Bob"},
+    "a peer whose `display_name` is blank": {"peer_id": "p-3d33", "display_name": "  "},
+    "a peer whose `peer_id` is empty": {"peer_id": "", "display_name": "Bob"},
+}
+
+SESSION_V2_JOIN = {
+    "room_id": "r-a0bca377bb4e",
+    "self": {"peer_id": "p-3d33", "display_name": "Bob", "awareness_client_id": 42},
+    "peers": [{"peer_id": "p-852b", "display_name": "Ada"}],
+    "capabilities": ["y-protocols/1", "awareness"],
+    "keepalive": SESSION_V2_KEEPALIVE,
+}
+SESSION_V2_JOIN_CONFORMING = {
+    "a join reply": dict(SESSION_V2_JOIN),
+    "a reply carrying a member this version does not define": {
+        **SESSION_V2_JOIN,
+        "documents": ["src/main.rs"],
+    },
+}
+SESSION_V2_JOIN_REFUSED = {
+    "a reply with no `peers`": {
+        key: value for key, value in SESSION_V2_JOIN.items() if key != "peers"
+    },
+    "a reply whose `self` has no `display_name`": {
+        **SESSION_V2_JOIN,
+        "self": {"peer_id": "p-3d33"},
+    },
+    "a join reply carrying the token": {**SESSION_V2_JOIN, "token": "ab" * 16},
+}
+
+SESSION_V2_CREATED_CONFORMING = {"a mint reply": {**SESSION_V2_JOIN, "token": "ab" * 16}}
+SESSION_V2_CREATED_REFUSED = {"a mint reply with no `token`": dict(SESSION_V2_JOIN)}
+
+SESSION_V2_SITES = (
+    (
+        "a `selvage/2` `/meta`",
+        "session-v2.json#/$defs/meta",
+        SESSION_V2_META_CONFORMING,
+        SESSION_V2_META_REFUSED,
+    ),
+    (
+        "a `selvage/2` `PeerInfo`",
+        "session-v2.json#/$defs/peer",
+        SESSION_V2_PEER_CONFORMING,
+        SESSION_V2_PEER_REFUSED,
+    ),
+    (
+        "a `selvage/2` `room.joined`",
+        "session-v2.json#/$defs/roomJoined",
+        SESSION_V2_JOIN_CONFORMING,
+        SESSION_V2_JOIN_REFUSED,
+    ),
+    (
+        "a `selvage/2` `room.created`",
+        "session-v2.json#/$defs/roomCreated",
+        SESSION_V2_CREATED_CONFORMING,
+        SESSION_V2_CREATED_REFUSED,
+    ),
+)
+
+
+def check_session_v2(reg: Registry) -> int:
+    """Runs the shipped `session-v2.json` against `selvage/2`'s session-layer shapes.
+
+    Both directions, as for the sealed payloads: a shape that refuses everything this version
+    writes fails beside a shape that accepts what it does not.
+    """
+    checks = 0
+    for label, ref, conforming, refused in SESSION_V2_SITES:
+        validator = Draft202012Validator({"$ref": f"{BASE}{ref}"}, registry=reg)
+        for name, value in conforming.items():
+            checks += 1
+            errors = list(validator.iter_errors(value))
+            if errors:
+                fail("schema", f"{label} refuses the conforming {name}: {errors[0].message}")
+        for name, value in refused.items():
+            checks += 1
+            if not list(validator.iter_errors(value)):
+                fail(
+                    "schema",
+                    f"{label} accepts {name}, which `schema/session-v2.json` does not describe",
+                )
+    return checks
+
+
 def check_sealed_payloads(reg: Registry) -> int:
     """Runs the shipped `sealed.json` against what `CANONICAL.md` §6.1 says it describes.
 
@@ -893,11 +1026,13 @@ def main() -> int:
     check_method_map()
     refusals = check_control_refusal(reg)
     sealed = check_sealed_payloads(reg)
+    session_v2 = check_session_v2(reg)
     print(
         f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas, {refusals} values "
         "checked against the control-character refusal"
     )
     print(f"sealed         {sealed} values checked against the sealed payloads of selvage/2")
+    print(f"session v2     {session_v2} values checked against selvage/2's session layer")
 
     vectors = sorted(VECTOR_DIR.glob("*.json"))
     assertions = 0

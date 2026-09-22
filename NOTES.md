@@ -657,7 +657,66 @@ vector therefore asserts that a signature verifies and carries its own as litera
 envelope that has no derivation at all.
 
 **What is not here.** The holds and their lease (whose carrier is a `kind` this version leaves
-unused), the resume and what a returning host signs, the rule that refuses a committed `viewer`'s
-content, and `selvage/2`'s method surface and events are the revision's remaining text rather than
-this item's. `dropped`, the mutation switches and whether a client persists the host's private key
-are open where `docs/studies/peer-corpus.md` §9 and `docs/studies/e2ee-plan.md` §14 left them.
+unused), the resume and what a returning host signs, and the rule that refuses a committed
+`viewer`'s content are the revision's remaining text rather than this item's; so is `selvage/2`'s
+session layer, and §B.32 is that item. `dropped`, the mutation switches and whether a client
+persists the host's private key are open where `docs/studies/peer-corpus.md` §9 and
+`docs/studies/e2ee-plan.md` §14 left them.
+
+**B.32 `selvage/2`'s session layer: what is settled, and what is not.** `PROTOCOL.md` §1.1 names
+every passage of `selvage/2`, and this item's are the session layer's: what `/meta` advertises, the
+handshake, the version gate, and the invite's forms. **Decided** (2026-09-22), after §B.31 froze
+the frame's bytes and before the server's state leaves `selvage/1`. **Nothing implements it**: no
+server and no client speaks `selvage/2`, no vector is written against one, and every rule below
+was written from the design rather than observed on a wire.
+
+What the passages settle:
+
+- **`/meta` keeps its shape and loses one member.** `wire_versions` names `selvage/2` and, from a
+  server of that version, no lower version: a `selvage/2` server cannot seat a `selvage/1` peer,
+  and advertising one would be a downgrade a compromised server could take a client down.
+  `capabilities` is `["y-protocols/1", "awareness"]`; `keepalive` is unchanged in membership and
+  in shape, and in this version `awareness_renew_ms` and `awareness_expire_ms` are the session's
+  only clock. `ping_interval_ms` and `room_grace_ms` are the server's, and `room_grace_ms` now
+  measures a room's survival of its **last** connection rather than of its host's. `roles` is the
+  member that leaves, because the server seats nobody as anything.
+- **The handshake is `selvage/1`'s minus one optional param.** `session.hello` has no `role` to
+  claim, and minting a room still seats the connection without the server recording that it is the
+  host — the host is whoever holds the private half of the host keypair whose public half the
+  invite's fragment carries. `room.created` and `room.joined` lose `documents` and `PeerInfo`
+  loses `role`; the listing, the roles and the host's identity arrive afterwards, in the host's
+  sealed room state.
+- **The version gate is `unsupported_version` and close 4005**, unchanged from `selvage/1`'s
+  vocabulary and named in both directions. A reachable `/meta` that names no version a client can
+  speak is refused locally, before a socket; nothing is refused before the hello, because the
+  version is a member of the frame and not of the URL; and there is no downgrade path, which is
+  one client MUST: a client that can speak `selvage/2` **MUST NOT** connect to a server whose
+  `/meta` does not name it, and **MUST NOT** fall back when a hello is refused.
+- **Both invite forms carry the fragment** (§5.1), and a client refuses locally when it is absent,
+  has a value missing, or has one that is not 32 bytes. That refusal has **no wire form** — no
+  `session.error`, no close code, no §11 code — and the sentence said is the clients' own: the
+  shared rows live in `docs/studies/client-command-parity.md` §5 and are pinned by a test in each
+  client. A **handover** (the two values said separately, beside a link that lost its fragment) is
+  allowed and **NOT RECOMMENDED**; it is not a second flow.
+
+**What is not here, and which step owns it.** The three `doc.*` methods with the open-document set
+and the grant, the host machinery, the roles and the full-set echo are deleted from `selvage/1`
+rather than restated in `selvage/2`'s terms, and that is the revision's server step
+(`docs/studies/e2ee-plan.md` §11 step 3). The holds and the lease that replace the set, the resume
+and what a returning host signs, the rule that refuses a committed `viewer`'s content, the
+client-behaviour section, and §12's replaced wording are steps 4 and 4b of the same plan
+(`docs/studies/e2ee-plan.md` §8, §11). None of them is shaped here, not even the lease's clock,
+which may want a number `keepalive` does not carry today
+(`docs/studies/relay-only-spec.md` §8). The wire version itself does not move: `v: "selvage/1"` is
+what every implementation writes until the revision's implementations land together.
+
+**Two things this pass found rather than settled.** The capability *mechanism* is left with two
+names, both of which the version already fixes, so the array now tells a peer nothing it did not
+already know; whether it stays at all is open (`docs/studies/relay-only-spec.md` §2.6). And
+`docs/studies/relay-only-spec.md` §6's "the schema is the check" is right about the intent and
+wrong as written: no schema in this directory forbids a member, because tolerance is the rule
+(`CANONICAL.md` §3), so a server-authored frame carrying a `role` or a `documents` does **not**
+fail `schema/session.json`. What holds a server to the member set of its version is the corpus's
+exact member comparison in the replay; the model's part is that the version's own shape validates
+at all, which is what `schema/session-v2.json` and `schema/validate.py`'s `check_session_v2` add
+for the frames §2, §5 and §6.1 describe.

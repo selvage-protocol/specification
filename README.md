@@ -109,6 +109,13 @@ in every vector against them. It prints a line for the schemas, a line for the c
   belong to the corpus layer that is not written. Until they exist this check is what keeps the
   model from being relaxed unnoticed, which is why it is here rather than with the layer that owns
   the vectors.
+- that `schema/session-v2.json` describes the three shapes `selvage/2`'s session layer states and
+  `selvage/1`'s do not — a `/meta` body with four members, a `PeerInfo` without `role`, and the two
+  replies to `session.hello` without `documents` — the same way and for the same reason: `/meta`
+  carries no `v`, the transcripts are `selvage/1`'s until the corpus is re-baselined, and nothing
+  else in this suite reaches a frame of that version. It pins the tolerance as well as the shape:
+  a body, a peer record or a reply carrying a member the version does not define must still
+  validate, because `PROTOCOL.md` §4.1 has a receiver ignore one.
 
 Testing a refusal means sending a frame the server must reject. Such a frame carries
 `"refused": true`, and its params are not schema-checked. When the frame is not JSON at all, it

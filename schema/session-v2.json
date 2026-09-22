@@ -1,0 +1,99 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://selvageprotocol.com/schema/1/session-v2.json",
+  "title": "Selvage Session Protocol — `selvage/2`'s session layer",
+  "description": "The shapes `selvage/2`'s session layer states that `selvage/1`'s do not: the `GET /meta` body its server advertises, the peer record its replies carry, and the two replies to `session.hello`. Valid against PROTOCOL.md §2, §5 and §6.1. A member `selvage/1` gives a frame and this version does not carry is not a member of it, so the four objects here are what a `selvage/2` producer writes; a receiver tolerates one it is handed anyway (PROTOCOL.md §4.1), so nothing here forbids a member, and what holds a *server* to the member set of its version is the corpus's exact comparison and not this file. `session.hello`'s params are not repeated here: `role` is optional in `methods.json` and its absence is already that schema, so the version's handshake needs no second shape. No vector reaches this file yet — the transcripts are `selvage/1`'s until the corpus is re-baselined — which is why `validate.py` exercises it against values that must and must not validate.",
+  "$defs": {
+    "meta": {
+      "title": "`GET /meta`, as a `selvage/2` server answers it",
+      "description": "The four members `PROTOCOL.md` §2 defines for this version. `/meta` is not a session frame and carries no `v`, so nothing in the body says which version it is about: what tells a client is `wire_versions`, and the members are named again here rather than reused from `meta.json` because JSON Schema has no way to subtract a member from another schema's `required` list. Each member's own schema is `meta.json`'s; only the requirement is per version. `roles` is absent because a `selvage/2` server seats nobody as anything (§1.2) — not forbidden, because `/meta` tolerates a member a reader does not know.",
+      "type": "object",
+      "required": ["server", "wire_versions", "capabilities", "keepalive"],
+      "properties": {
+        "capabilities": {
+          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityList",
+          "description": "`[\"y-protocols/1\", \"awareness\"]` from a server of this version. The other two names `selvage/1` defined are that version's server machinery (PROTOCOL.md §2, §10)."
+        },
+        "keepalive": {
+          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/keepalive",
+          "description": "Unchanged in shape and in membership. In this version `awareness_renew_ms` and `awareness_expire_ms` are the session's only clock, and `room_grace_ms` is how long a room survives its last connection ending (PROTOCOL.md §1.2, §2)."
+        },
+        "server": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Free-form server identification, as in `meta.json`: for diagnostics only, and not stable."
+        },
+        "wire_versions": {
+          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/advertisedVersions",
+          "description": "Names `selvage/2` and no version below it: a `selvage/2` server cannot seat a `selvage/1` peer, and a list offering one would be a downgrade a compromised server could take a client down (PROTOCOL.md §2, §10)."
+        }
+      }
+    },
+    "peer": {
+      "title": "`PeerInfo`, in `selvage/2`",
+      "description": "The record `room.created`, `room.joined` and `peer.joined` carry for a participant. It is `common.json`'s `peer` without `role`: the server seats nobody as anything (PROTOCOL.md §1.2), and the roles a room has are the host's to assign and sign, in the sealed room state (`sealed.json#/$defs/roomState`, PROTOCOL.md §7.1). `role` is not forbidden here — a record carrying one is a record a receiver ignores the member of — and what stops a `selvage/2` server authoring one is the corpus's exact member comparison.",
+      "type": "object",
+      "required": ["peer_id", "display_name"],
+      "properties": {
+        "awareness_client_id": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/awarenessClientId",
+          "description": "Omitted when the connection did not claim one, as in `selvage/1`."
+        },
+        "display_name": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/displayName"
+        },
+        "peer_id": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId"
+        }
+      }
+    },
+    "roomReply": {
+      "title": "the members `room.created` and `room.joined` share in `selvage/2`",
+      "description": "The reply to a `session.hello` of this version, less the one member that tells a mint from a join. `documents` is not a member of either reply: this version has no server-held open-document set, and no frame says which documents are open (PROTOCOL.md §6.1). The listing, the roles and the host's identity are not here either — they are the host's sealed room state, which arrives over the relay after this frame.",
+      "type": "object",
+      "required": ["room_id", "self", "peers", "capabilities", "keepalive"],
+      "properties": {
+        "capabilities": {
+          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityList",
+          "description": "The same advertised list as `/meta`'s, as in `selvage/1`."
+        },
+        "keepalive": {
+          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/keepalive"
+        },
+        "peers": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/peer" },
+          "description": "The peers already seated, excluding `self`. A set: no order is promised and a receiver must not depend on one."
+        },
+        "room_id": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/roomId"
+        },
+        "self": { "$ref": "#/$defs/peer" }
+      }
+    },
+    "roomJoined": {
+      "title": "`room.joined`, in `selvage/2`",
+      "description": "The reply to a `session.hello` that joined a room. It never carries `token`, not even to the connection that minted the room's keys: the token is echoed exactly once, in `room.created` (PROTOCOL.md §5.1, §6.1).",
+      "allOf": [
+        { "$ref": "#/$defs/roomReply" },
+        { "not": { "required": ["token"] } }
+      ]
+    },
+    "roomCreated": {
+      "title": "`room.created`, in `selvage/2`",
+      "description": "The reply to a `session.hello` that minted a room. The minting connection is the room's host by holding the private half of the host keypair whose public half the invite's fragment carries — nothing on the server says so — and it is told the token here and nowhere else (PROTOCOL.md §5.1, §6.1).",
+      "allOf": [
+        { "$ref": "#/$defs/roomReply" },
+        {
+          "required": ["token"],
+          "properties": {
+            "token": {
+              "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/token",
+              "description": "Present only here: a client that may have to reconnect has to keep it, since nothing re-sends it."
+            }
+          }
+        }
+      ]
+    }
+  }
+}
