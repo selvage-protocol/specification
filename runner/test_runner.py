@@ -13,22 +13,35 @@ what a failure means, so it is driven here against a connection whose queue is k
 
 They need no server and no `websockets`: `run_vectors` imports what it can, and its comparison
 and reporting functions are pure, while the connections are scripted sockets.
+
+**The peer layer is checked here too**, for the same reason and with the same rule. `sealed.py`
+is the code that writes and reads a `selvage/2` frame, and `subject.py` is the protocol the
+decision layer will be driven through; neither can be reached by `schema/validate.py` (which is
+key-free) or by `run_peer.py` alone (which only exercises what the vectors happen to cover). So
+the envelope's layout, the counter mark, the refusal vocabulary and the subject's framing and
+deadlines are driven here in both directions, and the mutation tables are compared with what the
+corpus declares. The subject is a **stub that runs from this file** — `python3 test_runner.py
+--stub-subject BEHAVIOUR` — so no temporary script is written anywhere to test it.
 """
 
 from __future__ import annotations
 
-import json
 import contextlib
 import io
+import json
 import pathlib
 import sys
 import tempfile
+import time
 import unittest
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 
+import run_peer  # noqa: E402
 import run_vectors  # noqa: E402
+import sealed  # noqa: E402
+import subject  # noqa: E402
 from run_vectors import (  # noqa: E402
     Bindings,
     Incoming,
@@ -50,6 +63,22 @@ from run_vectors import (  # noqa: E402
 )
 
 VECTOR_DIR = pathlib.Path(__file__).resolve().parent.parent / "vectors"
+PEER_DIR = VECTOR_DIR / "peer"
+SCHEMA_DIR = pathlib.Path(__file__).resolve().parent.parent / "schema"
+
+
+def validate_module():
+    """`schema/validate.py`, for the pins and the vocabulary it owns. It needs `jsonschema`,
+    which the flake's runner environment has; a machine without it skips these cases rather than
+    failing them, and says so."""
+    try:
+        return run_vectors.load_validate_module()
+    except SystemExit as error:  # the module exits 2 when its own imports are missing
+        raise unittest.SkipTest(f"schema/validate.py needs jsonschema: {error}")
+
+
+def peer_vectors() -> list[dict]:
+    return [json.loads(path.read_text()) for path in sorted(PEER_DIR.glob("*.json"))]
 
 
 def canonical(value: object) -> str:
@@ -464,7 +493,7 @@ class TestReplayVerdict(unittest.TestCase):
         self, unread: dict, files: int = 1, pinned: int | None = None
     ) -> tuple[int, int]:
         vector = {"_file": "000-probe.json", "id": "000"}
-        pin = mock.Mock(EXPECTED_VECTORS=files if pinned is None else pinned)
+        pin = mock.Mock(EXPECTED_WIRE_VECTORS=files if pinned is None else pinned)
         with (
             mock.patch.object(
                 run_vectors, "load_vectors", return_value=[vector] * files
@@ -666,6 +695,398 @@ class TestDesynchronisedQueue(unittest.IsolatedAsyncioTestCase):
     def test_the_frame_bound_is_ten_seconds(self) -> None:
         self.assertEqual(run_vectors.FRAME_TIMEOUT, 10.0)
         self.assertEqual(Peer("guest", ScriptedSocket([])).timeout, 10.0)
+
+
+# --- the peer layer ---------------------------------------------------------------
+
+
+class TestStepVocabulary(unittest.TestCase):
+    """The two halves of the tooling agree about a step name, and the op tables are pinned.
+
+    `apply` is the case that made this necessary: it was in the validator's pass-through list
+    while `run_step` raises on an op it does not know, so a step could validate here and fail
+    the replay there with nothing saying which half was wrong. The peer layer multiplies that
+    risk — `run_peer.py` and `validate.py` both hold a step vocabulary — so both pairs are
+    compared rather than inspected.
+    """
+
+    def test_the_validator_and_the_runner_know_the_same_wire_ops(self) -> None:
+        validate = validate_module()
+        self.assertEqual(set(validate.WIRE_OPS), set(run_vectors.WIRE_OPS))
+
+    def test_apply_is_a_member_and_not_a_step(self) -> None:
+        validate = validate_module()
+        self.assertNotIn("apply", run_vectors.WIRE_OPS)
+        self.assertNotIn("apply", validate.WIRE_OPS)
+        self.assertIn("apply", VECTOR_STEP_MEMBERS)
+
+    def test_the_runner_and_the_validator_know_the_same_peer_ops(self) -> None:
+        validate = validate_module()
+        self.assertEqual(set(run_peer.FRAME_OPS), set(validate.PEER_FRAME_OPS))
+        self.assertEqual(set(run_peer.KINDS), set(validate.PEER_OPS))
+
+    def test_every_declared_mutation_is_implemented_and_every_guard_is_declared(self) -> None:
+        # A vector is added with the mutation it must go red under (§13.11), and a mutation is
+        # added with the vector it catches: this is the pin that makes both directions true, and
+        # it is why a mutation with no vector behind it is a red run rather than an aspiration.
+        frames = {v.get("catches") for v in peer_vectors() if v.get("kind") == "frame"}
+        decisions = {v.get("catches") for v in peer_vectors() if v.get("kind") == "decision"}
+        # The positive control declares none, which is the other half of the pin.
+        self.assertEqual(frames - {None}, set(sealed.MUTATIONS))
+        self.assertEqual(decisions, set(subject.SUBJECT_MUTATIONS))
+
+
+#: The members `sendBinary` and `expectBinary` accept beside their bytes. `apply` is here and
+#: not in the step table, which is the distinction that was once lost.
+VECTOR_STEP_MEMBERS = frozenset({"apply"})
+
+
+class TestAbsenceRule(unittest.TestCase):
+    """The negative class, driven in both directions.
+
+    A rule that only ever runs against a corpus that satisfies it is not a check: the scan has
+    to be shown to catch the frame it is about. The control the corpus itself runs is the
+    `selvage/1` transcripts, which carry every one of these members; these cases are the same
+    claim at the smallest size, and they are what makes the rule's own function trustworthy.
+    """
+
+    def violations(self, document: dict) -> list[str]:
+        validate = validate_module()
+        return validate.absence_violations(document)
+
+    def test_a_conforming_selvage_2_transcript_is_not_caught(self) -> None:
+        document = {
+            "selvage": "selvage/2",
+            "steps": [
+                {
+                    "op": "expect",
+                    "text": canonical(
+                        {
+                            "v": "selvage/2",
+                            "event": "peer.joined",
+                            "params": {"peer": {"display_name": "Bob", "peer_id": "p-1"}},
+                        }
+                    ),
+                }
+            ],
+        }
+        self.assertEqual(self.violations(document), [])
+
+    def test_a_role_in_a_server_frame_is_caught(self) -> None:
+        document = {
+            "selvage": "selvage/2",
+            "steps": [
+                {
+                    "op": "expect",
+                    "text": canonical(
+                        {
+                            "v": "selvage/2",
+                            "event": "peer.joined",
+                            "params": {
+                                "peer": {
+                                    "display_name": "Bob",
+                                    "peer_id": "p-1",
+                                    "role": "guest",
+                                }
+                            },
+                        }
+                    ),
+                }
+            ],
+        }
+        self.assertTrue(self.violations(document))
+
+    def test_a_deleted_event_is_caught(self) -> None:
+        document = {
+            "selvage": "selvage/2",
+            "steps": [
+                {
+                    "op": "expect",
+                    "text": canonical(
+                        {
+                            "v": "selvage/2",
+                            "event": "doc.opened",
+                            "params": {"path": "src/main.rs", "peer_id": "p-1"},
+                        }
+                    ),
+                }
+            ],
+        }
+        report = self.violations(document)
+        self.assertTrue(any("doc.opened" in problem for problem in report), report)
+
+    def test_a_path_in_a_binary_frame_is_caught(self) -> None:
+        document = {
+            "selvage": "selvage/2",
+            "secret": ["src/main.rs"],
+            "steps": [{"op": "expectBinary", "hex": "61 62 73 72 63 2f 6d 61 69 6e 2e 72 73"}],
+        }
+        self.assertTrue(self.violations(document))
+
+    def test_the_rule_does_not_read_a_selvage_1_transcript(self) -> None:
+        # The selector is the version member: the transcripts that exist today carry every one
+        # of these members and are replayed by the wire layer, so the rule must not fire on
+        # them. The corpus-wide control is a separate scan and is what shows the walker reads.
+        document = {
+            "selvage": "selvage/1",
+            "steps": [{"op": "expect", "text": '{"v":"selvage/1","event":"doc.opened"}'}],
+        }
+        self.assertEqual(self.violations(document), [])
+
+    def test_the_scan_finds_what_the_wire_corpus_carries(self) -> None:
+        # The positive control, smaller: a walker that stopped walking finds nothing, so this
+        # asserts the corpus-wide counts are not zero. `schema/validate.py` pins them exactly.
+        validate = validate_module()
+        self.assertGreater(sum(validate.EXPECTED_V1_MEMBERS.values()), 0)
+        self.assertGreater(sum(validate.EXPECTED_V1_EVENTS.values()), 0)
+        self.assertGreater(sum(validate.EXPECTED_V1_NEEDLES.values()), 0)
+
+
+class TestMutationCensus(unittest.TestCase):
+    """The census on a corpus built here, so its verdicts are known.
+
+    `run_peer.py --mutation-census` is the meta-test the corpus is held to, and a meta-test that
+    only ever runs green is not one. These cases drive it over two vectors: one that catches the
+    mutation it declares and one that declares a mutation that does nothing to it.
+    """
+
+    def census(self, vectors: list[dict]) -> tuple[list[str], int]:
+        return run_peer.mutation_census(vectors, has_subject=False)
+
+    def test_a_vector_that_catches_its_mutation_passes_the_census(self) -> None:
+        vector = self.vector("test", "no-mark")
+        report, failures = self.census([vector])
+        self.assertEqual(failures, 0, report)
+        self.assertTrue(any("red under `no-mark`" in line for line in report), report)
+
+    def test_a_vector_that_stays_green_under_its_mutation_fails(self) -> None:
+        # `no-issued` removes an ordering this vector never reaches, so the vector must go red
+        # under a mutation that does nothing to it: it is not testing the rule it names.
+        vector = self.vector("test", "no-issued")
+        report, failures = self.census([vector])
+        self.assertEqual(failures, 1)
+        self.assertTrue(any("stays green" in line for line in report), report)
+
+    def test_a_vector_declaring_a_mutation_no_table_names_fails(self) -> None:
+        vector = self.vector("test", "no-such-guard")
+        report, failures = self.census([vector])
+        self.assertEqual(failures, 1)
+        self.assertTrue(any("no mutation table names" in line for line in report), report)
+
+    def test_a_frame_vector_cannot_declare_a_subjects_mutation(self) -> None:
+        vector = self.vector("test", "no-lease")
+        report, failures = self.census([vector])
+        self.assertEqual(failures, 1)
+        self.assertTrue(any("removes a client's rule" in line for line in report), report)
+
+    def test_a_vector_that_fails_without_a_mutation_fails_the_census(self) -> None:
+        vector = self.vector("test", "no-mark")
+        vector["steps"][-1]["reason"] = "bad_signature"
+        report, failures = self.census([vector])
+        self.assertEqual(failures, 1)
+        self.assertTrue(any("without a mutation" in line for line in report), report)
+
+    def vector(self, name: str, catches: str | None) -> dict:
+        """A frame vector whose one refusal is a replayed counter."""
+        recipe_state = {
+            "sign": "host-key",
+            "kind": 1,
+            "counter": 1,
+            "nonce": "0a" * 12,
+            "payload": {
+                "issued": 1,
+                "listing": [],
+                "peers": {
+                    sealed.b64url(FIXTURE.key("guest-1").public): {
+                        "peer_id": "p-1",
+                        "role": "guest",
+                    }
+                },
+            },
+        }
+        recipe_content = {
+            "sign": "guest-1",
+            "kind": 0,
+            "counter": 1,
+            "nonce": "0b" * 12,
+            "plaintext": "00 00 01 00",
+        }
+        state = sealed.seal(FIXTURE, recipe_state).bytes()
+        content = sealed.seal(FIXTURE, recipe_content).bytes()
+
+        def text(raw: bytes) -> str:
+            return " ".join(f"{byte:02x}" for byte in raw)
+
+        return {
+            "_file": f"{name}.json",
+            "id": "999",
+            "layer": "peer",
+            "kind": "frame",
+            "selvage": "selvage/2",
+            "canonical": "SJ-C/1",
+            "fixture": "fixture/keys.json",
+            "catches": catches,
+            "steps": [
+                {"op": "seal", "frame": "state", "recipe": recipe_state, "hex": text(state)},
+                {"op": "expectVerify", "frame": "state"},
+                {"op": "seal", "frame": "content", "recipe": recipe_content, "hex": text(content)},
+                {"op": "expectVerify", "frame": "content"},
+                {"op": "expectReject", "frame": "content", "reason": "replayed_counter"},
+            ],
+        }
+
+
+FIXTURE = sealed.Fixture(VECTOR_DIR / "fixture" / "keys.json")
+
+
+class TestLayerReport(unittest.TestCase):
+    """A tool that can run one layer says what it could not run."""
+
+    def test_the_peer_vectors_are_found_and_are_not_wire_vectors(self) -> None:
+        peers = run_vectors.load_peer_vectors()
+        self.assertEqual(len(peers), validate_module().EXPECTED_PEER_VECTORS)
+        for peer in peers:
+            self.assertIn(peer["kind"], ("frame", "decision"))
+
+    def test_asking_for_the_peer_layer_refuses_rather_than_passing_nothing(self) -> None:
+        errors = io.StringIO()
+        with contextlib.redirect_stderr(errors):
+            code = run_vectors.main(["--layer", "peer"])
+        self.assertEqual(code, 2)
+        self.assertIn("run_peer.py", errors.getvalue())
+
+
+# --- the subject protocol ---------------------------------------------------------
+
+
+#: What the stub subject answers with. A fixed report, so a case can assert on the parse and on
+#: what the runner made of it without a client.
+STUB_REPORT = {
+    "text": {"src/main.rs": "a\u1f600bc".replace("\u1f600", "\U0001f600")},
+    "documents": ["src/main.rs"],
+    "applied": [{"frame": 0, "kind": 1}],
+    "dropped": [{"frame": 1, "reason": "replayed_counter"}],
+    "published": 2,
+    "ended": False,
+    "peers": [{"peer_id": "p-1", "display_name": "Ada"}],
+    "holds": {"mwSkxeRytFUs0XcaBujkAxuamFmfjb9gAG1V1aYUkEw": ["src/main.rs"]},
+    "frames": 2,
+}
+
+
+def run_stub_subject(behaviour: str) -> int:
+    """A subject, in this file, for these cases to drive.
+
+    Running the stub from `test_runner.py` rather than writing a script keeps the test free of
+    any temporary file — there is nowhere on this host to put one that is not the RAM disk or a
+    read-only store path — and it keeps the protocol in one place.
+    """
+    for line in sys.stdin.buffer:
+        try:
+            command = json.loads(line)
+        except json.JSONDecodeError:
+            return 1
+        name = command.get("cmd")
+        if behaviour == "silent":
+            time.sleep(60)
+        if behaviour == "close":
+            return 0
+        if name == "quit":
+            reply: object = {"ok": True}
+        elif behaviour == "garbage":
+            sys.stdout.write("this is not JSON\n")
+            sys.stdout.flush()
+            continue
+        elif behaviour == "refuse":
+            reply = {"ok": False, "error": "I cannot do that"}
+        elif behaviour == "bad-report":
+            reply = {"ok": True, "report": {"published": 1}}
+        elif name == "mutate":
+            reply = {"ok": True, "report": {**STUB_REPORT, "mutation": command.get("name")}}
+        else:
+            reply = {"ok": True, "report": STUB_REPORT}
+        sys.stdout.write(json.dumps(reply, ensure_ascii=False) + "\n")
+        sys.stdout.flush()
+    return 0
+
+
+STUB_SUBJECT = [sys.executable, str(pathlib.Path(__file__).resolve()), "--stub-subject"]
+
+
+class TestSubjectProtocol(unittest.TestCase):
+    """The framing, the report's shape, and every way a subject can fail a vector."""
+
+    def subject(self, behaviour: str = "answer", timeout: float = 5.0) -> subject.Subject:
+        peer = subject.Subject(STUB_SUBJECT + [behaviour], timeout=timeout)
+        peer.start()
+        self.addCleanup(peer.stop)
+        return peer
+
+    def test_a_report_is_the_decision_channel_and_is_read_member_by_member(self) -> None:
+        report = self.subject().report()
+        self.assertEqual(report.published, 2)
+        self.assertFalse(report.ended)
+        self.assertEqual(report.text, {"src/main.rs": "a\U0001f600bc"})
+        self.assertEqual([(d.frame, d.reason) for d in report.dropped],
+                         [(1, "replayed_counter")])
+        self.assertEqual(report.holds["mwSkxeRytFUs0XcaBujkAxuamFmfjb9gAG1V1aYUkEw"],
+                         ["src/main.rs"])
+        self.assertEqual(report.frames, 2)
+
+    def test_the_commands_of_the_protocol_are_the_ones_the_stub_answers(self) -> None:
+        peer = self.subject()
+        self.assertEqual(peer.join("/session#k=x").published, 2)
+        self.assertEqual(peer.insert("src/main.rs", 0, "x").published, 2)
+        self.assertEqual(peer.announce("src/main.rs").published, 2)
+        self.assertEqual(peer.mutate("no-lease").mutation, "no-lease")
+        peer.quit()
+
+    def test_a_mutation_no_table_names_is_refused_before_it_is_sent(self) -> None:
+        peer = self.subject()
+        with self.assertRaises(subject.SubjectError):
+            peer.mutate("no-such-guard")
+        self.assertEqual(peer.asked, 0)
+
+    def test_a_report_missing_a_member_is_refused(self) -> None:
+        with self.assertRaises(subject.SubjectError) as caught:
+            self.subject("bad-report").report()
+        self.assertIn("has no", str(caught.exception))
+
+    def test_a_subject_that_never_answers_fails_with_its_deadline(self) -> None:
+        # The runner does the waiting: a subject that stalls must fail the vector rather than
+        # hang the run, and the failure names the bound it broke.
+        with self.assertRaises(subject.SubjectError) as caught:
+            self.subject("silent", timeout=0.5).report()
+        self.assertIn("did not answer within", str(caught.exception))
+
+    def test_a_subject_that_closes_its_stdout_fails_by_name(self) -> None:
+        with self.assertRaises(subject.SubjectError) as caught:
+            self.subject("close").report()
+        self.assertIn("closed its stdout", str(caught.exception))
+
+    def test_a_subject_that_refuses_a_command_fails_by_name(self) -> None:
+        with self.assertRaises(subject.SubjectError) as caught:
+            self.subject("refuse").report()
+        self.assertIn("I cannot do that", str(caught.exception))
+
+    def test_a_subject_that_answers_something_else_fails_by_name(self) -> None:
+        with self.assertRaises(subject.SubjectError) as caught:
+            self.subject("garbage").report()
+        self.assertIn("not JSON", str(caught.exception))
+
+    def test_a_subject_is_named_by_a_command_line_and_not_by_a_language(self) -> None:
+        peer = subject.Subject.from_command('python3 my_client.py --drive')
+        self.assertEqual(peer.command, ["python3", "my_client.py", "--drive"])
+
+    def test_an_unstartable_subject_is_a_named_failure(self) -> None:
+        peer = subject.Subject(["/nonexistent/selvage-subject"])
+        with self.assertRaises(subject.SubjectError):
+            peer.start()
+        peer.stop()
+
+
+if __name__ == "__main__" and "--stub-subject" in sys.argv:
+    raise SystemExit(run_stub_subject(sys.argv[sys.argv.index("--stub-subject") + 1]))
 
 
 if __name__ == "__main__":

@@ -27,11 +27,14 @@ jobs:
         with:
           python-version: "3.14.7"
 
-      # validate.py's two imports, plus the one the runner's WebSocket client needs.
-      # Pinned so a check that passes here cannot start failing on the runner because a
-      # dependency moved.
+      # validate.py's two imports, the one the runner's WebSocket client needs, and the one
+      # the peer layer's frame code needs: AES-256-GCM, HKDF-SHA256 and Ed25519 for
+      # `runner/sealed.py`. Pinned so a check that passes here cannot start failing on the
+      # runner because a dependency moved, and pinned to the version the flake's nixpkgs
+      # ships, so the sandbox and the runner run the same one. It ships wheels for every
+      # supported interpreter, so this installs nothing from source.
       - name: install dependencies
-        run: python3 -m pip install jsonschema==4.26.0 referencing==0.37.0 websockets==16.1
+        run: python3 -m pip install jsonschema==4.26.0 referencing==0.37.0 websockets==16.1 cryptography==50.0.0
 
       - name: validate the schemas and the vectors
         run: python3 schema/validate.py
@@ -51,6 +54,25 @@ jobs:
 
       - name: check the binary decoder
         run: python3 runner/test_yprotocols.py
+
+      # The peer layer. `run_peer.py` replays `vectors/peer/*.json` — the frame layer, which
+      # needs no client and no server — and reports the decision vectors it cannot run as
+      # *not attempted* rather than passing them. The census is the second half and the one
+      # that matters: it runs every frame vector twice, once as it stands and once with the
+      # one guard the vector declares it catches removed, and requires it to go red there and
+      # to stay green when no mutation applies. A vector that stays green under its own
+      # mutation is a vector that does not test the rule it names.
+      - name: replay the peer corpus's frame layer
+        run: python3 runner/run_peer.py
+
+      - name: require every peer vector to fail under the mutation it declares
+        run: python3 runner/run_peer.py --mutation-census
+
+      # Every peer vector's frames re-derived from the recipes it carries, and the fixture
+      # checked against the derivation CANONICAL.md §6.1 fixes. Without this the bytes and the
+      # rule could drift apart with every verdict still coming out right.
+      - name: re-derive the peer corpus's frames from its recipes
+        run: python3 runner/test_recipe.py
 
       # The two workflows, and the guard in `release.yml` that decides what a release is
       # called. Checked here as well as at release time, because a pull request is where a
