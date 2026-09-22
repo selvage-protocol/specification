@@ -2239,7 +2239,8 @@ The state replaces what a receiver held, and it is ordered by its own `issued`.
   the receiver is the end that renders a name.
 - **A listing's paths are bounded at the receiver too, and the bound the server used to hold is
   re-homed with it.** In `selvage/1` a path over 4096 bytes was refused `bad_params` as the
-  server's own policy (§2.1, §5), and a listing past the server's other grant bounds with it; this
+  server's own policy, and the same three bounds — 4096 bytes to a path, 100 000 paths, 4 MiB of
+  path bytes (§2.1's reference numbers) — covered a listing too large for it to store; this
   version's server holds no listing to refuse. A host **MUST NOT** write a path longer than **4096
   bytes** into a listing and **SHOULD** bound its own enumeration, because a listing is one sealed
   frame: one that does not fit the room's frames never arrives at all, and one that does arrive is
@@ -2305,7 +2306,7 @@ The state replaces what a receiver held, and it is ordered by its own `issued`.
   read one state the same way.
 - **The host's own frames are the case worth spelling out.** A `kind = 1` or `kind = 2` frame
   verifies against the host key, and the host's ordinary frames verify against the session key its
-  own `peers` entry commits. So it is the state's one `host` entry that tells a client **which
+  own `host` entry names. So it is the state's one `host` entry that tells a client **which
   seated peer is the host's connection**; the host key is nobody's peer (§7.1). A state that names
   no `host` entry leaves a client with no identified host connection, and it **MUST NOT** guess one
   — not itself, not the peer whose state it is, and not the key it has seen longest — while
@@ -2336,8 +2337,9 @@ its edits are not part of the room's:
   three things a viewer may still send are a SyncStep1, which is a state vector and a request rather
   than content and is how a viewer is sent anything at all, awareness, which is presence (§8), and
   its holds, which are a claim about the paths it keeps open rather than content (§13.7).
-- **A receiver MUST NOT apply document content from a committed `viewer`.** It refuses that frame,
-  applies none of it, keeps the session, and reports it with the reason `unauthorised_content`
+- **A receiver MUST NOT apply document content from a key the state gives role `viewer`.** It
+  refuses that frame, applies none of it, keeps the session, and reports it with the reason
+  `unauthorised_content`
   ([`CANONICAL.md`](CANONICAL.md) §6.1). It answers a `viewer`'s SyncStep1 and applies a `viewer`'s
   awareness by §8 and its holds by §13.7, because none of the three is content.
 - **The residual, stated rather than implied.** A `viewer` holds the room key, so it can produce a
