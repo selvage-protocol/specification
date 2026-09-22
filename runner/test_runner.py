@@ -952,10 +952,11 @@ class TestDecisionReason(unittest.TestCase):
         return run_peer.decision_reason({}, has_subject)
 
     def test_with_no_subject_it_names_both_things(self) -> None:
-        reason = self.reason(False)
-        self.assertIn("--subject", reason)
-        self.assertIn("`selvage/2`", reason)
-        self.assertTrue(reason.startswith("a decision vector needs a subject"), reason)
+        self.assertEqual(
+            self.reason(False),
+            'a decision vector needs a subject (`--subject "my-client --drive"`) and '
+            "a server that speaks `selvage/2` to seat a peer in a room",
+        )
 
     def test_with_a_subject_it_names_the_one_thing_left(self) -> None:
         reason = self.reason(True)
