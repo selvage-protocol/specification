@@ -248,12 +248,15 @@ versions, so what moves is its content and not its shape. No member leaves it bu
 `selvage/1` uses to say which roles its server seats and which a `selvage/2` server has nothing to
 put in, because it seats nobody as anything (§1.2). A `selvage/2` server advertises:
 
-- **`wire_versions`, naming `selvage/2`.** It **MUST NOT** name a version below `selvage/2`: that
-  server cannot seat a `selvage/1` peer (§10), so a list offering one would be a downgrade a
-  compromised server could take a client down, which is the one failure a confidentiality feature
-  cannot have. Acceptance is unchanged — the same grammar and the [compatibility
-  rule](#10-version-and-capability-negotiation) — so a `selvage/2` server accepts any
-  `selvage/2.x`.
+- **`wire_versions`, naming every version the server accepts.** A server that implements only
+  `selvage/2` **MUST NOT** name a version below it: that server cannot seat a `selvage/1` peer
+  (§10), so a list offering one would be a downgrade a compromised server could take a client
+  down, which is the one failure a confidentiality feature cannot have. A server that implements
+  both versions advertises both, which is what it accepts and not that downgrade: §10 forbids a
+  client that can speak `selvage/2` to take an earlier version however the list reads, so the
+  list can never be the thing that moves it down. Acceptance is unchanged — the same grammar and
+  the [compatibility rule](#10-version-and-capability-negotiation) — so a server that accepts
+  `selvage/2` accepts any `selvage/2.x`.
 - **`capabilities`, which carries the two names this version defines for a server, `y-protocols/1`
   and `awareness`.** An implementation **MAY** advertise names of its own beyond them, as §10
   allows, and the two names `selvage/1` adds are absent here because they are that version's server
