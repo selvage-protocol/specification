@@ -797,6 +797,18 @@ SEALED_STATE_REFUSED = {
         "listing": [],
         "peers": {SEALED_KEY_A[:-1] + "N": {"peer_id": "p-1", "role": "host"}},
     },
+    # `$` may match before a trailing newline in Python's `re`, which is the engine behind the
+    # shipped `jsonschema`; the length bounds are what refuse this one.
+    "a key with a trailing newline": {
+        "issued": 1,
+        "listing": [],
+        "peers": {SEALED_KEY_A + "\n": {"peer_id": "p-1", "role": "host"}},
+    },
+    "a state at a negative `issued`, which is not a count": {
+        "issued": -1,
+        "listing": [],
+        "peers": {},
+    },
     "a listing whose member is not a string": {
         "issued": 1,
         "listing": [7],
@@ -819,6 +831,7 @@ SEALED_CLOSING_REFUSED = {
     "a closing with no `issued`": {"closing": True},
     "a closing whose `closing` is false": {"closing": False, "issued": 3},
     "a closing whose `issued` is not a count": {"closing": True, "issued": "2"},
+    "a closing at a negative `issued`, which is not a count": {"closing": True, "issued": -1},
     "a room state offered as a closing": {"issued": 2, "listing": [], "peers": {}},
     "an `issued` above the JavaScript bound": {"closing": True, "issued": 9007199254740992},
 }
@@ -854,6 +867,7 @@ SEALED_ANNOUNCEMENT_REFUSED = {
     "an announcement with no `key`": {"role": "guest"},
     "a key that is not 32 bytes": {"key": SEALED_KEY_A[:-1]},
     "a key whose final character carries non-zero pad bits": {"key": SEALED_KEY_A[:-1] + "N"},
+    "a key with a trailing newline": {"key": SEALED_KEY_A + "\n"},
     "a declaration of `host`, which no peer can make": {"key": SEALED_KEY_A, "role": "host"},
     "a declaration this version has not": {"key": SEALED_KEY_A, "role": "admin"},
     "a room state offered as an announcement": {"issued": 1, "listing": [], "peers": {}},

@@ -23,8 +23,9 @@
     },
     "sealedIssued": {
       "type": "integer",
+      "minimum": 0,
       "maximum": 9007199254740991,
-      "description": "The host's edition of a sealed value: the room state's `issued`, and the `issued` a closing carries above every state the host has published. A count, in CANONICAL.md §2.4's form and inside its bound, because the receiver that compares it against the highest it has accepted may be a JavaScript one. It orders the two values the host signs; a frame's `counter` orders the frames one key signs, and the two are different numbers with different jobs (CANONICAL.md §6.1). `0` is a count and this is not where it is refused: a receiver's mark starts at `0`, so a state or a closing at `0` is refused `stale_issued` at CANONICAL.md §6.1's step 9, and step 8 reads this member's type and not its value. The first state a host publishes therefore carries `1`, above the mark (CANONICAL.md §6.1, PROTOCOL.md §7.1)."
+      "description": "The host's edition of a sealed value: the room state's `issued`, and the `issued` a closing carries above every state the host has published. A count, in CANONICAL.md §2.4's form and inside its bound, because the receiver that compares it against the highest it has accepted may be a JavaScript one. It orders the two values the host signs; a frame's `counter` orders the frames one key signs, and the two are different numbers with different jobs (CANONICAL.md §6.1). The lower bound is what a count is and not where `0` is refused: a negative value is not a count, so step 8 refuses it `bad_payload`, while `0` is a count and a receiver's mark starts there, so a state or a closing at `0` is refused `stale_issued` at step 9, where the value is read. The first state a host publishes therefore carries `1`, above the mark (CANONICAL.md §6.1, PROTOCOL.md §7.1)."
     },
     "sealedRole": {
       "type": "string",
@@ -45,8 +46,10 @@
     },
     "sealedPeerKey": {
       "type": "string",
+      "minLength": 43,
+      "maxLength": 43,
       "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
-      "description": "A peer's public key: the name of its entry in the room state's `peers`, and the value a session-key announcement carries. 32 bytes of Ed25519 in the encoding the invite URL's fragment writes one in — base64url, RFC 4648 §5, unpadded, so exactly 43 characters and no escape in a canonical JSON string (CANONICAL.md §2.3). The last character carries four bits of the value and two that are zero (RFC 4648 §3.5), so it is one of `AEIMQUYcgkosw048`: a 43-character string whose last character is any other spells no 32-byte value, and a receiver refuses it `bad_payload` at CANONICAL.md §6.1's step 8 rather than resolving it to one a strict decoder would not — two spellings of one key are one key only to a lenient reader, and this file is where the two ends of a connection agree. The key itself and not its 8-byte id: an id is something a receiver derives (SHA-256 of these 32 bytes, first 8) and an id alone verifies nothing, so a state that named one would commit nothing anyone could check."
+      "description": "A peer's public key: the name of its entry in the room state's `peers`, and the value a session-key announcement carries. 32 bytes of Ed25519 in the encoding the invite URL's fragment writes one in — base64url, RFC 4648 §5, unpadded, so exactly 43 characters and no escape in a canonical JSON string (CANONICAL.md §2.3). The last character carries four bits of the value and two that are zero (RFC 4648 §3.5), so it is one of `AEIMQUYcgkosw048`: a 43-character string whose last character is any other spells no 32-byte value, and a receiver refuses it `bad_payload` at CANONICAL.md §6.1's step 8 rather than resolving it to one a strict decoder would not — two spellings of one key are one key only to a lenient reader, and this file is where the two ends of a connection agree. The length is pinned twice on purpose: `$` in a `pattern` may match before a trailing newline in some engines — Python's `re` is one — so a 43-character key with one appended would pass the pattern alone, and `minLength`/`maxLength` are what refuse it. The key itself and not its 8-byte id: an id is something a receiver derives (SHA-256 of these 32 bytes, first 8) and an id alone verifies nothing, so a state that named one would commit nothing anyone could check."
     },
     "sealedPeer": {
       "type": "object",

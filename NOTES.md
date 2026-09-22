@@ -1084,7 +1084,7 @@ cannot be verified before it is opened.
 members a seat has (`peer_id`, `role`) with the key now the object's name, and `check_sealed_payloads`
 runs eleven more values (four conforming, seven refused) while `check_refusals` gains the tenth
 reason. The published run moves on two lines and `README.md`'s transcript with it: `sealed` is 39
-where it was 28, and `refusals` is 13 where it was 12; **§B.37 moved `sealed` to 44**. Nothing in the corpus moved:
+where it was 28, and `refusals` is 13 where it was 12; **§B.37 moved `sealed` to 48**. Nothing in the corpus moved:
 `EXPECTED_VECTORS` is 36, `EXPECTED_FRAME_CHECKS` 35022, `EXPECTED_ASSERTIONS` 8676 and
 `EXPECTED_CODES` is untouched, because no vector was added, deleted or re-pointed and the
 transcripts are still `selvage/1`'s. Six mutations were shown red against the new checks: dropping
@@ -1131,11 +1131,20 @@ belongs with the first two and is the one this pass added beyond the review's li
 **drops from every state it publishes a key whose entry labels a seat the roster no longer has**, so
 the roster's size bounds `peers` as one key per seat bounds it within a seat — otherwise a peer that
 reconnected N times leaves N keys behind, which is the same unbounded growth by another road. A
+fifth bounds the *rate* rather than the size, and is the one a review comment on this pass raised: a
+host **MUST NOT** be obliged to publish more than one state in any `awareness_renew_ms` for the
+announcements it accepts, because one state carries every key it has committed by then — so a peer
+that mints keys without bound obliges one state broadcast a window instead of one per frame, and a
+host that answers each announcement at once is choosing to answer a frame rate it cannot attribute,
+which is its own policy as §2.1's inbound bounds are a server's. A
 declaration of a role in an announcement about a key the state **already** commits changes that
 key's role not at all: the stickiness is new, and without it a committed `viewer` could ask to be
-re-roled. The residual is the state's own size and not the flood's: the state carries one key per
-seat, and a receiver's own cap is a permission, so a conforming one may still hold a mark for every
-key it was ever told about.
+re-roled. The residual is stated with the rules rather than implied: the state carries one key per
+seat and drops a seat the roster has lost, the publish obligation is discharged by one state a
+window, and a receiver's cap on the keys it holds is a permission — so a conforming host may still
+publish more often than a window, and a conforming receiver may still hold a mark for every key it
+was ever told about. Neither is a divergence between conforming peers; both are the room's own
+capacity policy.
 
 **Step 8 reads a member set and each member's type, and a value a rule elsewhere re-homes is not
 read there.** §6.1's step 8 said "the plaintext is the object its `kind` defines" and `sealed.json`
@@ -1151,9 +1160,10 @@ character, a holds set that carries one and a blank hold are **conforming** valu
 receiver must accept and then not offer, and nothing in the check file can express a drop, which is
 said at the fixtures — while a listing member or a hold that is not a string is refused instead. The
 `refusalReason` enum and `check_refusals`'s census are reordered to the table, `bad_payload` at step
-8 before `stale_issued` at step 9, and `sealedIssued`'s `minimum` of `1` is gone: `0` is a count
-(§2.4), step 8 reads the type, and a state or a closing at `0` is refused `stale_issued` at step 9 —
-the reason §6.1's own justification names, and one no schema can express. A state at `issued` 0 is a
+8 before `stale_issued` at step 9, and `sealedIssued`'s `minimum` of `1` is gone: a negative `issued`
+is not a count (§2.4), so the bound it carries now is `0` and step 8 refuses a negative one, while
+`0` is a count and a state or a closing at `0` is refused `stale_issued` at step 9 — the reason
+§6.1's own justification names, and one no schema can express. A state at `issued` 0 is a
 conforming fixture for that reason, as a closing at `0` is.
 
 **The five smaller ones.** (a) §3's account of the relay names the second harm its roster power
@@ -1183,24 +1193,30 @@ refusal) say what a spelling that is not canonical gets. The fragment's `k` and 
 half of the same ambiguity and are fixed with it. (e) §13.11's table gains a row for each rule
 above, and its account of what a vector can pin and what the fixture must carry follows them.
 
-**The schema's gain, and the counts.** `sealedIssued` lost its `minimum`, `sealedPeerKey` gained
-the pad-bit constraint on its final character, and the room state's `listing` and the holds' `holds`
-became arrays of strings rather than `$ref`s to `common.json`. `check_sealed_payloads` runs five
+**The schema's gain, and the counts.** `sealedIssued` lost its `minimum` of `1` and took a `minimum`
+of `0` in its place: a negative `issued` is not a count and step 8 refuses it `bad_payload`, while
+`0` is a count and stays step 9's `stale_issued`. `sealedPeerKey` gained the
+pad-bit constraint on its final character and the `minLength`/`maxLength` of 43, because `$` in a
+`pattern` matches before a trailing newline in Python's `re`, which is the engine the shipped
+`jsonschema` runs. The room state's `listing` and the holds' `holds`
+became arrays of strings rather than `$ref`s to `common.json`. `check_sealed_payloads` runs nine
 more values: five moved from the refused side to the conforming one (a listing's control-carrying
-path, a blank hold, a control-carrying hold, and `issued` 0 in a state and in a closing) and five
+path, a blank hold, a control-carrying hold, and `issued` 0 in a state and in a closing) and nine
 new refused ones (a listing member that is not a string, a hold that is not a string, a key whose
-final character carries non-zero pad bits in a state's `peers` and in an announcement's `key`, and a
-closing whose `issued` is not a count). The published run moves on one line and `README.md`'s
-transcript with it: `sealed` is **44** where it was 39. Nothing else moves: `schema ok` is 39,
+final character carries non-zero pad bits in a state's `peers` and in an announcement's `key`, a key
+with a trailing newline in each of those, and a negative `issued` in a state and in a closing). The published run moves on one line and `README.md`'s
+transcript with it: `sealed` is **48** where it was 39. Nothing else moves: `schema ok` is 39,
 `refusals` 13, `session v2` 42, and the corpus counts are untouched, because no vector was added,
-deleted or re-pointed. Nine mutations were shown red against the new checks: `minimum: 1` back on
+deleted or re-pointed. Eleven mutations were shown red against the new checks: `minimum: 1` back on
 `sealedIssued` and a `minimum: 2` beside the bound (against the conforming `issued` 0 fixtures),
-`bad_payload` back to the end of the enum, the same census line in `validate.py` back to its old
-order, the listing back to `common.json`'s `documentList` (against the conforming control-carrying
-listing), the holds' `items` back to `documentPath` (against the conforming blank and
-control-carrying holds), that `items` type dropped altogether (against a hold that is not a string),
-`sealedPeerKey`'s pattern back to `[A-Za-z0-9_-]{43}` (against the pad-bit refusals), and a
-`sealedPeer` that no longer requires `peer_id` (against a peer with no seat).
+`minimum: 0` dropped (against the negative `issued` fixtures), `bad_payload` back to the end of the
+enum, the same census line in `validate.py` back to its old order, the listing back to `common.json`'s
+`documentList` (against the conforming control-carrying listing), the holds' `items` back to
+`documentPath` (against the conforming blank and control-carrying holds), that `items` type dropped
+altogether (against a hold that is not a string), `sealedPeerKey`'s pattern back to
+`[A-Za-z0-9_-]{43}` (against the pad-bit refusals), its length bounds dropped (against the
+trailing-newline refusals), and a `sealedPeer` that no longer requires `peer_id` (against a peer with
+no seat).
 
 **What is not here, and which step owns it.** The corpus still is **step 4b**'s
 (`docs/studies/e2ee-plan.md` §11). §13.11's fixture list grows with the pass's shapes. The wire

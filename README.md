@@ -30,7 +30,7 @@ and `result OK`:
 
 ```
 schema ok      11 schemas, 39 values checked against the control-character refusal
-sealed         44 values checked against the sealed payloads of selvage/2
+sealed         48 values checked against the sealed payloads of selvage/2
 refusals       13 values checked against selvage/2's local report vocabulary
 session v2     42 values checked against selvage/2's session layer
 vectors        36 files, 35022 frame checks, 8676 assertion steps
