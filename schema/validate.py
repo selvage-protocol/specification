@@ -864,11 +864,12 @@ SEALED_SITES = (
 # passages fix them. A `selvage/2` `/meta` body and its `session.hello` replies are not session
 # frames — `/meta` carries no `v`, and the transcripts are `selvage/1`'s until the corpus is
 # re-baselined — so nothing else here reaches them, and a `roles` made required again, a `documents`
-# readmitted, or a peer record's `display_name` dropped would leave every other check in this suite
-# green. Both directions are checked, so a shape that refuses everything fails too. A member these
-# values carry and the shape does not define is deliberate: a receiver tolerates one
-# (`PROTOCOL.md` §4.1), so the model must not forbid it, and what holds a *server* to the member
-# set of its version is the corpus's exact comparison rather than a schema.
+# readmitted, a peer record's `display_name` dropped, an advertisement naming `selvage/1`, or a
+# `keepalive` with no `room_grace_ms` would leave every other check in this suite green. Both
+# directions are checked, so a shape that refuses everything fails too. A member these values carry
+# and the shape does not define is deliberate: a receiver tolerates one (`PROTOCOL.md` §4.1), so the
+# model must not forbid it, and what holds a *server* to the member set of its version is the
+# corpus's exact comparison rather than a schema.
 SESSION_V2_KEEPALIVE = {
     "ping_interval_ms": 30000,
     "awareness_renew_ms": 15000,
@@ -882,6 +883,14 @@ SESSION_V2_ADVERTISED = {
 }
 SESSION_V2_META_CONFORMING = {
     "a server of this version": dict(SESSION_V2_ADVERTISED),
+    "a server that also accepts a later minor": {
+        **SESSION_V2_ADVERTISED,
+        "wire_versions": ["selvage/2", "selvage/2.1"],
+    },
+    "a server advertising a name of its own": {
+        **SESSION_V2_ADVERTISED,
+        "capabilities": ["y-protocols/1", "awareness", "x.selvage.demo"],
+    },
     "a body that still advertises `roles`": {
         **SESSION_V2_ADVERTISED,
         "roles": ["host", "guest"],
@@ -895,6 +904,18 @@ SESSION_V2_META_REFUSED = {
         key: value for key, value in SESSION_V2_ADVERTISED.items() if key != "server"
     },
     "a body that advertises no version at all": {**SESSION_V2_ADVERTISED, "wire_versions": []},
+    "a body that advertises only `selvage/1`": {
+        **SESSION_V2_ADVERTISED,
+        "wire_versions": ["selvage/1"],
+    },
+    "a body whose `keepalive` has no `room_grace_ms`": {
+        **SESSION_V2_ADVERTISED,
+        "keepalive": SESSION_V2_KEEPALIVE,
+    },
+    "a body missing the `y-protocols/1` capability": {
+        **SESSION_V2_ADVERTISED,
+        "capabilities": ["awareness"],
+    },
 }
 
 SESSION_V2_PEER_CONFORMING = {

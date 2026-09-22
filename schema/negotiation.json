@@ -14,6 +14,15 @@
       "pattern": "^selvage/(0|[1-9][0-9]*)(\\.[1-9][0-9]*)?$",
       "description": "A wire version as a conforming producer writes it: `selvage/1` for the version the reference server speaks, never `selvage/1.0`. The minor is written only when it is not zero, because zero is the default (CANONICAL.md §2.5)."
     },
+    "wireVersionAtLeastTwo": {
+      "allOf": [
+        { "$ref": "#/$defs/wireVersion" },
+        {
+          "pattern": "^selvage/2($|\\.)",
+          "description": "`selvage/2` or a later minor of it, and nothing below: a `selvage/2` server cannot seat a `selvage/1` peer, so a list offering one would be a downgrade (PROTOCOL.md §2). This is the grammar's constraint, not the compatibility rule's: acceptance is still same-major (§10)."
+        }
+      ]
+    },
     "capabilityName": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._/-]*$",
@@ -57,6 +66,20 @@
         "$ref": "#/$defs/wireVersion"
       },
       "description": "The versions a server accepts, in `GET /meta`. Empty is not a valid advertisement: a server that accepts nothing has no reason to answer."
+    },
+    "advertisedVersionsAtLeastTwo": {
+      "allOf": [
+        { "$ref": "#/$defs/advertisedVersions" },
+        { "items": { "$ref": "#/$defs/wireVersionAtLeastTwo" } }
+      ],
+      "description": "An advertisement from a `selvage/2` server: every version it names is `selvage/2` or a later minor of it (PROTOCOL.md §2). Same-major acceptance still decides which of them a client may speak (§10)."
+    },
+    "metaKeepalive": {
+      "allOf": [
+        { "$ref": "#/$defs/keepalive" },
+        { "required": ["room_grace_ms"] }
+      ],
+      "description": "The `keepalive` object `GET /meta` carries: the three clocks plus `room_grace_ms`, which only `/meta` has (PROTOCOL.md §2). A second `$def` rather than a member moved into `keepalive`, because the handshake reply carries the same object without it and a requirement there would be false."
     },
     "capabilityList": {
       "type": "array",

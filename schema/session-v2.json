@@ -11,12 +11,16 @@
       "required": ["server", "wire_versions", "capabilities", "keepalive"],
       "properties": {
         "capabilities": {
-          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityList",
-          "description": "`[\"y-protocols/1\", \"awareness\"]` from a server of this version. The other two names `selvage/1` defined are that version's server machinery (PROTOCOL.md §2, §10)."
+          "allOf": [
+            { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityList" },
+            { "contains": { "const": "y-protocols/1" } },
+            { "contains": { "const": "awareness" } }
+          ],
+          "description": "`[\"y-protocols/1\", \"awareness\"]` from a server of this version: the two names it carries are the ones this version defines (`PROTOCOL.md` §2, §10). A name an implementation adds of its own is permitted — §10 advertises additively and nothing is gated by a capability — so the two are required to be present and no list is required to be exactly them. The other two names `selvage/1` defined are absent because they are that version's server machinery: a set this server does not keep, and a reclaim it does not have."
         },
         "keepalive": {
-          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/keepalive",
-          "description": "Unchanged in shape and in membership. In this version `awareness_renew_ms` and `awareness_expire_ms` are the session's only clock, and `room_grace_ms` is how long a room survives its last connection ending (PROTOCOL.md §1.2, §2)."
+          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/metaKeepalive",
+          "description": "Unchanged in shape and in membership, `room_grace_ms` included. In this version `awareness_renew_ms` and `awareness_expire_ms` are the session's only clock, and `room_grace_ms` is how long a room survives its last connection ending (PROTOCOL.md §1.2, §2)."
         },
         "server": {
           "type": "string",
@@ -24,8 +28,8 @@
           "description": "Free-form server identification, as in `meta.json`: for diagnostics only, and not stable."
         },
         "wire_versions": {
-          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/advertisedVersions",
-          "description": "Names `selvage/2` and no version below it: a `selvage/2` server cannot seat a `selvage/1` peer, and a list offering one would be a downgrade a compromised server could take a client down (PROTOCOL.md §2, §10)."
+          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/advertisedVersionsAtLeastTwo",
+          "description": "Names `selvage/2`, or a later minor of it, and no version below it: a `selvage/2` server cannot seat a `selvage/1` peer, and a list offering one would be a downgrade a compromised server could take a client down (PROTOCOL.md §2, §10)."
         }
       }
     },

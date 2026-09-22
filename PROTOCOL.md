@@ -122,9 +122,10 @@ These words carry obligations, and the protocol uses them precisely.
   and then a close carrying the matching code (§11).
 - **grace period**: the interval after a host's connection ends during which the room still
   exists and can be reclaimed. `host.detached` announces it, with its length in `grace_ms` (§9).
-  **In `selvage/2` it is the interval after the room's *last* connection ends**, its length is the
-  `room_grace_ms` a client reads from `/meta` (§2) and not a number carried per room, and §9 arms
-  the timer that ends it.
+  **In `selvage/2` it is the interval after the room's *last* connection ends**, and its length is
+  the `room_grace_ms` a client reads from `/meta` (§2) rather than a number carried per room. What
+  arms and expires that timer in this version is not settled here — §9 is `selvage/1`'s, and §1.1
+  is where that version's passages are listed.
 - **hold**: one connection's claim on one path, made by `doc.open` and released by `doc.close` or
   by the connection ending. A hold belongs to a connection.
 - **the room's open-document set**: the paths the room has open, `documents`, in first-opened
@@ -229,18 +230,20 @@ put in, because it seats nobody as anything (§1.2). A `selvage/2` server advert
   cannot have. Acceptance is unchanged — the same grammar and the [compatibility
   rule](#10-version-and-capability-negotiation) — so a `selvage/2` server accepts any
   `selvage/2.x`.
-- **`capabilities`, which is `["y-protocols/1", "awareness"]`.** The other two names `selvage/1`
-defined are that version's server machinery: `open-document-set` is a set this server does not
-keep, and `host-reclaim` is a reclaim it does not have. Nothing is gated by a capability in either
-version — a peer **MUST NOT** infer a failure from one it does not recognise — so the list says
-which frame shapes a peer may expect and not what it may send (§10).
+- **`capabilities`, which carries the two names this version defines for a server, `y-protocols/1`
+  and `awareness`.** An implementation **MAY** advertise names of its own beyond them, as §10
+  allows, and the two names `selvage/1` adds are absent here because they are that version's server
+  machinery: `open-document-set` is a set this server does not keep, and `host-reclaim` is a
+  reclaim it does not have. Nothing is gated by a capability in either version — a peer **MUST
+  NOT** infer a failure from one it does not recognise — so the list says
+  which frame shapes a peer may expect and not what it may send (§10).
 - **`keepalive`, unchanged in shape and in membership.** `ping_interval_ms` is the server's: how
 often it pings, and those pings are not session messages. `awareness_renew_ms` and
 `awareness_expire_ms` are the session's: the server advertises them so that every peer renews and
 expires on one clock, a client **MUST NOT** substitute its own, and in `selvage/2` that clock is
 the version's only one (§8.2). `room_grace_ms`, in `/meta` alone, is the server's too, and it is
 where a `selvage/2` client reads the room's grace: in that version the number is how long a room
-survives its last connection ending (§1.2), and §9 arms the timer.
+survives its last connection ending (§1.2).
 
 **What a `selvage/1`-only client sees.** It sees a server it cannot talk to, and it sees it without
 a socket: `wire_versions` names no version it can speak, so it refuses locally with
