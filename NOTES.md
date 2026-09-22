@@ -1330,7 +1330,8 @@ place a vector cannot carry a derivation still carries a re-derivable rule. `run
 reports every peer vector as not attempted — the study asked for the report and the refusal is
 added because a zero-exit run that ran nothing is the failure mode the report exists to prevent.
 
-*What is written and not runnable, said plainly.* The six decision vectors, and with them the
+*What is written and not runnable, said plainly.* **Revised 2026-09-22 by §B.40**, which runs all of
+it against a client and moves two members of the report. The six decision vectors, and with them the
 decision half of the corpus, the `expectSubject` op, the `within_ms`/`at_least`/`frozen`
 members and the subject mutations. `runner/subject.py`'s framing, deadlines and report shape are
 tested, but **no vector has ever been run against a client**, and the report's members are
@@ -1377,3 +1378,108 @@ its **minting connection** spoke and refuses the other version `unsupported_vers
 implementation decision with a wire-visible consequence and no passage of this document states
 it; it is recorded here so that the next implementation does not have to guess, and it is a
 candidate for a sentence of its own if a second server has to agree with this one.
+
+**B.40 `selvage/2`'s decision layer runs: the subject, its one seam, four §13 corrections and two
+reader defects.** `PROTOCOL.md` §13.3, §13.6, §13.7, §13.8, §13.9 and §13.11, `runner/subject.py`,
+`runner/run_peer.py`, `runner/sealed.py`, `runner/test_runner.py` and `README.md` hold what running
+the decision half of the peer corpus found. **Decided** (2026-09-22), on the same day as the client
+that made it runnable. No vector, fixture, schema or count moves: the corpus is what the layer is
+about, and what it found is recorded here.
+
+**The runner plays the relay.** A decision vector's frames are its own `deliver` steps, sealed by
+`run_peer.py` and handed to a subject through the protocol `runner/subject.py` fixes. `start` seats
+the subject with the invite, the session's `keepalive` clock, the roster and the session keypair;
+`expectSubject` is the decision channel, with `within_ms` a poll's deadline and `frozen` a window a
+member must not move over. `not attempted` now means one thing — no subject was named — and
+`--subject` is the only thing a decision vector still needs.
+
+**The one seam, and it is a test seam.** A decision vector's delivered state commits a *fixture*
+key's public half, and nothing in the protocol lets a host hand a peer a chosen key, so a subject
+whose session keypair it minted itself could not be the peer a vector is about. `join` therefore
+carries `session_key`, a 32-byte Ed25519 seed the runner resolves from `vectors/fixture/keys.json`
+out of the `key` the vector's `start` names. It is **not production surface**: §13.1 mints the
+keypair in memory per connection and never persists it, and the client's member that accepts a fixed
+one (`selvage_client::peer::PeerOptions::fixed_session_key`) says so where it is read. It is the same
+kind of thing as `CompanionOptions.editor` in the Neovim companion, and it is recorded here for the
+same reason.
+
+**Two counts, not one, for what a client sends.** §13.1's step 6 obliges a client that applies a
+state committing its own key to send a `SyncStep1`, and §13.6 obliges another after a content
+refusal, so a single "published" count could not tell a republished request from a publication —
+and vector 151 asserts `published: 1` where a conforming client has already sent its handshake.
+§13.11 now states the two observables: a client's **publications** (its announcements, its content,
+its holds, and the states and closings a host publishes) and its **§7 handshake frames**, counted
+apart. The subject protocol reports both.
+
+**Four corrections to §13, each found by implementing it.** (a) §13.7 said a holder re-announces on
+its clock and requires a re-announcement when its set changes or a peer joins, and never said when
+the *first* holds message goes out — which §13.1's step 4 forbids before a state commits the
+sender's key, so the two rules collided for every holder at its join. It now says the first message
+waits for that state, that a holder with a document already open announces at once then, and that
+that message is what the renewal clock counts from. (b) §13.6 said a client re-syncs "after any
+interval in which content was refused" and never defined the interval, which is the difference
+between a client that re-syncs and one that answers a peer frame for frame. It now defines it as
+the client's own renewal clock, with a floor (one re-sync after a refusal, on the next renewal tick
+at the latest) and a ceiling (never more than one per `awareness_renew_ms`), and states what a
+content refusal is once: a `kind = 0` frame refused at step 3 or later of §6.1's order, since a
+frame refused at step 4, 5 or 6 has a plaintext nobody can read and steps 1 and 2 are refusals of
+the bytes themselves. (c) §13.9 used the same phrase for a `viewer`, where it read as its own
+content being refused by its peers — which §13.3 says never reaches its publisher. It now says what
+a `viewer` re-syncs after is a content frame *it* refused. (d) §13.8's host-away clock and §13.3's
+no-state window can run in sequence for one client, and neither section said so: a client seated
+with no state waits the first window, and the state that ends it is what arms the second. §13.8 now
+states the sequence and that both windows are owed, so an implementer who meets it knows it is the
+design and not a double count.
+
+**Two defects in this repository's own reader, fixed, because one specification with two readers
+that disagree is worse than either being wrong.** (a) `runner/sealed.py`'s `_read_ordinary` took the
+first key an 8-byte `key_id` named and verified against that one, where `CANONICAL.md` §6.1 says
+every key the id names is tried and the frame belongs to the one that verified: on a collision, one
+reader reported `bad_signature` for a frame the other applied. It now tries every candidate, keeps
+step 5 where the table puts it (against the id, which is what a mark is kept under), and reports
+`bad_signature` only when none verified. `runner/test_runner.py` builds the collision the derivation
+cannot — about 2^64 candidates — by aliasing one key's id onto another and sealing a frame under the
+shared id, and that test is red without the fix. (b) `read_varuint` widened a byte read at shift 63
+into an integer past 64 bits where the Rust reader refuses it as a value no `varUint` spells, so the
+same bytes were a value to one reader and a malformed frame to the other. It now refuses a byte at
+shift 63 with any bit above bit 0, which is `NOTES.md` §B.38's other question left where it was: the
+overlong *spelling* of a value inside 64 bits (`80 00` for `0`) is still read as written, in both
+readers.
+
+**What the corpus found, and what is not this pass's to fix.** Vector
+`154-lease-expires-a-silent-peer` **cannot pass**, and the vector is what is wrong. Its state commits
+`host-session` and `guest-1`, and its holds message is signed by `guest-2`, which that state does not
+commit: §13.4 resolves a `kind = 3` frame against the keys the applied state commits and
+`CANONICAL.md` §6.1's step 4 refuses one from any other key `uncommitted_key`, which is also what
+§13.11's own table says twice — a holds message applies "under a fixture state that commits it", and
+"a holds message signed by a key the fixture state does not name" is the row for `uncommitted_key`.
+The vector's own fixture line asks for "a peer that announces once and is then silent", which is a
+*committed* peer, so its state is missing the entry its premise needs; the fix is to re-seal the
+state frame with `guest-2` in `peers` and update the `hex`. A vector is not this pass's to change, so
+it is unfixed and named here, and `reference_server`'s
+`crates/harness/tests/decisions.rs` pins the defect with a test that fails when the corpus is
+corrected. The other five — 151, 152, 153, 155 and 156 — pass, and each goes red under the guard it
+declares it catches.
+
+**A third disagreement between the two readers, found by review and left open.** `kind = 0`'s
+plaintext is the y-protocols stream of `PROTOCOL.md` §7 and what a receiver does with bytes that
+are not one is unstated (`NOTES.md` §B.38, item 2). The two readers answer it differently, in both
+directions: `runner/sealed.py` decodes the framing and refuses `bad_payload` for anything it cannot
+read — which includes a message type 2 or 3, where §7 has a receiver read an `auth` message and
+ignore it and lets a client ignore an awareness query — while `sealed.rs`'s step 8 for `kind = 0`
+carries the plaintext whole and refuses nothing, so a client built on it accepts a stream no
+decoder reads and applies nothing. That is now an observable difference and not only a verdict one,
+because §13.6 makes a content refusal what a client re-syncs on. It is **not** fixed here and it is
+not one of the two defects: §B.38 records the question as open, no vector asserts it, and settling
+it means deciding how much of a y-protocols stream a receiver validates, which is this version's to
+say and not a pass's. What the next pass needs is one sentence in §7 or §6.1 — what a `kind = 0`
+plaintext that is not a stream of §7's message table is — and then both readers move to it.
+
+**Two more things reading the vectors as an implementer turned up, neither an error in the spec.**
+`scenario.relay_withholds` (vector 153) names a kind the relay does not forward; the runner's frames
+*are* the vector's `deliver` steps, so the withholding is already in which frames the vector hands
+over, and the member is checked and otherwise has no effect. And a decision vector's report is keyed
+by a *key*, which a client has only as the state's spelling of it or as an id, while the vectors
+write the fixture's name for one: the runner resolves a fixture key's name, its canonical spelling
+and its id in hex to the one name, and a key a report does not mention at all holds nothing, so
+§13.7's expiry is `[]` either way.

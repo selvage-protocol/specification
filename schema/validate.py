@@ -40,9 +40,10 @@ host signs, and the reasons a receiver reports a refused sealed frame in (`seale
 subject is a client implementation rather than the server, and whose bytes are sealed frames
 (`CANONICAL.md` §6.1). Each peer vector declares a `"kind"`: a **frame** vector hands
 `runner/run_peer.py` recipes, and it seals, verifies and refuses without a client at all; a
-**decision** vector is about what a real client did with a frame it received and needs a subject and
-a relay that speaks `selvage/2`, so nothing runs it yet — `run_peer.py` reports those as **not
-attempted**, with the reason, because a vector that did not run must not read like one that passed.
+**decision** vector is about what a real client did with a frame it received and needs a subject —
+a client named by `--subject`, which the runner plays the relay for; with none named, `run_peer.py`
+reports those as **not attempted**, with the reason, because a vector that did not run must not read
+like one that passed.
 This half is checked here for the things that need no key: the step vocabulary, each recipe's shape,
 the refusal vocabulary a vector asserts, the mutation each vector declares it catches, and the
 absence rules below. It imports no crypto and knows no fixture value — the sealed bytes are
@@ -99,8 +100,9 @@ EXPECTED_FRAME_CHECKS = 35022
 EXPECTED_ASSERTIONS = 8676
 # The peer layer's own counts. `PEER_CHECKS` is one per peer step plus one per recipe, and
 # `PEER_ASSERTIONS` counts the assertion steps of the **frame** vectors, which is what
-# `runner/run_peer.py` runs and reports; a decision vector's `expectSubject` steps are checked here
-# and are not in this number, because they are not steps anything has ever run.
+# `runner/run_peer.py` runs without a client; a decision vector's `expectSubject` steps are checked
+# here and are not in this number, because they are asserted against a *subject* — a client named by
+# `--subject` — and are counted in that run's own summary rather than in a corpus-wide pin.
 EXPECTED_PEER_CHECKS = 194
 EXPECTED_PEER_ASSERTIONS = 66
 
@@ -278,8 +280,8 @@ WIRE_OPS = frozenset(
 # The peer layer's two step vocabularies. A **frame** vector is replayed by
 # `runner/run_peer.py` with no client: it seals a recipe, corrupts a frame on purpose, and asks a
 # receiver for a verdict or for what it holds. A **decision** vector drives a real client through
-# the subject protocol and needs a relay that speaks `selvage/2`; nothing runs one yet, so its ops
-# are checked here and reported as not attempted there.
+# the subject protocol; the runner plays the relay, so its ops are checked here and run there, and
+# reported as not attempted only when no `--subject` is named.
 PEER_FRAME_OPS = frozenset(
     {
         "seal",
@@ -1831,8 +1833,8 @@ def check_peer_step(at: str, step: dict, kind: str, fixture: dict, vocab: list[s
         ):
             fail(at, "`within_ms` is the deadline the predicate is polled to")
     elif kind == "decision":
-        # A decision vector drives a subject through the frames the runner hands it, and nothing
-        # runs one yet. Its `expectSubject` is the decision channel and its members are the
+        # A decision vector drives a subject through the frames the runner hands it. Its
+        # `expectSubject` is the decision channel and its members are the
         # observables `PROTOCOL.md` §13.11 fixes: the exact members are compared exactly, `at_least`
         # is a monotone bound it may exceed, `frozen` names the members that must not move over one
         # more window, and `within_ms` is the deadline the predicate is polled to rather than slept

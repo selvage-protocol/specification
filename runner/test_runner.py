@@ -34,6 +34,7 @@ import sys
 import tempfile
 import time
 import unittest
+from dataclasses import dataclass
 from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -851,7 +852,7 @@ class TestMutationCensus(unittest.TestCase):
     """
 
     def census(self, vectors: list[dict]) -> tuple[list[str], int]:
-        return run_peer.mutation_census(vectors, has_subject=False)
+        return run_peer.mutation_census(vectors, run_peer.Driver())
 
     def test_a_vector_that_catches_its_mutation_passes_the_census(self) -> None:
         vector = self.vector("test", "no-mark")
@@ -940,31 +941,22 @@ FIXTURE = sealed.Fixture(VECTOR_DIR / "fixture" / "keys.json")
 
 
 class TestDecisionReason(unittest.TestCase):
-    """Why a decision vector was not attempted, in both cases and in English.
+    """Why a decision vector was not attempted, in English and naming what is missing.
 
     The reason is the whole of what separates `not attempted` from `passed`, so it is the one
-    piece of the layer report a reader has to be able to trust: it names what is missing, and
-    it has to read as a sentence when the subject is the thing that is missing and when the
-    server is.
+    piece of the layer report a reader has to be able to trust. The runner plays the relay, so
+    the one thing a decision vector still needs is a subject.
     """
 
-    def reason(self, has_subject: bool) -> str:
-        return run_peer.decision_reason({}, has_subject)
-
-    def test_with_no_subject_it_names_both_things(self) -> None:
+    def test_with_no_subject_it_names_the_one_thing_missing(self) -> None:
+        reason = run_peer.decision_reason(False)
         self.assertEqual(
-            self.reason(False),
-            'a decision vector needs a subject (`--subject "my-client --drive"`) and '
-            "a server that speaks `selvage/2` to seat a peer in a room",
+            reason, 'a decision vector needs a subject (`--subject "my-client --drive"`)'
         )
+        self.assertNotIn("server", reason, "the runner is the relay and no server is missing")
 
-    def test_with_a_subject_it_names_the_one_thing_left(self) -> None:
-        reason = self.reason(True)
-        self.assertNotIn("--subject", reason)
-        self.assertEqual(
-            reason,
-            "a decision vector needs a server that speaks `selvage/2` to seat a peer in a room",
-        )
+    def test_with_a_subject_there_is_no_reason_left(self) -> None:
+        self.assertEqual(run_peer.decision_reason(True), "")
 
 
 class TestLayerReport(unittest.TestCase):
@@ -987,17 +979,19 @@ class TestLayerReport(unittest.TestCase):
 # --- the subject protocol ---------------------------------------------------------
 
 
-#: What the stub subject answers with. A fixed report, so a case can assert on the parse and on
-#: what the runner made of it without a client.
+#: What the stub subject answers with. A fixed report, plus the two members a delivered frame
+#: moves, so a case can assert on the parse and on what the runner made of it without a client.
 STUB_REPORT = {
     "text": {"src/main.rs": "a\u1f600bc".replace("\u1f600", "\U0001f600")},
     "documents": ["src/main.rs"],
     "applied": [{"frame": 0, "kind": 1}],
     "dropped": [{"frame": 1, "reason": "replayed_counter"}],
     "published": 2,
+    "handshake": 1,
     "ended": False,
     "peers": [{"peer_id": "p-1", "display_name": "Ada"}],
     "holds": {"mwSkxeRytFUs0XcaBujkAxuamFmfjb9gAG1V1aYUkEw": ["src/main.rs"]},
+    "listing": ["README.md"],
     "frames": 2,
 }
 
@@ -1007,8 +1001,14 @@ def run_stub_subject(behaviour: str) -> int:
 
     Running the stub from `test_runner.py` rather than writing a script keeps the test free of
     any temporary file — there is nowhere on this host to put one that is not the RAM disk or a
-    read-only store path — and it keeps the protocol in one place.
+    read-only store path — and it keeps the protocol in one place. `decisions` is the one
+    behaviour that behaves like a client rather than like a fixture: it counts what it is handed
+    and reads each frame's `kind` out of the envelope, which is enough to be a subject for a
+    runner case without being a client.
     """
+    applied: list[dict] = []
+    handed = 0
+    mutated: str | None = None
     for line in sys.stdin.buffer:
         try:
             command = json.loads(line)
@@ -1019,23 +1019,74 @@ def run_stub_subject(behaviour: str) -> int:
             time.sleep(60)
         if behaviour == "close":
             return 0
-        if name == "quit":
-            reply: object = {"ok": True}
-        elif behaviour == "garbage":
+        if behaviour == "garbage":
             sys.stdout.write("this is not JSON\n")
             sys.stdout.flush()
             continue
+        if name == "quit":
+            reply: object = {"ok": True}
+        elif behaviour == "no-mutate" and name == "mutate":
+            # A subject that implements no mutations: it must be a census failure, not a red run.
+            reply = {"ok": False, "error": "I have no guards to remove"}
         elif behaviour == "refuse":
             reply = {"ok": False, "error": "I cannot do that"}
         elif behaviour == "bad-report":
             reply = {"ok": True, "report": {"published": 1}}
-        elif name == "mutate":
-            reply = {"ok": True, "report": {**STUB_REPORT, "mutation": command.get("name")}}
         else:
-            reply = {"ok": True, "report": STUB_REPORT}
+            if name == "deliver":
+                handed += 1
+                applied.append({"frame": handed - 1, "kind": kind_of(command.get("frame"))})
+            if name == "mutate":
+                mutated = command.get("name")
+            report = stub_report(behaviour, applied, handed, mutated, name)
+            reply = {"ok": True, "report": report}
         sys.stdout.write(json.dumps(reply, ensure_ascii=False) + "\n")
         sys.stdout.flush()
     return 0
+
+
+def stub_report(
+    behaviour: str, applied: list[dict], handed: int, mutated: str | None, command: object
+) -> dict:
+    """The report a stub answers a command with.
+
+    `STUB_REPORT` for the protocol's own cases, and a minimal one for `decisions`, `wrong-count`
+    and `no-mutate`, which is what a decision vector's members are asserted against. The
+    `decisions` double answers a mutation by moving `published`, which is what a removed guard
+    does to a real client's decision and what the census has to notice; `wrong-count` is the
+    shape a subject that counts differently from the runner has, and `no-mutate` one that refuses
+    to remove a guard at all.
+    """
+    if behaviour not in ("decisions", "wrong-count", "no-mutate"):
+        report = {**STUB_REPORT, "applied": list(applied), "frames": handed}
+        return {**report, "mutation": mutated} if command == "mutate" else report
+    return {
+        "text": {},
+        "documents": [],
+        "applied": list(applied),
+        "dropped": [],
+        "published": 2 if mutated else 1,
+        "handshake": 0,
+        "listing": [],
+        "holds": {},
+        "frames": handed + 5 if behaviour == "wrong-count" else handed,
+        "ended": False,
+        "mutation": mutated,
+    }
+
+
+def kind_of(frame: object) -> int:
+    """The `kind` a sealed frame carries, read out of the envelope's ninth byte.
+
+    A `key_id` is eight bytes and a `kind` of 0 to 4 is one `varUint` byte, which is all a stub
+    has to read to name what it was handed (`CANONICAL.md` §6.1).
+    """
+    if not isinstance(frame, str) or len(frame) < 18:
+        return 0
+    try:
+        return int(frame[16:18], 16)
+    except ValueError:
+        return 0
 
 
 STUB_SUBJECT = [sys.executable, str(pathlib.Path(__file__).resolve()), "--stub-subject"]
@@ -1053,13 +1104,40 @@ class TestSubjectProtocol(unittest.TestCase):
     def test_a_report_is_the_decision_channel_and_is_read_member_by_member(self) -> None:
         report = self.subject().report()
         self.assertEqual(report.published, 2)
+        self.assertEqual(report.handshake, 1, "§7's frames are counted apart")
         self.assertFalse(report.ended)
         self.assertEqual(report.text, {"src/main.rs": "a\U0001f600bc"})
         self.assertEqual([(d.frame, d.reason) for d in report.dropped],
                          [(1, "replayed_counter")])
         self.assertEqual(report.holds["mwSkxeRytFUs0XcaBujkAxuamFmfjb9gAG1V1aYUkEw"],
                          ["src/main.rs"])
-        self.assertEqual(report.frames, 2)
+        self.assertEqual(report.listing, ["README.md"])
+        self.assertEqual(report.frames, 0, "nothing has been handed over yet")
+
+    def test_the_commands_of_a_join_are_the_members_the_runner_resolves(self) -> None:
+        # The one test seam of the layer, and the reason it is a member: a decision vector's
+        # delivered state commits a fixture key, so the runner hands the keypair over.
+        peer = self.subject("decisions")
+        report = peer.join(
+            "/session?room=R&token=t#k=k&h=h",
+            offline=True,
+            keepalive={"awareness_renew_ms": 300, "awareness_expire_ms": 900},
+            seat="p-subject",
+            roster=["p-host"],
+            session_key="5f" * 32,
+        )
+        self.assertEqual(report.mutation, None)
+        self.assertEqual(report.frames, 0)
+
+    def test_a_delivered_frame_is_counted_and_decided_about(self) -> None:
+        peer = self.subject("decisions")
+        peer.join("/session?room=R&token=t#k=k&h=h", offline=True)
+        # A `kind = 1` frame: the stub reads that byte, which is all a double has to do.
+        report = peer.deliver(bytes.fromhex("00" * 8 + "01" + "00" * 40))
+        self.assertEqual(report.frames, 1)
+        self.assertEqual(report.applied, [{"frame": 0, "kind": 1}])
+        report = peer.deliver(bytes.fromhex("00" * 8 + "03" + "00" * 40))
+        self.assertEqual([entry["kind"] for entry in report.applied], [1, 3])
 
     def test_the_commands_of_the_protocol_are_the_ones_the_stub_answers(self) -> None:
         peer = self.subject()
@@ -1111,6 +1189,510 @@ class TestSubjectProtocol(unittest.TestCase):
         with self.assertRaises(subject.SubjectError):
             peer.start()
         peer.stop()
+
+
+@dataclass(frozen=True)
+class AliasedKey(sealed.Key):
+    """A key that reports another key's id: a `key_id` collision, constructed.
+
+    §6.1 derives the id from SHA-256, so two real keys that collide cost about 2^64
+    candidates and no test can have one. What a collision *means* is a reader rule, though —
+    every key the id names is tried — and a collision is the only shape that rule is read in,
+    so the test builds the collision the derivation cannot: the same id, two keys, one of
+    which signed the frame.
+    """
+
+    alias: str = ""
+
+    @property
+    def id(self) -> bytes:
+        return bytes.fromhex(self.alias)
+
+    @property
+    def hex_id(self) -> str:
+        return self.alias
+
+
+def content_frame(signer: sealed.Key, shared_id: bytes) -> bytes:
+    """A `kind = 0` frame carrying a SyncStep2, sealed under `shared_id` and signed by `signer`.
+
+    `00 01 01 00` is message type 0 (sync), subtype 1 (SyncStep2) and a one-byte payload: enough
+    for §13.5's rule, which is about the message's type and not about what it carries.
+    """
+    return sealed_frame(signer, shared_id, 0, bytes.fromhex("00010100"))
+
+
+def shared_id_frame(signer: sealed.Key, shared_id: bytes) -> bytes:
+    """One holds frame whose envelope carries `shared_id` and whose signature is `signer`'s.
+
+    A collision cannot be produced by §6.1's derivation, so the frame is built the way that
+    section builds one rather than by `seal`: the AEAD's associated data contains the id the
+    envelope carries, so a frame attributed to a shared id is sealed *under* that id and then
+    signed by one of the keys that id names.
+    """
+    plaintext = json.dumps({"holds": ["src/main.rs"]}, **sealed.CANONICAL).encode("utf-8")
+    return sealed_frame(signer, shared_id, 3, plaintext)
+
+
+def sealed_frame(signer: sealed.Key, shared_id: bytes, kind: int, plaintext: bytes) -> bytes:
+    """One frame sealed under `shared_id` and signed by `signer`, which is a collision's shape."""
+    epoch, counter = 0, 1
+    nonce = bytes.fromhex("031e2f3a4b5c6d7e8f90a1b2")
+    aad = sealed.associated_data(FIXTURE.room_id, kind, epoch, shared_id)
+    ciphertext = sealed.AESGCM(FIXTURE.frame_key()).encrypt(nonce, plaintext, aad)
+    envelope = sealed.Envelope(shared_id, kind, epoch, counter, nonce, ciphertext)
+    envelope.signature = signer.sign(sealed.signing_input(aad, envelope))
+    return envelope.bytes()
+
+
+class TestKeyIdCollision(unittest.TestCase):
+    """§6.1 resolves an 8-byte `key_id` by verifying, so a collision costs a verification.
+
+    The state's `peers` is keyed by the public key and one key appears once, so a collision
+    can only come from two keys whose first eight SHA-256 bytes agree. A reader that takes
+    the first key the id names reports `bad_signature` for a frame the second key signed and
+    a conforming reader applies: two readers, one state, opposite verdicts.
+    """
+
+    def colliding_reader(self) -> sealed.Reader:
+        first = FIXTURE.key("guest-1")
+        second = FIXTURE.key("guest-2")
+        aliased = AliasedKey(
+            name="guest-2", public=second.public, private=second.private, alias=first.hex_id
+        )
+        reader = sealed.Reader(FIXTURE)
+        # The state's names are the public keys' spellings and `by_key_id` reads them in that
+        # order, so `guest-1` is the first candidate and the frame is signed by the second.
+        reader.committed = {
+            sealed.b64url(first.public): sealed.Peer(first, "guest", "p-1"),
+            sealed.b64url(second.public): sealed.Peer(aliased, "guest", "p-2"),
+        }
+        return reader
+
+    def test_a_frame_signed_by_the_second_key_of_a_collision_verifies(self) -> None:
+        reader = self.colliding_reader()
+        verdict = reader.read(
+            shared_id_frame(FIXTURE.key("guest-2"), FIXTURE.key("guest-1").id)
+        )
+        self.assertTrue(verdict.ok, f"refused {verdict.reason}")
+        self.assertEqual(verdict.sender, FIXTURE.key("guest-1").hex_id)
+        self.assertEqual(verdict.payload["holds"], ["src/main.rs"])
+        # The set belongs to the key that verified, which is the one whose signature did.
+        self.assertEqual(reader.holds[verdict.sender], ["src/main.rs"])
+
+    def test_the_role_reads_from_the_key_that_verified_and_not_from_the_shared_id(self) -> None:
+        # §13.4: the role is the state's, and it is a *key's*. An id cannot tell two colliding
+        # keys apart, so a `viewer` whose id collides with a `guest`'s would have its content
+        # applied under the guest's role if the reader asked the id.
+        reader = sealed.Reader(FIXTURE)
+        guest = FIXTURE.key("guest-1")
+        viewer = FIXTURE.key("mallory-1")
+        aliased = AliasedKey(
+            name="mallory-1", public=viewer.public, private=None, alias=guest.hex_id
+        )
+        reader.committed = {
+            sealed.b64url(guest.public): sealed.Peer(guest, "guest", "p-1"),
+            sealed.b64url(viewer.public): sealed.Peer(aliased, "viewer", "p-2"),
+        }
+        # The id names both entries, and `role_of` reads whichever key comes first in the
+        # state's own order — here the viewer's, because its spelling sorts before the guest's.
+        # Which of the two an id-read returns is an accident of spelling; which key verified is
+        # not.
+        self.assertEqual(len(reader.by_key_id(guest.hex_id)), 2)
+        self.assertEqual(reader.role_of_key(guest), "guest")
+        self.assertEqual(reader.role_of_key(viewer), "viewer")
+
+    def test_a_viewers_content_is_refused_under_a_colliding_id(self) -> None:
+        reader = sealed.Reader(FIXTURE)
+        guest = FIXTURE.key("guest-1")
+        viewer = FIXTURE.key("mallory-1")
+        aliased = AliasedKey(
+            name="mallory-1", public=viewer.public, private=None, alias=guest.hex_id
+        )
+        reader.committed = {
+            sealed.b64url(guest.public): sealed.Peer(guest, "guest", "p-1"),
+            sealed.b64url(viewer.public): sealed.Peer(aliased, "viewer", "p-2"),
+        }
+        # A SyncStep2, the plaintext a `kind = 0` content frame carries: it needs no CRDT
+        # because §13.5's rule is read from the message's own type.
+        verdict = reader.read(content_frame(viewer, guest.id))
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.reason, "unauthorised_content")
+
+    def test_a_frame_no_key_of_a_collision_signed_is_still_a_bad_signature(self) -> None:
+        verdict = self.colliding_reader().read(
+            shared_id_frame(FIXTURE.key("mallory-1"), FIXTURE.key("guest-1").id)
+        )
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.reason, "bad_signature")
+
+
+class TestVaruintBound(unittest.TestCase):
+    """A `varUint` past 64 bits is not a `varUint` (`CANONICAL.md` §6.1, `PROTOCOL.md` §7).
+
+    Python's integers widen, so a byte at shift 63 carrying a bit above bit 0 spells a value
+    the frozen layout has no field for — and a reader that widens it holds a counter no other
+    reader of the same bytes has. The overlong *spelling* of a value inside 64 bits (`80 00`
+    for `0`) is a different question, still open (`NOTES.md` §B.38), and is read here as
+    written.
+    """
+
+    def test_a_byte_at_shift_63_may_set_only_bit_0(self) -> None:
+        with self.assertRaises(sealed.SealedError):
+            sealed.read_varuint(b"\x80" * 9 + b"\x02", 0)
+        with self.assertRaises(sealed.SealedError):
+            sealed.read_varuint(b"\x80" * 9 + b"\x7f", 0)
+        # The largest value a 64-bit `varUint` spells is ten bytes, and the tenth sets bit 63.
+        self.assertEqual(sealed.read_varuint(b"\xff" * 9 + b"\x01", 0)[0], (1 << 64) - 1)
+
+    def test_the_overlong_spelling_of_a_value_inside_64_bits_is_read(self) -> None:
+        self.assertEqual(sealed.read_varuint(b"\x80\x00", 0), (0, 2))
+        self.assertEqual(sealed.read_varuint(b"\x81\x00", 0), (1, 2))
+
+    def test_a_frame_whose_counter_is_past_64_bits_is_a_bad_envelope(self) -> None:
+        # The disagreement the fix removes, on one frame: Python widened the counter into
+        # 2**64 and applied the frame, while the frozen layout's `varUint` cannot spell it and
+        # the Rust reader refuses the layout at step 1.
+        key = FIXTURE.key("guest-2")
+        envelope = sealed.seal(
+            FIXTURE,
+            {
+                "sign": "guest-2",
+                "kind": 3,
+                "counter": 1,
+                "nonce": "031e2f3a4b5c6d7e8f90a1b2",
+                "payload": {"holds": ["src/main.rs"]},
+            },
+        )
+        envelope.counter = 1 << 64
+        envelope.signature = key.sign(
+            sealed.signing_input(
+                sealed.associated_data(
+                    FIXTURE.room_id, envelope.kind, envelope.epoch, envelope.key_id
+                ),
+                envelope,
+            )
+        )
+        raw = envelope.bytes()
+        # The frame is otherwise authentic: the counter is the one field past its bound, and
+        # the signature and the AEAD cover it as written.
+        self.assertEqual(raw[10:20], b"\x80" * 9 + b"\x02")
+        second = FIXTURE.key("guest-2")
+        reader = sealed.Reader(FIXTURE)
+        reader.committed = {
+            sealed.b64url(second.public): sealed.Peer(second, "guest", "p-2")
+        }
+        verdict = reader.read(raw)
+        self.assertFalse(verdict.ok, "the widened counter was applied")
+        self.assertEqual(verdict.reason, "bad_envelope")
+
+
+class TestDecisionLayer(unittest.TestCase):
+    """The decision layer's driver, against a scripted subject.
+
+    `run_peer.py --subject` runs against a real client; these cases run against the stub in this
+    file, so what is tested is the runner's own code — the invite it builds, the bytes it seals,
+    the way it reads a report and polls a predicate to a deadline — and not a client's decisions.
+    """
+
+    def vector(self, steps: list[dict], catches: str | None = None) -> dict:
+        return {
+            "_file": "test-decision.json",
+            "id": "999",
+            "title": "a vector built here, whose subject is in this file",
+            "layer": "peer",
+            "kind": "decision",
+            "selvage": "selvage/2",
+            "canonical": "SJ-C/1",
+            "fixture": "fixture/keys.json",
+            "catches": catches,
+            "scenario": {
+                "keepalive": {
+                    "awareness_expire_ms": 900,
+                    "awareness_renew_ms": 300,
+                    "ping_interval_ms": 30000,
+                    "room_grace_ms": 30000,
+                }
+            },
+            "steps": steps,
+        }
+
+    def start_step(self) -> dict:
+        return {
+            "op": "start",
+            "conn": "peer",
+            "key": "guest-1",
+            "invite": "/session?room=$room&token=$token#k=$room_key&h=$host_key",
+        }
+
+    def state_step(self, seats: list[tuple[str, str]]) -> dict:
+        """A delivered room state, sealed from a recipe the way a vector carries one.
+
+        `seats` is `(key name, peer id)` pairs, so two peers is two keys and not one key
+        labelled twice: the state's `peers` is keyed by the public key and a key appears once.
+        """
+        recipe = {
+            "sign": "host-key",
+            "kind": 1,
+            "counter": 1,
+            "nonce": "0a" * 12,
+            "payload": {
+                "issued": 1,
+                "listing": ["README.md"],
+                "peers": {
+                    sealed.b64url(FIXTURE.key(name).public): {
+                        "peer_id": seat,
+                        "role": "guest",
+                    }
+                    for name, seat in seats
+                },
+            },
+        }
+        return self.delivered("state", recipe)
+
+    def delivered(self, name: str, recipe: dict) -> dict:
+        raw = sealed.seal(FIXTURE, recipe).bytes()
+        return {
+            "op": "deliver",
+            "conn": "peer",
+            "frame": name,
+            "recipe": recipe,
+            "hex": " ".join(f"{byte:02x}" for byte in raw),
+        }
+
+    def expect(self, **members: object) -> dict:
+        return {"op": "expectSubject", "conn": "peer", **members}
+
+    def command(self, behaviour: str = "decisions") -> str:
+        return " ".join(STUB_SUBJECT + [behaviour])
+
+    def run_vector(
+        self,
+        steps: list[dict],
+        catches: str | None = None,
+        mutation: str | None = None,
+        behaviour: str = "decisions",
+    ) -> int:
+        run = run_peer.DecisionRun(
+            vector=self.vector(steps, catches),
+            fixture=FIXTURE,
+            command=self.command(behaviour),
+            timeout=5.0,
+            mutation=mutation,
+        )
+        return run.drive()
+
+    def test_a_vector_the_subject_satisfies_holds(self) -> None:
+        steps = [
+            self.start_step(),
+            self.state_step([("guest-1", "p-self")]),
+            self.expect(applied=[{"frame": 0, "kind": 1}], dropped=[], published=1,
+                        ended=False),
+        ]
+        self.assertEqual(self.run_vector(steps), 1)
+
+    def test_a_member_the_report_does_not_carry_is_named_with_both_values(self) -> None:
+        steps = [
+            self.start_step(),
+            self.state_step([("guest-1", "p-self")]),
+            self.expect(applied=[{"frame": 0, "kind": 3}]),
+        ]
+        with self.assertRaises(run_peer.PeerError) as caught:
+            self.run_vector(steps)
+        message = str(caught.exception)
+        self.assertIn("step 2 (`expectSubject`)", message)
+        self.assertIn("`applied`", message)
+        self.assertIn('"kind": 3', message, "what the vector claims")
+        self.assertIn('"kind": 1', message, "and what the subject reported")
+
+    def test_a_poll_runs_to_its_deadline_and_fails_with_the_last_report(self) -> None:
+        steps = [self.start_step(), self.expect(published=4, within_ms=150)]
+        started = time.monotonic()
+        with self.assertRaises(run_peer.PeerError) as caught:
+            self.run_vector(steps)
+        self.assertGreaterEqual(time.monotonic() - started, 0.15)
+        self.assertIn("`published` is 4 in the vector and 1 in the report", str(caught.exception))
+
+    def test_within_ms_is_optional_and_a_bare_expectation_is_read_once(self) -> None:
+        steps = [self.start_step(), self.expect(published=4)]
+        with self.assertRaises(run_peer.PeerError):
+            self.run_vector(steps)
+
+    def test_frozen_holds_the_members_still_over_the_window_it_is_given(self) -> None:
+        steps = [
+            self.start_step(),
+            self.expect(frozen=["published"], within_ms=120),
+        ]
+        self.assertEqual(self.run_vector(steps), 1)
+
+    def test_frozen_without_a_window_is_refused_rather_than_slept_over(self) -> None:
+        steps = [self.start_step(), self.expect(frozen=["published"])]
+        with self.assertRaises(run_peer.PeerError) as caught:
+            self.run_vector(steps)
+        self.assertIn("`frozen` needs", str(caught.exception))
+
+    def test_the_delivered_bytes_are_the_recipe_sealed_and_a_drift_is_a_red_run(self) -> None:
+        step = self.state_step([("guest-1", "p-self")])
+        step["hex"] = " ".join(["00"] * len(bytes.fromhex(step["hex"].replace(" ", ""))))
+        with self.assertRaises(run_peer.PeerError) as caught:
+            self.run_vector([self.start_step(), step])
+        self.assertIn("other bytes than the vector carries", str(caught.exception))
+
+    def test_a_subject_that_counts_other_frames_than_it_was_handed_fails(self) -> None:
+        steps = [self.start_step(), self.state_step([("guest-1", "p-self")])]
+        with self.assertRaises(run_peer.PeerError) as caught:
+            self.run_vector(steps, behaviour="wrong-count")
+        self.assertIn("counts 6 frames received", str(caught.exception))
+
+    def test_a_step_no_decision_vector_defines_is_refused(self) -> None:
+        steps = [self.start_step(), {"op": "seal", "conn": "peer"}]
+        with self.assertRaises(run_peer.PeerError) as caught:
+            self.run_vector(steps)
+        self.assertIn("not a step of a decision vector", str(caught.exception))
+
+    def test_a_scenario_naming_something_nothing_reads_is_refused(self) -> None:
+        vector = self.vector([self.start_step()])
+        vector["scenario"]["relay_sleeps"] = True
+        with self.assertRaises(run_peer.PeerError) as caught:
+            run_peer.scenario_of(vector)
+        self.assertIn("relay_sleeps", str(caught.exception))
+
+    def test_the_invite_substitutes_the_longest_name_first(self) -> None:
+        # `$room` is a prefix of `$room_key`: substituting the shorter one first leaves the room
+        # id inside a key's value, and the fragment then spells no key at all.
+        invite = run_peer.invite_of(FIXTURE, self.start_step())
+        self.assertIn(f"room={FIXTURE.room_id}", invite)
+        self.assertIn(sealed.b64url(FIXTURE.room_key), invite)
+        self.assertIn(sealed.b64url(FIXTURE.host.public), invite)
+        self.assertNotIn(f"{FIXTURE.room_id}_key", invite)
+
+    def test_a_template_naming_a_value_nothing_substitutes_is_refused(self) -> None:
+        step = self.start_step()
+        step["invite"] = "/session?room=$room&token=$nobody"
+        with self.assertRaises(run_peer.PeerError):
+            run_peer.invite_of(FIXTURE, step)
+
+    def test_the_roster_is_the_seats_the_vectors_own_states_label(self) -> None:
+        vector = self.vector([self.state_step([("guest-1", "p-self"), ("mallory-1", "p-host")])])
+        self.assertEqual(run_peer.roster_of(vector), ["p-self", "p-host"])
+
+    def test_the_run_hands_the_subject_the_keypair_the_vector_names(self) -> None:
+        seed = run_peer.session_key_of(FIXTURE, self.start_step(), "x")
+        self.assertEqual(seed, FIXTURE.key("guest-1").private.hex())
+        with self.assertRaises(run_peer.PeerError) as caught:
+            run_peer.session_key_of(FIXTURE, {"key": "nobody"}, "x")
+        self.assertIn("which the fixture does not have", str(caught.exception))
+
+    def test_holds_are_read_under_the_names_a_vector_writes(self) -> None:
+        guest = FIXTURE.key("guest-1")
+        other = FIXTURE.key("guest-2")
+        held = {
+            guest.hex_id: ["src/main.rs"],           # by the key id a subject may report
+            sealed.b64url(other.public): ["x"],      # and by the state's own spelling
+            "nobody-at-all": [],
+        }
+        report = subject.Report.from_json({**STUB_REPORT, "holds": held})
+        names = run_peer.holds_of(FIXTURE, report)
+        self.assertEqual(names["guest-1"], ["src/main.rs"])
+        self.assertEqual(names["guest-2"], ["x"])
+        self.assertEqual(names["nobody-at-all"], [])
+
+    def test_a_key_the_report_does_not_name_holds_nothing(self) -> None:
+        # §13.7's expiry is a set becoming empty, and a client that drops the key entirely
+        # reports nothing about it: the two are one assertion.
+        step = self.expect(holds={"guest-2": []})
+        report = subject.Report.from_json({**STUB_REPORT, "holds": {}})
+        self.assertEqual(run_peer.unmet(step, report, FIXTURE), [])
+        step = self.expect(holds={"guest-2": ["src/main.rs"]})
+        self.assertIn("holds[guest-2]", " ".join(run_peer.unmet(step, report, FIXTURE)))
+
+    def test_a_decision_vector_is_not_attempted_without_a_subject(self) -> None:
+        outcome = run_peer.attempt(
+            self.vector([self.start_step()]), {}, frozenset(), run_peer.Driver()
+        )
+        self.assertFalse(outcome.attempted)
+        self.assertIn("--subject", outcome.not_attempted)
+
+    def test_a_decision_vector_with_a_subject_is_attempted(self) -> None:
+        steps = [self.start_step(), self.expect(published=1)]
+        driver = run_peer.Driver(command=self.command(), timeout=5.0)
+        outcome = run_peer.attempt(self.vector(steps), {}, frozenset(), driver)
+        self.assertEqual(outcome.failure, None, outcome.failure)
+        self.assertEqual(outcome.assertions, 1)
+
+    def test_the_census_wants_a_decision_vector_red_under_the_guard_it_declares(self) -> None:
+        steps = [self.start_step(), self.expect(published=1)]
+        driver = run_peer.Driver(command=self.command(), timeout=5.0)
+        report, failures = run_peer.mutation_census(
+            [self.vector(steps, catches="announce-once")], driver
+        )
+        self.assertEqual(failures, 0, report)
+        self.assertTrue(any("red under `announce-once`" in line for line in report), report)
+
+    def test_a_decision_vector_declaring_a_receivers_mutation_fails_the_census(self) -> None:
+        driver = run_peer.Driver(command=self.command(), timeout=5.0)
+        report, failures = run_peer.mutation_census(
+            [self.vector([self.start_step()], catches="no-mark")], driver
+        )
+        self.assertEqual(failures, 1)
+        self.assertTrue(any("removes a receiver's rule" in line for line in report), report)
+
+    def test_a_typo_in_a_frozen_member_is_a_named_failure_and_not_a_traceback(self) -> None:
+        steps = [self.start_step(), self.expect(frozen=["publishd"], within_ms=50)]
+        with self.assertRaises(run_peer.PeerError) as caught:
+            self.run_vector(steps)
+        self.assertIn("`publishd` is not a report member", str(caught.exception))
+
+    def test_a_typo_in_an_at_least_member_is_a_named_failure(self) -> None:
+        steps = [self.start_step(), self.expect(at_least={"publishd": 1})]
+        with self.assertRaises(run_peer.PeerError) as caught:
+            self.run_vector(steps)
+        self.assertIn("`publishd` is not a report member", str(caught.exception))
+
+    def test_the_clean_run_of_a_census_is_clean_whatever_the_caller_passed(self) -> None:
+        # `--mutation-census --mutation X` must still run each vector's positive half without a
+        # mutation: the census is about each vector's own declared guard.
+        steps = [self.start_step(), self.expect(published=1)]
+        driver = run_peer.Driver(command=self.command(), timeout=5.0, mutation="announce-once")
+        report, failures = run_peer.mutation_census(
+            [self.vector(steps, catches="announce-once")], driver
+        )
+        self.assertEqual(failures, 0, report)
+        self.assertFalse(any("without a mutation" in line for line in report), report)
+        self.assertTrue(any("red under `announce-once`" in line for line in report), report)
+
+    def test_a_subject_that_will_not_remove_a_guard_is_not_a_red_run(self) -> None:
+        # Any failure of the mutated run used to count as the vector catching its guard, so a
+        # subject that cannot remove one passed the census without testing anything.
+        steps = [self.start_step(), self.expect(published=1)]
+        driver = run_peer.Driver(command=self.command("no-mutate"), timeout=5.0)
+        report, failures = run_peer.mutation_census(
+            [self.vector(steps, catches="announce-once")], driver
+        )
+        self.assertEqual(failures, 1)
+        self.assertTrue(
+            any("before any expectation" in line for line in report), report
+        )
+
+    def test_each_mutation_goes_only_to_the_layer_whose_table_names_it(self) -> None:
+        # Each table names its own guards and neither names the other's: handing `no-lease` to a
+        # receiver fails every frame vector, and handing `no-verify` to a subject fails every
+        # decision vector.
+        self.assertEqual(run_peer.main(["--mutation", "no-lease", "--vector", "101"]), 0)
+        with mock.patch.object(run_peer, "DecisionRun") as run:
+            run.return_value.drive.return_value = 0
+            run_peer.main(["--subject", self.command(), "--mutation", "no-verify", "--vector", "151"])
+            self.assertIsNone(run.call_args.kwargs["mutation"], "a receiver's guard")
+            run_peer.main(
+                ["--subject", self.command(), "--mutation", "announce-once", "--vector", "151"]
+            )
+            self.assertEqual(run.call_args.kwargs["mutation"], "announce-once")
+
+    def test_a_subject_that_cannot_start_is_a_named_failure(self) -> None:
+        vector = self.vector([self.start_step()])
+        driver = run_peer.Driver(command="/nonexistent/selvage-subject", timeout=1.0)
+        outcome = run_peer.attempt(vector, {}, frozenset(), driver)
+        self.assertIn("could not be started", outcome.failure)
 
 
 if __name__ == "__main__" and "--stub-subject" in sys.argv:

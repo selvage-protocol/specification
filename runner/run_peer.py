@@ -1,30 +1,33 @@
 #!/usr/bin/env python3
-"""Replays the peer corpus: `selvage/2`'s frame layer, with no client and no server.
+"""Replays the peer corpus: `selvage/2`'s frame layer, and its decision layer with a client.
 
 The wire corpus (`runner/run_vectors.py`) replays transcripts against a running `selvaged`.
 This runner has no socket in it: a **frame** vector hands it recipes and frames, and it seals,
 signs, verifies and refuses them the way `CANONICAL.md` §6.1 says, in one process, with the
-fixture in `vectors/fixture/keys.json` and nothing else.
+fixture in `vectors/fixture/keys.json` and nothing else. A **decision** vector hands the same
+recipes to a *subject* — a real client, named by a command — and reads what it did with them:
 
     python3 runner/run_peer.py                     # every frame vector
     python3 runner/run_peer.py --vector 102        # one of them
     python3 runner/run_peer.py --mutation no-verify   # with a guard removed
     python3 runner/run_peer.py --mutation-census   # what each vector catches
+    python3 runner/run_peer.py --subject "my-client --drive"
 
-**The decision layer is not runnable here and this runner does not pretend it is.** A
-`"kind": "decision"` vector is about what a real client does with a frame it has received —
-what it applied, what it dropped and why, what it published, whether it ended — and it needs
-two things that do not exist: a subject (a client, `--subject`) and a relay that speaks
-`selvage/2` to seat it in a room. Every such vector is reported **not attempted**, with the
-reason, and `not attempted` is not `passed`: the summary counts the two separately and a
-reader of a green run can see how much of the corpus it did not run.
+**In the decision layer the runner is the relay.** A `"kind": "decision"` vector is about
+what a real client does with a frame it has already received — what it applied, what it
+dropped and why, what it published, whether it ended — and the frames it would receive on a
+socket are the vector's own `deliver` steps, sealed here and handed over through the subject
+protocol (`runner/subject.py`). `start` seats it with the invite, the fixture session keypair,
+the roster and the session's clock; `expectSubject` is the decision channel. So a decision
+vector needs one thing and this runner names it: a subject.
 
 **The mutation census is what makes the corpus evidence rather than a list of assertions.** A
 conforming receiver and a wrong one both pass a vector that asserts nothing, so `--mutation-census`
-runs every frame vector twice: once as it stands, where it must pass, and once with the one
+runs every vector twice: once as it stands, where it must pass, and once with the one
 guard the vector declares it catches removed, where it must fail. A vector that stays green
 under its own mutation is a vector that does not test the rule it names, and the census is the
-red run that says so.
+red run that says so. A decision vector's guard is the *subject's*, so that half of the census
+needs a subject and reports the frame vectors apart while it waits for one.
 """
 
 from __future__ import annotations
@@ -35,6 +38,7 @@ import json
 import os
 import pathlib
 import sys
+import time
 
 from dataclasses import dataclass
 
@@ -51,8 +55,8 @@ SCHEMA_DIR = ROOT / "schema"
 PEER_DIR = ROOT / "vectors" / "peer"
 FIXTURE_DIR = ROOT / "vectors"
 
-#: What a peer vector may be. A `frame` vector is replayed here; a `decision` one needs a
-#: subject and a `selvage/2` relay and is reported as not attempted.
+#: What a peer vector may be. A `frame` vector is replayed by the receiver in `runner/sealed.py`;
+#: a `decision` one is driven against a subject, which is a real client named by a command.
 KINDS = ("frame", "decision")
 
 #: The ops a frame vector's steps may use. `test_recipe.py` checks the recipes, and
@@ -60,6 +64,22 @@ KINDS = ("frame", "decision")
 #: not know is a failure in both halves rather than a vector that validates and cannot run.
 FRAME_OPS = ("seal", "corrupt", "expectVerify", "expectReject", "expectPlaintext",
              "expectListing", "expectHolds", "expectDoc")
+
+#: The ops a decision vector's steps may use, pinned against the same table.
+DECISION_OPS = ("start", "stop", "deliver", "wait", "expectSubject")
+
+#: The invite's token. A decision vector never reaches a server, so the token is a constant
+#: whose only job is to be the string `PROTOCOL.md` §13.10 says a rejoin keeps.
+DECISION_TOKEN = "t-corpus-decision"
+
+#: The seat the subject is seated under. The vectors' states label the subject's own key with
+#: a seat of their own choosing; a `peer_id` is the host's belief about a seat (§13.4) and not
+#: a binding, so the two disagreeing is a shape §13.4 says is normal.
+DECISION_SEAT = "p-subject"
+
+#: How often an `expectSubject` reads the report while it waits for a predicate that has not
+#: held yet. The deadline is what bounds the wait; this only decides how often it looks.
+POLL_SECONDS = 0.02
 
 
 class PeerError(Exception):
@@ -349,28 +369,26 @@ def replay_vector(vector: dict, cache: dict[str, Fixture], mutations: frozenset[
     return replay_frame(fixture, vector, mutations)
 
 
-# --- the decisions this runner does not take ------------------------------------
+# --- the decision layer: the runner plays the relay -----------------------------
 
 
-def decision_reason(vector: dict, has_subject: bool) -> str:
-    """Why a decision vector was not attempted, naming both things that are missing.
+def decision_reason(has_subject: bool) -> str:
+    """Why a decision vector was not attempted.
 
-    Nothing here is a pass. The runner says which half of the corpus it ran, and a green
+    Nothing here is a pass. The runner names which half of the corpus it ran, and a green
     summary that hid a whole layer would be worse than a red one.
     """
-    missing = []
     if not has_subject:
-        missing.append('a subject (`--subject "my-client --drive"`)')
-    missing.append("a server that speaks `selvage/2` to seat a peer in a room")
-    return "a decision vector needs " + " and ".join(missing)
+        return 'a decision vector needs a subject (`--subject "my-client --drive"`)'
+    return ""
 
 
 def run_subject_probe(command: str, timeout: float) -> str:
     """Start a subject and ask it for a report, so the seam is exercised and named.
 
-    The decision vectors still do not run — they need a `selvage/2` relay as much as a
-    subject — but a subject that cannot answer the protocol's own liveness command is a
-    failure here rather than a surprise in a later phase.
+    The decision vectors drive the same seam a moment later and more thoroughly; this is the
+    one line that says the command answered at all, before a vector's first step could fail
+    for a reason that looks like a decision.
     """
     peer = subject.Subject.from_command(command, timeout=timeout)
     peer.start()
@@ -383,16 +401,347 @@ def run_subject_probe(command: str, timeout: float) -> str:
         peer.stop()
     return (
         f"subject        {command}\n"
-        f"               {report.published} frames published, {report.frames} received, "
-        f"{len(report.dropped)} dropped, ended={str(report.ended).lower()}"
+        f"               {report.published} frames published, {report.handshake} handshake "
+        f"frames, {report.frames} received, {len(report.dropped)} dropped, "
+        f"ended={str(report.ended).lower()}"
     )
+
+
+def invite_of(fixture: Fixture, step: dict) -> str:
+    """The invite a `start` hands a subject: the vector's template, substituted.
+
+    `$room_key` and `$host_key` are the fixture's two keys in the fragment's own encoding
+    (`PROTOCOL.md` §5.1), which is what makes a decision vector possible at all: the two
+    values are what a client derives the frame key from and verifies a state against, and no
+    link to a server exists for this layer to carry.
+    """
+    template = step.get("invite")
+    if not isinstance(template, str) or not template:
+        raise PeerError("`start` needs an `invite`")
+    values = {
+        "$room": fixture.room_id,
+        "$token": DECISION_TOKEN,
+        "$room_key": sealed.b64url(fixture.room_key),
+        "$host_key": sealed.b64url(fixture.host.public),
+    }
+    invite = template
+    # Longest name first: `$room` is a prefix of `$room_key`, so substituting it first would
+    # leave the room id inside a key's value and the invite would carry a fragment that spells
+    # no key at all.
+    for name, value in sorted(values.items(), key=lambda item: -len(item[0])):
+        invite = invite.replace(name, value)
+    if "$" in invite:
+        raise PeerError(f"`invite` names a value nothing substitutes: {invite}")
+    return invite
+
+
+def roster_of(vector: dict) -> list[str]:
+    """The seats the server shows as present, taken from the vector's own states.
+
+    The runner plays the relay and the roster is the relay's: the seats a delivered state
+    labels are the seats it has, so a state's `host` entry is seated and §13.8's host-away
+    clock stays disarmed. A vector that wants that clock armed carries the `peer.left` its
+    fixture list names; nothing here invents a seat the vector's frames do not name.
+    """
+    seats: list[str] = []
+    for step in vector["steps"]:
+        if step.get("op") != "deliver":
+            continue
+        payload = (step.get("recipe") or {}).get("payload")
+        peers = payload.get("peers") if isinstance(payload, dict) else None
+        if not isinstance(peers, dict):
+            continue
+        for entry in peers.values():
+            seat = entry.get("peer_id") if isinstance(entry, dict) else None
+            if isinstance(seat, str) and seat not in seats:
+                seats.append(seat)
+    return seats
+
+
+def session_key_of(fixture: Fixture, step: dict, where: str) -> str | None:
+    """The seed a `start`'s `key` names, resolved from the fixture.
+
+    The one test seam of this layer, and it is not production surface: `PROTOCOL.md` §13.1
+    mints the session keypair in memory for the connection and never persists it, so a
+    production client has no member that fixes one. It is here because a decision vector's
+    delivered state commits a *fixture* key's public half, and nothing in the protocol lets a
+    host hand a peer a chosen key: without a way to fix the keypair there is no vector that
+    can assert what a client does once a state commits it. `runner/subject.py`'s `join`
+    documents the seam where a client reads it.
+    """
+    name = step.get("key")
+    if name is None:
+        return None
+    key = fixture.keys.get(name) if isinstance(name, str) else None
+    if key is None:
+        raise PeerError(f"{where}: `key` names {name!r}, which the fixture does not have")
+    if key.private is None:
+        raise PeerError(f"{where}: {name} has no private half to be a session key with")
+    return key.private.hex()
+
+
+def scenario_of(vector: dict) -> dict:
+    """The scenario's known members, checked rather than trusted.
+
+    `keepalive` is the session's own clock, which a real session reads from `room.created` and
+    this layer has no frame to carry. `relay_withholds` names the frames the relay does not
+    forward — and the runner's frames *are* the vector's `deliver` steps, so the withholding is
+    already in which frames the vector hands over; the member is read here so that a scenario
+    naming something this runner does not know is a failure rather than a silent pass.
+    """
+    scenario = vector.get("scenario") or {}
+    if not isinstance(scenario, dict):
+        raise PeerError(f"{vector['_file']}: `scenario` is an object")
+    unknown = set(scenario) - {"keepalive", "relay_withholds"}
+    if unknown:
+        raise PeerError(
+            f"{vector['_file']}: `scenario` names {sorted(unknown)}, which nothing here reads"
+        )
+    keepalive = scenario.get("keepalive")
+    if not isinstance(keepalive, dict) or not keepalive:
+        raise PeerError(f"{vector['_file']}: `scenario.keepalive` is the session's clock")
+    withheld = scenario.get("relay_withholds", [])
+    if not isinstance(withheld, list) or any(kind not in ("kind4",) for kind in withheld):
+        raise PeerError(
+            f"{vector['_file']}: `relay_withholds` names kinds, and {withheld!r} is not one "
+            "this runner knows"
+        )
+    return scenario
+
+
+#: The report members a vector may name in an exact comparison or in `at_least` or `frozen`.
+#: `holds` is read through `holds_of`, so it is not one of these.
+REPORT_MEMBERS = (
+    "applied",
+    "dropped",
+    "published",
+    "handshake",
+    "ended",
+    "listing",
+    "text",
+    "documents",
+    "frames",
+)
+
+
+def report_member(member: str, report: subject.Report) -> object:
+    """One report member as a vector writes it.
+
+    A name the report does not carry is a failure with a name rather than an `AttributeError`:
+    `frozen` and `at_least` name their members in the vector, and a typo there must be a red
+    vector and not a traceback that stops the run.
+    """
+    if member not in REPORT_MEMBERS:
+        raise PeerError(
+            f"`{member}` is not a report member; the report carries "
+            f"{', '.join(REPORT_MEMBERS)}, and `holds` is read under the fixture's names"
+        )
+    if member == "applied":
+        return [dict(entry) for entry in report.applied]
+    if member == "dropped":
+        return [{"frame": entry.frame, "reason": entry.reason} for entry in report.dropped]
+    return getattr(report, member)
+
+
+def holds_of(fixture: Fixture, report: subject.Report) -> dict[str, list[str]]:
+    """The report's `holds`, under the names a vector writes.
+
+    A subject reports the key it has — the state's canonical spelling, or the id in hex — and
+    the runner resolves a fixture key's name, spelling and id to the one name. The paths are
+    compared as a set: `CANONICAL.md` §2.7 gives a holds array no order.
+    """
+    names: dict[str, str] = {}
+    for name, key in fixture.keys.items():
+        names[name] = name
+        names[key.hex_id] = name
+        names[sealed.b64url(key.public)] = name
+    return {
+        names.get(raw, raw): sorted(paths) for raw, paths in report.holds.items()
+    }
+
+
+def unmet(step: dict, report: subject.Report, fixture: Fixture) -> list[str]:
+    """Every member an `expectSubject` asserts that the report does not satisfy.
+
+    Each failure carries both values, because a poll that times out prints the last one and a
+    reader has to be able to see what the subject actually held.
+    """
+    failures: list[str] = []
+    for member in ("applied", "dropped", "published", "handshake", "ended", "listing",
+                   "text"):
+        if member not in step:
+            continue
+        actual, want = report_member(member, report), step[member]
+        if actual != want:
+            failures.append(
+                f"`{member}` is {json.dumps(want)} in the vector and "
+                f"{json.dumps(actual)} in the report"
+            )
+    if "holds" in step:
+        actual = holds_of(fixture, report)
+        for key, paths in step["holds"].items():
+            if actual.get(key, []) != sorted(paths):
+                failures.append(
+                    f"`holds[{key}]` is {json.dumps(sorted(paths))} in the vector and "
+                    f"{json.dumps(actual.get(key, []))} in the report"
+                )
+    for member, bound in (step.get("at_least") or {}).items():
+        actual = report_member(member, report)
+        if not isinstance(actual, int) or isinstance(actual, bool) or actual < bound:
+            failures.append(
+                f"`{member}` must be at least {bound} and is {json.dumps(actual)}"
+            )
+    return failures
+
+
+@dataclass
+class DecisionRun:
+    """One decision vector, driven against one subject, with the runner as its relay."""
+
+    vector: dict
+    fixture: Fixture
+    command: str
+    timeout: float
+    mutation: str | None = None
+    run: subject.Subject | None = None
+    frames: int = 0
+    assertions: int = 0
+
+    def drive(self) -> int:
+        """Runs the vector's steps in order, returning its assertion steps."""
+        self.run = subject.Subject.from_command(self.command, timeout=self.timeout)
+        self.run.start()
+        try:
+            for index, step in enumerate(self.vector["steps"]):
+                self.step(index, step)
+        finally:
+            if self.run is not None:
+                self.run.quit()
+            self.run = None
+        return self.assertions
+
+    def step(self, index: int, step: dict) -> None:
+        where = f"step {index} (`{step.get('op')}`)"
+        handler = {
+            "start": self.start,
+            "stop": self.stop,
+            "deliver": self.deliver,
+            "wait": self.wait,
+            "expectSubject": self.expect,
+        }.get(step.get("op"))
+        if handler is None:
+            raise PeerError(f"{where}: `{step.get('op')}` is not a step of a decision vector")
+        handler(where, step)
+
+    def start(self, where: str, step: dict) -> None:
+        """Seat the subject: the invite, the clock, the roster, and the session keypair."""
+        if self.run is None:
+            raise PeerError(f"{where}: the subject is not running")
+        scenario = scenario_of(self.vector)
+        self.run.join(
+            invite_of(self.fixture, step),
+            path=step.get("path"),
+            offline=True,
+            keepalive=scenario["keepalive"],
+            seat=DECISION_SEAT,
+            roster=roster_of(self.vector),
+            session_key=session_key_of(self.fixture, step, where),
+            relay_withholds=scenario.get("relay_withholds") or None,
+        )
+        if self.mutation is not None:
+            self.run.mutate(self.mutation)
+
+    def stop(self, where: str, step: dict) -> None:
+        if self.run is None:
+            raise PeerError(f"{where}: the subject is not running")
+        self.run.quit()
+        self.run = None
+
+    def deliver(self, where: str, step: dict) -> None:
+        """Seal the recipe and hand the frame over, as the relay would."""
+        if self.run is None:
+            raise PeerError(f"{where}: the subject is not running")
+        raw = sealed.seal(self.fixture, step["recipe"]).bytes()
+        _same_bytes(where, step, raw)
+        report = self.run.deliver(raw)
+        self.frames += 1
+        if report.frames != self.frames:
+            raise PeerError(
+                f"{where}: the subject counts {report.frames} frames received and this "
+                f"step is the {self.frames}th it was handed"
+            )
+
+    def wait(self, where: str, step: dict) -> None:
+        """A timer the vector is testing. The runner does the waiting, always."""
+        milliseconds = step.get("ms")
+        if not isinstance(milliseconds, int) or isinstance(milliseconds, bool) or milliseconds < 0:
+            raise PeerError(f"{where}: `wait` needs `ms`")
+        time.sleep(milliseconds / 1000)
+
+    def expect(self, where: str, step: dict) -> None:
+        """One `expectSubject`: the exact members, the bounds, and the frozen window.
+
+        `within_ms` bounds two waits and both are the vector's own number: the poll for the
+        members the step asserts, which may not hold yet, and — when `frozen` is there — one
+        window in which the named members must not move. The window starts where the poll
+        ends, so a step whose members already hold waits the whole of it.
+        """
+        self.assertions += 1
+        within = step.get("within_ms")
+        deadline = None if within is None else time.monotonic() + within / 1000
+        report = self.settle(where, step, deadline)
+        if "frozen" in step:
+            self.freeze(where, step, report, deadline)
+
+    def settle(self, where: str, step: dict, deadline: float | None) -> subject.Report:
+        """The report the step asserts, polled to its deadline or refused at once."""
+        while True:
+            report = self.report(where)
+            failures = unmet(step, report, self.fixture)
+            if not failures:
+                return report
+            if deadline is None or time.monotonic() >= deadline:
+                raise PeerError(f"{where}: " + "; ".join(failures))
+            time.sleep(POLL_SECONDS)
+
+    def freeze(self, where: str, step: dict, before: subject.Report,
+               deadline: float | None) -> None:
+        """Names the report's members must not move over the window `within_ms` gives."""
+        if deadline is None:
+            raise PeerError(f"{where}: `frozen` needs the `within_ms` it is frozen over")
+        while time.monotonic() < deadline:
+            time.sleep(POLL_SECONDS)
+        after = self.report(where)
+        moved = [
+            member
+            for member in step["frozen"]
+            if report_member(member, after) != report_member(member, before)
+        ]
+        if moved:
+            raise PeerError(
+                f"{where}: "
+                + "; ".join(
+                    f"`{member}` moved over the window from "
+                    f"{json.dumps(report_member(member, before))} to "
+                    f"{json.dumps(report_member(member, after))}"
+                    for member in moved
+                )
+            )
+
+    def report(self, where: str) -> subject.Report:
+        if self.run is None:
+            raise PeerError(f"{where}: the subject is not running")
+        return self.run.report()
 
 
 # --- the run --------------------------------------------------------------------
 
 
 def attempt(
-    vector: dict, cache: dict[str, Fixture], mutations: frozenset[str], has_subject: bool
+    vector: dict,
+    cache: dict[str, Fixture],
+    mutations: frozenset[str],
+    driver: "Driver",
 ) -> Outcome:
     outcome = Outcome(
         name=vector["_file"],
@@ -405,14 +754,42 @@ def attempt(
     except CorpusError as error:
         outcome.failure = str(error)
         return outcome
-    if vector["kind"] == "decision":
-        outcome.not_attempted = decision_reason(vector, has_subject)
-        return outcome
     try:
-        outcome.assertions = replay_vector(vector, cache, mutations)
-    except (PeerError, SealedError) as error:
-        outcome.failure = str(error)
+        if vector["kind"] == "decision":
+            if driver.command is None:
+                outcome.not_attempted = decision_reason(False)
+                return outcome
+            fixture = fixture_for(vector, cache)
+            outcome.assertions = DecisionRun(
+                vector=vector,
+                fixture=fixture,
+                command=driver.command,
+                timeout=driver.timeout,
+                mutation=driver.mutation,
+            ).drive()
+        else:
+            outcome.assertions = replay_vector(vector, cache, mutations)
+    except (PeerError, SealedError, subject.SubjectError) as error:
+        if isinstance(error, subject.SubjectError) and driver.command is not None \
+                and vector["kind"] == "decision":
+            outcome.failure = f"the subject {driver.command!r} failed: {error}"
+        else:
+            outcome.failure = str(error)
     return outcome
+
+
+@dataclass
+class Driver:
+    """What drives the decision layer: a subject's command line, and which guard is removed.
+
+    Both halves of this runner take it. A frame vector ignores the command — it needs no
+    client — and a decision vector cannot be attempted without one, which is the whole of
+    what `not attempted` means here.
+    """
+
+    command: str | None = None
+    timeout: float = subject.DEFAULT_TIMEOUT
+    mutation: str | None = None
 
 
 def describe(outcome: Outcome) -> str:
@@ -424,24 +801,29 @@ def describe(outcome: Outcome) -> str:
 
 
 def run_corpus(vectors: list[dict], mutation: str | None, selected: str | None,
-               has_subject: bool) -> list[Outcome]:
+               driver: Driver) -> list[Outcome]:
     cache: dict[str, Fixture] = {}
     outcomes = []
     for vector in vectors:
         if selected is not None and vector.get("id") != selected:
             continue
         mutations = frozenset({mutation}) if mutation else frozenset()
-        outcomes.append(attempt(vector, cache, mutations, has_subject))
+        outcomes.append(attempt(vector, cache, mutations, driver))
     return outcomes
 
 
-def mutation_census(vectors: list[dict], has_subject: bool) -> tuple[list[str], int]:
+def mutation_census(vectors: list[dict], driver: Driver) -> tuple[list[str], int]:
     """Runs every vector twice: clean, and with the guard it says it catches removed.
 
     The positive control is the second half of it: a vector that declares no mutation must
     stay **green under every mutation there is**, because the alternative way to pass a corpus
     of refusals is to refuse everything. A vector that fails one of those is not a positive
     control, whatever its title says.
+
+    The two layers have two tables and neither may declare the other's: a frame vector catches
+    a *receiver's* guard (`sealed.MUTATIONS`), and a decision vector catches a *client's*
+    (`subject.SUBJECT_MUTATIONS`). A decision vector's census needs a subject, so without one
+    it is reported not attempted rather than counted either way.
     """
     report: list[str] = []
     failures = 0
@@ -449,10 +831,9 @@ def mutation_census(vectors: list[dict], has_subject: bool) -> tuple[list[str], 
     for vector in vectors:
         name = vector["_file"]
         catches = vector.get("catches")
-        if vector.get("kind") != "frame":
-            report.append(
-                f"not attempted  {name:<40} {decision_reason(vector, has_subject)}"
-            )
+        if vector.get("kind") == "decision":
+            lines, failures = decision_census(vector, cache, driver, failures)
+            report.extend(lines)
             continue
         try:
             check_vector(vector)
@@ -516,6 +897,56 @@ def mutation_census(vectors: list[dict], has_subject: bool) -> tuple[list[str], 
     return report, failures
 
 
+def decision_census(
+    vector: dict, cache: dict[str, Fixture], driver: Driver, failures: int
+) -> tuple[list[str], int]:
+    """One decision vector, run clean and then under the guard it declares it catches."""
+    name = vector["_file"]
+    catches = vector.get("catches")
+    if driver.command is None:
+        return [f"not attempted  {name:<40} {decision_reason(False)}"], failures
+    try:
+        check_vector(vector)
+    except CorpusError as error:
+        return [f"FAIL           {name:<40} {error}"], failures + 1
+    if catches is None:
+        return [
+            f"FAIL           {name:<40} declares no mutation, and every decision vector is a "
+            "rule vector with one to catch"
+        ], failures + 1
+    if catches not in subject.SUBJECT_MUTATIONS:
+        why = (
+            "which removes a receiver's rule: a decision vector can only catch a client's"
+            if catches in sealed.MUTATIONS
+            else "which no mutation table names"
+        )
+        return [f"FAIL           {name:<40} declares `{catches}`, {why}"], failures + 1
+    # The clean run is clean whatever `--mutation` said: the census is about each vector's own
+    # declared guard, and a driver that already carries one would make the positive half run
+    # mutated.
+    clean = Driver(command=driver.command, timeout=driver.timeout, mutation=None)
+    result = attempt(vector, cache, frozenset(), clean)
+    if result.not_attempted is not None:
+        return [f"not attempted  {name:<40} {result.not_attempted}"], failures
+    if result.failure is not None:
+        return [f"FAIL           {name:<40} without a mutation: {result.failure}"], failures + 1
+    under = Driver(command=driver.command, timeout=driver.timeout, mutation=catches)
+    red = attempt(vector, cache, frozenset(), under).failure
+    if red is None:
+        return [
+            f"FAIL           {name:<40} stays green under `{catches}`, the mutation it "
+            "declares it catches"
+        ], failures + 1
+    if "(`expectSubject`)" not in red:
+        # A subject that refused to remove the guard, a recipe that drifted from its bytes or a
+        # step the runner would not take is a failure of the harness, and counting one of them
+        # as the red run would let a vector with no guard at all pass the census.
+        return [
+            f"FAIL           {name:<40} failed under `{catches}` before any expectation: {red}"
+        ], failures + 1
+    return [f"census         {name:<40} red under `{catches}`, green without it"], failures
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--vector", metavar="ID", help="replay one vector, by its id")
@@ -537,7 +968,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--subject",
         metavar="COMMAND",
-        help="a client to drive over the subject protocol, for a later phase's decision layer",
+        help="a client to drive over the subject protocol, which the decision vectors need",
     )
     parser.add_argument(
         "--subject-timeout", type=float, default=subject.DEFAULT_TIMEOUT, metavar="SECONDS",
@@ -548,7 +979,7 @@ def main(argv: list[str] | None = None) -> int:
         print("a receiver's guard, removed by `sealed.Reader`:")
         for name, what in sealed.MUTATIONS.items():
             print(f"  {name:<18} {what}")
-        print("a client's guard, removed by the subject (a later phase):")
+        print("a client's guard, removed by the subject:")
         for name, what in subject.SUBJECT_MUTATIONS.items():
             print(f"  {name:<18} {what}")
         return 0
@@ -560,10 +991,12 @@ def main(argv: list[str] | None = None) -> int:
         print(f"FAIL   corpus: {error}")
         return 1
 
-    if args.mutation is not None and args.mutation not in sealed.MUTATIONS:
+    if args.mutation is not None and args.mutation not in sealed.MUTATIONS \
+            and args.mutation not in subject.SUBJECT_MUTATIONS:
         print(
-            f"FAIL   `{args.mutation}` is not a mutation of the frame layer:\n"
-            f"       {', '.join(sorted(sealed.MUTATIONS))}",
+            f"FAIL   `{args.mutation}` is not a mutation of either layer:\n"
+            f"       a receiver's: {', '.join(sorted(sealed.MUTATIONS))}\n"
+            f"       a client's:  {', '.join(sorted(subject.SUBJECT_MUTATIONS))}",
             file=sys.stderr,
         )
         return 2
@@ -575,18 +1008,30 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL   subject: {error}")
             return 1
 
+    # A mutation belongs to one layer: `sealed.MUTATIONS` removes a receiver's guard and
+    # `subject.SUBJECT_MUTATIONS` a client's, and neither table names the other's. Handing one
+    # name to both would fail every vector of the layer that does not know it.
+    driver = Driver(
+        command=args.subject,
+        timeout=args.subject_timeout,
+        mutation=args.mutation if args.mutation in subject.SUBJECT_MUTATIONS else None,
+    )
+    receiver_mutation = args.mutation if args.mutation in sealed.MUTATIONS else None
+
     if args.mutation_census:
-        report, failures = mutation_census(vectors, args.subject is not None)
+        report, failures = mutation_census(vectors, driver)
         for line in report:
             print(line)
         frames = sum(1 for vector in vectors if vector.get("kind") == "frame")
+        decisions = sum(1 for vector in vectors if vector.get("kind") == "decision")
         print(
-            f"census summary {frames} frame vectors, {len(sealed.MUTATIONS)} mutations, "
-            f"{failures} failed"
+            f"census summary {frames} frame vectors, {len(sealed.MUTATIONS)} receiver "
+            f"mutations, {decisions} decision vectors, {len(subject.SUBJECT_MUTATIONS)} "
+            f"client mutations, {failures} failed"
         )
         return 1 if failures else 0
 
-    outcomes = run_corpus(vectors, args.mutation, args.vector, args.subject is not None)
+    outcomes = run_corpus(vectors, receiver_mutation, args.vector, driver)
     if not outcomes:
         print(f"FAIL   no peer vector has the id {args.vector!r}", file=sys.stderr)
         return 2
@@ -597,11 +1042,12 @@ def main(argv: list[str] | None = None) -> int:
     skipped = sum(1 for outcome in outcomes if not outcome.attempted)
     assertions = sum(outcome.assertions for outcome in outcomes)
     frames = sum(1 for outcome in outcomes if outcome.kind == "frame")
+    decisions = sum(1 for outcome in outcomes if outcome.kind == "decision")
     subject_note = args.subject if args.subject is not None else "no subject named"
     print(
-        f"summary        {len(outcomes)} files, {frames} frame vectors, {assertions} "
-        f"assertion steps, {passed} passed, {failed} failed, {skipped} not attempted "
-        f"({subject_note})"
+        f"summary        {len(outcomes)} files, {frames} frame vectors, {decisions} "
+        f"decision vectors, {assertions} assertion steps, {passed} passed, {failed} failed, "
+        f"{skipped} not attempted ({subject_note})"
     )
     return 1 if failed else 0
 
