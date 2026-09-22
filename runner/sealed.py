@@ -675,6 +675,20 @@ class Reader:
                 return "host"
         return entries[0].role
 
+    def role_of_key(self, key: Key) -> str | None:
+        """The role the applied state gives **this key**, which is the role a frame that verified
+        against it is read with (`PROTOCOL.md` §13.4).
+
+        `role_of` resolves an 8-byte id and cannot tell two colliding keys apart — that is what
+        `CANONICAL.md` §6.1 makes the id: an index and not an identity. A frame's role is read
+        from the key that verified, so a collision between a `guest` and a `viewer` refuses the
+        `viewer`'s content rather than applying it under the `guest`'s role.
+        """
+        for peer in self.committed.values():
+            if peer.key.public == key.public:
+                return peer.role
+        return None
+
     # -- the read --------------------------------------------------------------
 
     def read(self, frame: bytes) -> Verdict:
@@ -804,7 +818,7 @@ class Reader:
                 return self._refuse(envelope, kind, "stale_issued")
 
         if kind == 0 and self._is_content(message):
-            if self.role_of(key.hex_id) == "viewer" and "no-roles" not in mutations:
+            if self.role_of_key(key) == "viewer" and "no-roles" not in mutations:
                 return self._refuse(envelope, kind, "unauthorised_content")
 
         return self._accept(envelope, kind, key.hex_id, plaintext, payload, message)

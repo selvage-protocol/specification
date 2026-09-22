@@ -509,8 +509,33 @@ def scenario_of(vector: dict) -> dict:
     return scenario
 
 
+#: The report members a vector may name in an exact comparison or in `at_least` or `frozen`.
+#: `holds` is read through `holds_of`, so it is not one of these.
+REPORT_MEMBERS = (
+    "applied",
+    "dropped",
+    "published",
+    "handshake",
+    "ended",
+    "listing",
+    "text",
+    "documents",
+    "frames",
+)
+
+
 def report_member(member: str, report: subject.Report) -> object:
-    """One report member as a vector writes it."""
+    """One report member as a vector writes it.
+
+    A name the report does not carry is a failure with a name rather than an `AttributeError`:
+    `frozen` and `at_least` name their members in the vector, and a typo there must be a red
+    vector and not a traceback that stops the run.
+    """
+    if member not in REPORT_MEMBERS:
+        raise PeerError(
+            f"`{member}` is not a report member; the report carries "
+            f"{', '.join(REPORT_MEMBERS)}, and `holds` is read under the fixture's names"
+        )
     if member == "applied":
         return [dict(entry) for entry in report.applied]
     if member == "dropped":
@@ -896,16 +921,28 @@ def decision_census(
             else "which no mutation table names"
         )
         return [f"FAIL           {name:<40} declares `{catches}`, {why}"], failures + 1
-    clean = attempt(vector, cache, frozenset(), driver)
-    if clean.not_attempted is not None:
-        return [f"not attempted  {name:<40} {clean.not_attempted}"], failures
-    if clean.failure is not None:
-        return [f"FAIL           {name:<40} without a mutation: {clean.failure}"], failures + 1
+    # The clean run is clean whatever `--mutation` said: the census is about each vector's own
+    # declared guard, and a driver that already carries one would make the positive half run
+    # mutated.
+    clean = Driver(command=driver.command, timeout=driver.timeout, mutation=None)
+    result = attempt(vector, cache, frozenset(), clean)
+    if result.not_attempted is not None:
+        return [f"not attempted  {name:<40} {result.not_attempted}"], failures
+    if result.failure is not None:
+        return [f"FAIL           {name:<40} without a mutation: {result.failure}"], failures + 1
     under = Driver(command=driver.command, timeout=driver.timeout, mutation=catches)
-    if attempt(vector, cache, frozenset(), under).failure is None:
+    red = attempt(vector, cache, frozenset(), under).failure
+    if red is None:
         return [
             f"FAIL           {name:<40} stays green under `{catches}`, the mutation it "
             "declares it catches"
+        ], failures + 1
+    if "(`expectSubject`)" not in red:
+        # A subject that refused to remove the guard, a recipe that drifted from its bytes or a
+        # step the runner would not take is a failure of the harness, and counting one of them
+        # as the red run would let a vector with no guard at all pass the census.
+        return [
+            f"FAIL           {name:<40} failed under `{catches}` before any expectation: {red}"
         ], failures + 1
     return [f"census         {name:<40} red under `{catches}`, green without it"], failures
 
@@ -971,9 +1008,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"FAIL   subject: {error}")
             return 1
 
+    # A mutation belongs to one layer: `sealed.MUTATIONS` removes a receiver's guard and
+    # `subject.SUBJECT_MUTATIONS` a client's, and neither table names the other's. Handing one
+    # name to both would fail every vector of the layer that does not know it.
     driver = Driver(
-        command=args.subject, timeout=args.subject_timeout, mutation=args.mutation
+        command=args.subject,
+        timeout=args.subject_timeout,
+        mutation=args.mutation if args.mutation in subject.SUBJECT_MUTATIONS else None,
     )
+    receiver_mutation = args.mutation if args.mutation in sealed.MUTATIONS else None
 
     if args.mutation_census:
         report, failures = mutation_census(vectors, driver)
@@ -988,7 +1031,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 1 if failures else 0
 
-    outcomes = run_corpus(vectors, args.mutation, args.vector, driver)
+    outcomes = run_corpus(vectors, receiver_mutation, args.vector, driver)
     if not outcomes:
         print(f"FAIL   no peer vector has the id {args.vector!r}", file=sys.stderr)
         return 2

@@ -1460,6 +1460,20 @@ it is unfixed and named here, and `reference_server`'s
 corrected. The other five — 151, 152, 153, 155 and 156 — pass, and each goes red under the guard it
 declares it catches.
 
+**A third disagreement between the two readers, found by review and left open.** `kind = 0`'s
+plaintext is the y-protocols stream of `PROTOCOL.md` §7 and what a receiver does with bytes that
+are not one is unstated (`NOTES.md` §B.38, item 2). The two readers answer it differently, in both
+directions: `runner/sealed.py` decodes the framing and refuses `bad_payload` for anything it cannot
+read — which includes a message type 2 or 3, where §7 has a receiver read an `auth` message and
+ignore it and lets a client ignore an awareness query — while `sealed.rs`'s step 8 for `kind = 0`
+carries the plaintext whole and refuses nothing, so a client built on it accepts a stream no
+decoder reads and applies nothing. That is now an observable difference and not only a verdict one,
+because §13.6 makes a content refusal what a client re-syncs on. It is **not** fixed here and it is
+not one of the two defects: §B.38 records the question as open, no vector asserts it, and settling
+it means deciding how much of a y-protocols stream a receiver validates, which is this version's to
+say and not a pass's. What the next pass needs is one sentence in §7 or §6.1 — what a `kind = 0`
+plaintext that is not a stream of §7's message table is — and then both readers move to it.
+
 **Two more things reading the vectors as an implementer turned up, neither an error in the spec.**
 `scenario.relay_withholds` (vector 153) names a kind the relay does not forward; the runner's frames
 *are* the vector's `deliver` steps, so the withholding is already in which frames the vector hands

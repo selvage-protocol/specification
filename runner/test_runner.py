@@ -1025,6 +1025,9 @@ def run_stub_subject(behaviour: str) -> int:
             continue
         if name == "quit":
             reply: object = {"ok": True}
+        elif behaviour == "no-mutate" and name == "mutate":
+            # A subject that implements no mutations: it must be a census failure, not a red run.
+            reply = {"ok": False, "error": "I have no guards to remove"}
         elif behaviour == "refuse":
             reply = {"ok": False, "error": "I cannot do that"}
         elif behaviour == "bad-report":
@@ -1047,13 +1050,14 @@ def stub_report(
 ) -> dict:
     """The report a stub answers a command with.
 
-    `STUB_REPORT` for the protocol's own cases, and a minimal one for `decisions`, which is what
-    a decision vector's members are asserted against. The `decisions` double answers a mutation
-    by moving `published`, which is what a removed guard does to a real client's decision and
-    what the census has to notice; `wrong-count` is the shape a subject that counts differently
-    from the runner has.
+    `STUB_REPORT` for the protocol's own cases, and a minimal one for `decisions`, `wrong-count`
+    and `no-mutate`, which is what a decision vector's members are asserted against. The
+    `decisions` double answers a mutation by moving `published`, which is what a removed guard
+    does to a real client's decision and what the census has to notice; `wrong-count` is the
+    shape a subject that counts differently from the runner has, and `no-mutate` one that refuses
+    to remove a guard at all.
     """
-    if behaviour not in ("decisions", "wrong-count"):
+    if behaviour not in ("decisions", "wrong-count", "no-mutate"):
         report = {**STUB_REPORT, "applied": list(applied), "frames": handed}
         return {**report, "mutation": mutated} if command == "mutate" else report
     return {
@@ -1209,6 +1213,15 @@ class AliasedKey(sealed.Key):
         return self.alias
 
 
+def content_frame(signer: sealed.Key, shared_id: bytes) -> bytes:
+    """A `kind = 0` frame carrying a SyncStep2, sealed under `shared_id` and signed by `signer`.
+
+    `00 01 01 00` is message type 0 (sync), subtype 1 (SyncStep2) and a one-byte payload: enough
+    for §13.5's rule, which is about the message's type and not about what it carries.
+    """
+    return sealed_frame(signer, shared_id, 0, bytes.fromhex("00010100"))
+
+
 def shared_id_frame(signer: sealed.Key, shared_id: bytes) -> bytes:
     """One holds frame whose envelope carries `shared_id` and whose signature is `signer`'s.
 
@@ -1217,9 +1230,14 @@ def shared_id_frame(signer: sealed.Key, shared_id: bytes) -> bytes:
     envelope carries, so a frame attributed to a shared id is sealed *under* that id and then
     signed by one of the keys that id names.
     """
-    kind, epoch, counter = 3, 0, 1
-    nonce = bytes.fromhex("031e2f3a4b5c6d7e8f90a1b2")
     plaintext = json.dumps({"holds": ["src/main.rs"]}, **sealed.CANONICAL).encode("utf-8")
+    return sealed_frame(signer, shared_id, 3, plaintext)
+
+
+def sealed_frame(signer: sealed.Key, shared_id: bytes, kind: int, plaintext: bytes) -> bytes:
+    """One frame sealed under `shared_id` and signed by `signer`, which is a collision's shape."""
+    epoch, counter = 0, 1
+    nonce = bytes.fromhex("031e2f3a4b5c6d7e8f90a1b2")
     aad = sealed.associated_data(FIXTURE.room_id, kind, epoch, shared_id)
     ciphertext = sealed.AESGCM(FIXTURE.frame_key()).encrypt(nonce, plaintext, aad)
     envelope = sealed.Envelope(shared_id, kind, epoch, counter, nonce, ciphertext)
@@ -1261,6 +1279,45 @@ class TestKeyIdCollision(unittest.TestCase):
         self.assertEqual(verdict.payload["holds"], ["src/main.rs"])
         # The set belongs to the key that verified, which is the one whose signature did.
         self.assertEqual(reader.holds[verdict.sender], ["src/main.rs"])
+
+    def test_the_role_reads_from_the_key_that_verified_and_not_from_the_shared_id(self) -> None:
+        # §13.4: the role is the state's, and it is a *key's*. An id cannot tell two colliding
+        # keys apart, so a `viewer` whose id collides with a `guest`'s would have its content
+        # applied under the guest's role if the reader asked the id.
+        reader = sealed.Reader(FIXTURE)
+        guest = FIXTURE.key("guest-1")
+        viewer = FIXTURE.key("mallory-1")
+        aliased = AliasedKey(
+            name="mallory-1", public=viewer.public, private=None, alias=guest.hex_id
+        )
+        reader.committed = {
+            sealed.b64url(guest.public): sealed.Peer(guest, "guest", "p-1"),
+            sealed.b64url(viewer.public): sealed.Peer(aliased, "viewer", "p-2"),
+        }
+        # The id names both entries, and `role_of` reads whichever key comes first in the
+        # state's own order — here the viewer's, because its spelling sorts before the guest's.
+        # Which of the two an id-read returns is an accident of spelling; which key verified is
+        # not.
+        self.assertEqual(len(reader.by_key_id(guest.hex_id)), 2)
+        self.assertEqual(reader.role_of_key(guest), "guest")
+        self.assertEqual(reader.role_of_key(viewer), "viewer")
+
+    def test_a_viewers_content_is_refused_under_a_colliding_id(self) -> None:
+        reader = sealed.Reader(FIXTURE)
+        guest = FIXTURE.key("guest-1")
+        viewer = FIXTURE.key("mallory-1")
+        aliased = AliasedKey(
+            name="mallory-1", public=viewer.public, private=None, alias=guest.hex_id
+        )
+        reader.committed = {
+            sealed.b64url(guest.public): sealed.Peer(guest, "guest", "p-1"),
+            sealed.b64url(viewer.public): sealed.Peer(aliased, "viewer", "p-2"),
+        }
+        # A SyncStep2, the plaintext a `kind = 0` content frame carries: it needs no CRDT
+        # because §13.5's rule is read from the message's own type.
+        verdict = reader.read(content_frame(viewer, guest.id))
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.reason, "unauthorised_content")
 
     def test_a_frame_no_key_of_a_collision_signed_is_still_a_bad_signature(self) -> None:
         verdict = self.colliding_reader().read(
@@ -1579,6 +1636,57 @@ class TestDecisionLayer(unittest.TestCase):
         )
         self.assertEqual(failures, 1)
         self.assertTrue(any("removes a receiver's rule" in line for line in report), report)
+
+    def test_a_typo_in_a_frozen_member_is_a_named_failure_and_not_a_traceback(self) -> None:
+        steps = [self.start_step(), self.expect(frozen=["publishd"], within_ms=50)]
+        with self.assertRaises(run_peer.PeerError) as caught:
+            self.run_vector(steps)
+        self.assertIn("`publishd` is not a report member", str(caught.exception))
+
+    def test_a_typo_in_an_at_least_member_is_a_named_failure(self) -> None:
+        steps = [self.start_step(), self.expect(at_least={"publishd": 1})]
+        with self.assertRaises(run_peer.PeerError) as caught:
+            self.run_vector(steps)
+        self.assertIn("`publishd` is not a report member", str(caught.exception))
+
+    def test_the_clean_run_of_a_census_is_clean_whatever_the_caller_passed(self) -> None:
+        # `--mutation-census --mutation X` must still run each vector's positive half without a
+        # mutation: the census is about each vector's own declared guard.
+        steps = [self.start_step(), self.expect(published=1)]
+        driver = run_peer.Driver(command=self.command(), timeout=5.0, mutation="announce-once")
+        report, failures = run_peer.mutation_census(
+            [self.vector(steps, catches="announce-once")], driver
+        )
+        self.assertEqual(failures, 0, report)
+        self.assertFalse(any("without a mutation" in line for line in report), report)
+        self.assertTrue(any("red under `announce-once`" in line for line in report), report)
+
+    def test_a_subject_that_will_not_remove_a_guard_is_not_a_red_run(self) -> None:
+        # Any failure of the mutated run used to count as the vector catching its guard, so a
+        # subject that cannot remove one passed the census without testing anything.
+        steps = [self.start_step(), self.expect(published=1)]
+        driver = run_peer.Driver(command=self.command("no-mutate"), timeout=5.0)
+        report, failures = run_peer.mutation_census(
+            [self.vector(steps, catches="announce-once")], driver
+        )
+        self.assertEqual(failures, 1)
+        self.assertTrue(
+            any("before any expectation" in line for line in report), report
+        )
+
+    def test_each_mutation_goes_only_to_the_layer_whose_table_names_it(self) -> None:
+        # Each table names its own guards and neither names the other's: handing `no-lease` to a
+        # receiver fails every frame vector, and handing `no-verify` to a subject fails every
+        # decision vector.
+        self.assertEqual(run_peer.main(["--mutation", "no-lease", "--vector", "101"]), 0)
+        with mock.patch.object(run_peer, "DecisionRun") as run:
+            run.return_value.drive.return_value = 0
+            run_peer.main(["--subject", self.command(), "--mutation", "no-verify", "--vector", "151"])
+            self.assertIsNone(run.call_args.kwargs["mutation"], "a receiver's guard")
+            run_peer.main(
+                ["--subject", self.command(), "--mutation", "announce-once", "--vector", "151"]
+            )
+            self.assertEqual(run.call_args.kwargs["mutation"], "announce-once")
 
     def test_a_subject_that_cannot_start_is_a_named_failure(self) -> None:
         vector = self.vector([self.start_step()])

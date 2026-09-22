@@ -2460,11 +2460,16 @@ Two obligations follow from §13.2's drops, and both are about what a client sen
   chooses; the upper one is what keeps a refusal from going un-repaired for longer than the
   session's own clock. A client that has refused nothing since its last `SyncStep1` has nothing to
   re-sync, and a re-sync is a frame a peer answers only because the client's key is committed, so
-  one sent before that is still refused `uncommitted_key` (§13.1's step 4). What counts as a refusal
-  here is the *envelope's* kind: `kind = 0` is readable before any signature is verified, so a
-  content frame refused `bad_signature`, `replayed_counter` or `uncommitted_key` is as much a
-  content refusal as one refused `unauthorised_content`, and a frame refused at step 1 or 2 — a
-  malformed envelope or an unknown kind — is not a content frame at all.
+  one sent before that is still refused `uncommitted_key` (§13.1's step 4). **What counts as a
+  content refusal is the envelope's `kind` and the step that refused the frame, and nothing else.**
+  A `kind = 0` frame refused at step 3 or later of [`CANONICAL.md`](CANONICAL.md) §6.1's order is a
+  content refusal — `unknown_epoch`, `uncommitted_key`, `replayed_counter`, `bad_signature`,
+  `bad_aead`, `bad_payload` and `unauthorised_content` are all of them, and each is an example
+  rather than the list — because the frame carried content and none of it was applied. A frame
+  refused at step 1 or 2 is not: a malformed envelope and an unknown `kind` are refusals of the
+  bytes themselves, `kind = 0` is not readable from them, and no client can say what such a frame
+  carried. Nothing about the reason's *kind* is read here, so a client that re-syncs on a refusal
+  the vocabulary gained later is conforming without a rule being added for it.
 - **A client publishes what it is allowed to publish, and nothing else**: not until a state commits
   its session key (§13.1), its session-key announcement alone before that, no document content at
   all on a connection whose key the state gives role `viewer` (§13.5), and nothing beyond what §7's
