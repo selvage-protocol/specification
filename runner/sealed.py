@@ -296,6 +296,15 @@ def varuint8array(raw: bytes) -> bytes:
 
 
 def read_varuint(data: bytes, at: int) -> tuple[int, int]:
+    """One LEB128 value and the offset after it.
+
+    A byte read at shift 63 may set only bit 0. Anything above it spells a value past 64
+    bits, and no writer of `CANONICAL.md` §6.1's `varUint` fields — a counter, a kind, an
+    epoch, a length — produces one: Python would widen it into an integer no reader of the
+    frozen layout holds, which is a different frame from the one the bytes name. The
+    overlong *spelling* of a value below 64 bits (a `80 00` for `0`) is a separate question
+    (`NOTES.md` §B.38) and is read here as it is written, since its bytes are unambiguous.
+    """
     value = 0
     shift = 0
     while True:
@@ -303,7 +312,10 @@ def read_varuint(data: bytes, at: int) -> tuple[int, int]:
             raise SealedError("the bytes run out inside a varUint")
         byte = data[at]
         at += 1
-        value |= (byte & 0x7F) << shift
+        low = byte & 0x7F
+        if shift == 63 and low & 0x7E:
+            raise SealedError("a varUint longer than 64 bits")
+        value |= low << shift
         if not byte & 0x80:
             return value, at
         shift += 7
@@ -733,15 +745,31 @@ class Reader:
             held = [peer.key for peer in self.by_key_id(envelope.key_id.hex())]
             if "no-commit" in mutations:
                 held += list(self.announced.values())
-        key = next((candidate for candidate in held if candidate.id == envelope.key_id), None)
-        if key is None:
+        candidates = [key for key in held if key.id == envelope.key_id]
+        if not candidates:
             return self._refuse(envelope, kind, "uncommitted_key")
 
-        if kind in (0, 3) and self._replayed(key.hex_id, envelope):
+        # The `key_id` is an index and not an identity (`CANONICAL.md` §6.1, `PROTOCOL.md`
+        # §13.4): every key that id names is tried and the frame belongs to the one whose
+        # signature verified, so a collision costs a verification that fails and never a
+        # mis-attribution. Step 5 stays where the table puts it and is read against the id,
+        # which is what a mark is kept under, so a replayed frame that is also badly signed
+        # is still `replayed_counter` and the two readers report one reason.
+        if kind in (0, 3) and self._replayed(envelope.key_id.hex(), envelope):
             return self._refuse(envelope, kind, "replayed_counter")
 
-        if not key.verifies(signed, envelope.signature) and "no-verify" not in mutations:
-            return self._refuse(envelope, kind, "bad_signature")
+        key = next(
+            (
+                candidate
+                for candidate in candidates
+                if candidate.verifies(signed, envelope.signature)
+            ),
+            None,
+        )
+        if key is None:
+            if "no-verify" not in mutations:
+                return self._refuse(envelope, kind, "bad_signature")
+            key = candidates[0]
 
         try:
             plaintext = opens(self.fixture, envelope)

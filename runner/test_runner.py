@@ -1187,6 +1187,149 @@ class TestSubjectProtocol(unittest.TestCase):
         peer.stop()
 
 
+@dataclass(frozen=True)
+class AliasedKey(sealed.Key):
+    """A key that reports another key's id: a `key_id` collision, constructed.
+
+    §6.1 derives the id from SHA-256, so two real keys that collide cost about 2^64
+    candidates and no test can have one. What a collision *means* is a reader rule, though —
+    every key the id names is tried — and a collision is the only shape that rule is read in,
+    so the test builds the collision the derivation cannot: the same id, two keys, one of
+    which signed the frame.
+    """
+
+    alias: str = ""
+
+    @property
+    def id(self) -> bytes:
+        return bytes.fromhex(self.alias)
+
+    @property
+    def hex_id(self) -> str:
+        return self.alias
+
+
+def shared_id_frame(signer: sealed.Key, shared_id: bytes) -> bytes:
+    """One holds frame whose envelope carries `shared_id` and whose signature is `signer`'s.
+
+    A collision cannot be produced by §6.1's derivation, so the frame is built the way that
+    section builds one rather than by `seal`: the AEAD's associated data contains the id the
+    envelope carries, so a frame attributed to a shared id is sealed *under* that id and then
+    signed by one of the keys that id names.
+    """
+    kind, epoch, counter = 3, 0, 1
+    nonce = bytes.fromhex("031e2f3a4b5c6d7e8f90a1b2")
+    plaintext = json.dumps({"holds": ["src/main.rs"]}, **sealed.CANONICAL).encode("utf-8")
+    aad = sealed.associated_data(FIXTURE.room_id, kind, epoch, shared_id)
+    ciphertext = sealed.AESGCM(FIXTURE.frame_key()).encrypt(nonce, plaintext, aad)
+    envelope = sealed.Envelope(shared_id, kind, epoch, counter, nonce, ciphertext)
+    envelope.signature = signer.sign(sealed.signing_input(aad, envelope))
+    return envelope.bytes()
+
+
+class TestKeyIdCollision(unittest.TestCase):
+    """§6.1 resolves an 8-byte `key_id` by verifying, so a collision costs a verification.
+
+    The state's `peers` is keyed by the public key and one key appears once, so a collision
+    can only come from two keys whose first eight SHA-256 bytes agree. A reader that takes
+    the first key the id names reports `bad_signature` for a frame the second key signed and
+    a conforming reader applies: two readers, one state, opposite verdicts.
+    """
+
+    def colliding_reader(self) -> sealed.Reader:
+        first = FIXTURE.key("guest-1")
+        second = FIXTURE.key("guest-2")
+        aliased = AliasedKey(
+            name="guest-2", public=second.public, private=second.private, alias=first.hex_id
+        )
+        reader = sealed.Reader(FIXTURE)
+        # The state's names are the public keys' spellings and `by_key_id` reads them in that
+        # order, so `guest-1` is the first candidate and the frame is signed by the second.
+        reader.committed = {
+            sealed.b64url(first.public): sealed.Peer(first, "guest", "p-1"),
+            sealed.b64url(second.public): sealed.Peer(aliased, "guest", "p-2"),
+        }
+        return reader
+
+    def test_a_frame_signed_by_the_second_key_of_a_collision_verifies(self) -> None:
+        reader = self.colliding_reader()
+        verdict = reader.read(
+            shared_id_frame(FIXTURE.key("guest-2"), FIXTURE.key("guest-1").id)
+        )
+        self.assertTrue(verdict.ok, f"refused {verdict.reason}")
+        self.assertEqual(verdict.sender, FIXTURE.key("guest-1").hex_id)
+        self.assertEqual(verdict.payload["holds"], ["src/main.rs"])
+        # The set belongs to the key that verified, which is the one whose signature did.
+        self.assertEqual(reader.holds[verdict.sender], ["src/main.rs"])
+
+    def test_a_frame_no_key_of_a_collision_signed_is_still_a_bad_signature(self) -> None:
+        verdict = self.colliding_reader().read(
+            shared_id_frame(FIXTURE.key("mallory-1"), FIXTURE.key("guest-1").id)
+        )
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.reason, "bad_signature")
+
+
+class TestVaruintBound(unittest.TestCase):
+    """A `varUint` past 64 bits is not a `varUint` (`CANONICAL.md` §6.1, `PROTOCOL.md` §7).
+
+    Python's integers widen, so a byte at shift 63 carrying a bit above bit 0 spells a value
+    the frozen layout has no field for — and a reader that widens it holds a counter no other
+    reader of the same bytes has. The overlong *spelling* of a value inside 64 bits (`80 00`
+    for `0`) is a different question, still open (`NOTES.md` §B.38), and is read here as
+    written.
+    """
+
+    def test_a_byte_at_shift_63_may_set_only_bit_0(self) -> None:
+        with self.assertRaises(sealed.SealedError):
+            sealed.read_varuint(b"\x80" * 9 + b"\x02", 0)
+        with self.assertRaises(sealed.SealedError):
+            sealed.read_varuint(b"\x80" * 9 + b"\x7f", 0)
+        # The largest value a 64-bit `varUint` spells is ten bytes, and the tenth sets bit 63.
+        self.assertEqual(sealed.read_varuint(b"\xff" * 9 + b"\x01", 0)[0], (1 << 64) - 1)
+
+    def test_the_overlong_spelling_of_a_value_inside_64_bits_is_read(self) -> None:
+        self.assertEqual(sealed.read_varuint(b"\x80\x00", 0), (0, 2))
+        self.assertEqual(sealed.read_varuint(b"\x81\x00", 0), (1, 2))
+
+    def test_a_frame_whose_counter_is_past_64_bits_is_a_bad_envelope(self) -> None:
+        # The disagreement the fix removes, on one frame: Python widened the counter into
+        # 2**64 and applied the frame, while the frozen layout's `varUint` cannot spell it and
+        # the Rust reader refuses the layout at step 1.
+        key = FIXTURE.key("guest-2")
+        envelope = sealed.seal(
+            FIXTURE,
+            {
+                "sign": "guest-2",
+                "kind": 3,
+                "counter": 1,
+                "nonce": "031e2f3a4b5c6d7e8f90a1b2",
+                "payload": {"holds": ["src/main.rs"]},
+            },
+        )
+        envelope.counter = 1 << 64
+        envelope.signature = key.sign(
+            sealed.signing_input(
+                sealed.associated_data(
+                    FIXTURE.room_id, envelope.kind, envelope.epoch, envelope.key_id
+                ),
+                envelope,
+            )
+        )
+        raw = envelope.bytes()
+        # The frame is otherwise authentic: the counter is the one field past its bound, and
+        # the signature and the AEAD cover it as written.
+        self.assertEqual(raw[10:20], b"\x80" * 9 + b"\x02")
+        second = FIXTURE.key("guest-2")
+        reader = sealed.Reader(FIXTURE)
+        reader.committed = {
+            sealed.b64url(second.public): sealed.Peer(second, "guest", "p-2")
+        }
+        verdict = reader.read(raw)
+        self.assertFalse(verdict.ok, "the widened counter was applied")
+        self.assertEqual(verdict.reason, "bad_envelope")
+
+
 class TestDecisionLayer(unittest.TestCase):
     """The decision layer's driver, against a scripted subject.
 
