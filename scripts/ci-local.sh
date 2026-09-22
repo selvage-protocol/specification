@@ -4,7 +4,7 @@
 # host has no Docker or Podman, so `act` cannot run here).
 #
 #   scripts/ci-local.sh validate  # the `schemas` job: the schemas, the vectors, the runner,
-#                                 # the decoder, the workflows
+#                                 # the decoder, the peer layer, the workflows
 #   scripts/ci-local.sh lint      # actionlint over the workflow files
 #   scripts/ci-local.sh all       # lint + validate
 #
@@ -12,9 +12,9 @@
 # here rather than on a runner. `lint` catches unknown actions, bad expressions and shell
 # mistakes statically; the workflow has no actionlint step of its own, so that one is local-only.
 #
-# `validate` is `nix build .#checks.<system>.{schemas,runner,yprotocols,workflows}`, one check per
-# step.
-# `flake.nix` supplies the pinned Python and the three packages the workflow installs with pip —
+# `validate` is `nix build .#checks.<system>.{schemas,runner,yprotocols,peer,peer-census,recipes,workflows}`,
+# one check per step.
+# `flake.nix` supplies the pinned Python and the four packages the workflow installs with pip —
 # at the versions that workflow pins — so this needs no virtualenv, no `pip` and no network. Each
 # check's store path is the report of the command it ran, which is what is printed here: a check
 # that had to be built says nothing until it is done, and a cached one still says what it found.
@@ -64,6 +64,9 @@ job_validate() {
   check schemas "the schemas and the vectors"
   check runner "the runner's comparison code"
   check yprotocols "the binary decoder"
+  check peer "the peer corpus's frame layer"
+  check peer-census "the mutation census over the peer corpus"
+  check recipes "the peer corpus's frames, re-derived from its recipes"
   check workflows "the workflows' pins and the release-version guard"
 }
 

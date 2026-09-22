@@ -20,13 +20,13 @@ below](#what-lives-here) lists the rest of the repository.
 Checking the corpus takes a couple of minutes and needs no server and no Rust:
 
 ```
-pip install jsonschema referencing     # or: nix develop  (the same package, pinned)
+pip install jsonschema referencing cryptography   # or: nix develop  (the same set, pinned)
 python3 schema/validate.py
 ```
 
 A green run prints one line for the schemas, one for the sealed payloads, one for the reasons a
-refused sealed frame is reported in, one for `selvage/2`'s session layer, one for the corpus counts,
-and `result OK`:
+refused sealed frame is reported in, one for `selvage/2`'s session layer, one for each layer of
+the corpus, one for the absence scan, and `result OK`:
 
 ```
 schema ok      11 schemas, 39 values checked against the control-character refusal
@@ -34,12 +34,28 @@ sealed         48 values checked against the sealed payloads of selvage/2
 refusals       13 values checked against selvage/2's local report vocabulary
 session v2     42 values checked against selvage/2's session layer
 vectors        36 files, 35022 frame checks, 8676 assertion steps
+peer vectors   23 files, 17 frame, 6 decision, 194 checks, 66 assertion steps
+absence        8 selvage/2 shapes, 23 vectors of this version, 8636 selvage/1 frames (8742 carrying a deleted member, 197 a deleted event), 46 sealed frames, 92 needle checks
 result         OK
 ```
 
-Those three counts are pinned in `schema/validate.py`, so a deleted vector, frame check or
+Those counts are pinned in `schema/validate.py`, so a deleted vector, frame check or
 assertion fails the run. The [section below](#validating-the-schemas-and-the-vectors) lists what
 the run checks.
+
+**The corpus has two layers.** The **wire** layer is a transcript and the server is the subject:
+`vectors/*.json`, `runner/run_vectors.py`, and everything this file said before the peer layer
+existed. The **peer** layer holds a client to the rules a server cannot enforce — verify before
+apply, a counter mark, a signature, a lease, a role — and it is `vectors/peer/*.json` with two
+runners: `runner/run_peer.py`, which replays its frame vectors with no client at all, and a
+subject protocol for the decision vectors, which need one. `schema/validate.py` checks both
+layers and needs no key for either. The peer layer's decision half is not runnable yet — no
+client speaks `selvage/2`, and no relay does — and the runner reports those vectors as **not
+attempted** rather than passing them.
+
+`cryptography` is there for the peer layer's frame code alone: AES-256-GCM, HKDF-SHA256 and
+Ed25519. `python3 schema/validate.py` itself still needs only `jsonschema` and `referencing`, and
+none of the sealed frames is derivable without a key.
 
 `python3 schema/validate.py` checks the frames the vectors contain; it cannot check that a server
 produces those bytes. To replay the corpus against a real server, see [Replaying the vectors
@@ -68,8 +84,8 @@ silent, without reading the Rust.
 | [`PROTOCOL.md`](PROTOCOL.md) | **The specification.** What the members mean, and what a conforming peer must, should or may do. §1.1 says which sentences bind a reader and what conformance is. |
 | [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1**, the canonical byte form of a session text frame, and §6.1, the byte form of a `selvage/2` sealed frame. Normative for the bytes. |
 | [`schema/`](schema/) | The machine-readable model: JSON Schema 2020-12, one file per concern, plus `validate.py`. |
-| [`runner/`](runner/) | The language-neutral replay: `run_vectors.py` starts a server and replays every transcript against it, with no Rust toolchain. |
-| [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by the reference server's [`crates/harness/tests/vectors.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors.rs) and by `runner/`. |
+| [`runner/`](runner/) | The language-neutral replay. `run_vectors.py` starts a server and replays every wire transcript against it; `run_peer.py` replays the peer corpus's frame layer with no server and no client; `sealed.py` is `CANONICAL.md` §6.1 in Python; `subject.py` is the protocol a decision vector drives a client through. None of it needs a Rust toolchain. |
+| [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by the reference server's [`crates/harness/tests/vectors.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors.rs) and by `runner/`. `vectors/peer/` is the peer corpus and `vectors/fixture/` is its keys. |
 | [`NOTES.md`](NOTES.md) | **Informative.** What the implementations do where `PROTOCOL.md` does not bind them, the decisions this draft had to make, and what is still open. Nothing there is a requirement. |
 
 `DESIGN.md` §7 asks for "CC-BY prose plus JSON Schema", and §13.4 asks for the machine-readable
@@ -136,6 +152,24 @@ in every vector against them. It prints a line for the schemas, a line for the c
   closed value rather than a member: the two codes `PROTOCOL.md` §11 takes out of this version —
   `host_present` and the reserved `doc_not_open` — must validate under `selvage/1`'s vocabulary and
   be refused by this one, which is checked in the same run.
+- every peer vector's steps, recipes and refusals: the version and layer it declares, a `kind` of
+  `frame` or `decision` with the step vocabulary that kind has, each `seal`/`deliver` recipe's
+  shape — a fixture key that exists, a count, a nonce of twelve bytes, exactly one of `plaintext`
+  and `payload` — every `expectReject` reason against §6.1's closed vocabulary, and the mutation in
+  `catches` against the layer's own table. It also pins the peer layer's own counts and two
+  censuses: `EXPECTED_REFUSALS`, which vector asserts which reasons, and `EXPECTED_MUTATIONS`,
+  which vector must go **red** under which removed guard. The second is the one pin in this corpus
+  that is a statement about what the corpus catches rather than what it contains, and it is
+  `runner/run_peer.py --mutation-census` that drives it.
+- the absence rule, three ways. **The model**: every `selvage/2` session shape is walked for a
+  member no server-authored frame of that version may carry — a `role` made a property or a
+  required entry of `session-v2.json` is a red run, which is the structural half and the strongest
+  of the three. **The frames**: every peer vector declares the strings its own plaintext names, and
+  none of them may appear in the bytes of a frame it seals, which needs no key because the
+  ciphertext is in the vector. **The control**: the same walk is run over the `selvage/1` corpus,
+  where it must find something — 8,335 frames naming `role`, 397 naming `documents`, 197 naming one
+  of the five events this version deletes — and those counts are pinned, because a scan that read
+  nothing reports zero and an unpinned zero is a green line rather than a check.
 
 Testing a refusal means sending a frame the server must reject. Such a frame carries
 `"refused": true`, and its params are not schema-checked. When the frame is not JSON at all, it
@@ -144,10 +178,10 @@ frame is well formed and refused for what it says, the second that a parser refu
 `unparsable` marker left on a frame that does parse is a red run: otherwise the run reports OK
 with an assertion that never ran.
 
-`SELVAGE_VECTORS=DIR` reads the transcripts from another directory; both halves honour it.
-Replaying a corrupt *copy* is how a failure is shown to be caught. The counts are this
-repository's, so either half fails on a directory that does not hold them rather than checking
-less of it quietly.
+`SELVAGE_VECTORS=DIR` reads the transcripts from another directory; both halves honour it, and
+`SELVAGE_PEER_VECTORS=DIR` moves the peer layer alone. Replaying a corrupt *copy* is how a failure
+is shown to be caught. The counts are this repository's, so either half fails on a directory that
+does not hold them rather than checking less of it quietly.
 
 ## Replaying the vectors against a server
 
@@ -157,12 +191,15 @@ ephemeral port, replays each transcript against it over a real WebSocket, and co
 back, the text frames structurally and then byte for byte, the binary frames byte for byte, and the
 document and awareness state once a frame is applied.
 
-It needs Python 3 and three packages:
+It needs Python 3 and four packages:
 
 ```
-pip install websockets jsonschema referencing
-# or: nix develop, in this repository, for the same three packages at the pins the workflow installs
+pip install websockets jsonschema referencing cryptography
+# or: nix develop, in this repository, for the same four packages at the pins the workflow installs
 ```
+
+`cryptography` is the peer layer's (`runner/sealed.py`); replaying the wire layer alone does not
+need it.
 
 and a `selvaged`, which is not part of this repository:
 
@@ -197,10 +234,48 @@ same pin on the file count before it starts. `--schema-only` is exactly
 `python3 runner/test_runner.py` checks the replay's comparison code (`matches`,
 `expected_bytes`, `check_text` and `check_frame_spec`) with frames whose answer is known, in
 both directions, so a comparison that stopped failing is itself a red run. A comparison that
-only ever runs against a server never runs in CI. `python3 runner/test_yprotocols.py` checks
+only ever runs against a server never runs in CI. It checks the peer layer's code the same way
+and for the same reason: the envelope's layout, the counter mark, the refusal vocabulary, the
+subject protocol's framing and deadlines, and the equality of the two halves' step tables.
+`python3 runner/test_yprotocols.py` checks
 the binary decoder, the one part of the replay that is hand-written, from the vectors. CI runs
 both, and the live replay runs in the reference server's own suite over its vendored copy of the
 corpus, because this workflow has no Rust toolchain to build a `selvaged` with.
+
+## Replaying the peer corpus
+
+`runner/run_peer.py` needs no server, no client and no Rust toolchain. It reads
+`vectors/peer/*.json` and `vectors/fixture/keys.json`, seals every recipe, signs it, and reads
+what it produces in the order `CANONICAL.md` §6.1 fixes:
+
+```
+python3 runner/run_peer.py                      # every frame vector
+python3 runner/run_peer.py --vector 102         # one of them
+python3 runner/run_peer.py --list-mutations     # the guard each mutation removes
+python3 runner/run_peer.py --mutation no-verify # with one guard taken out
+python3 runner/run_peer.py --mutation-census    # what each vector must go red under
+```
+
+**A vector carries a recipe, and the bytes are derived.** `seal` says what is sealed — the fixture
+key that signs it, the `kind`, the counter, the nonce, and the plaintext as hex or as the JSON
+object it is — and the vector also carries the `hex` the recipe produces. Both are claims:
+`runner/test_recipe.py` re-derives every frame in the corpus from its recipe and asserts the two
+agree, so a recipe that drifted from the bytes it explains is a red run rather than a quiet
+difference. The one place a vector carries bytes that are not derivable is a deliberate
+corruption, and the corruption is a step of its own — `{"op": "corrupt", "frame": "edit",
+"as": "tampered", "at": 40, "xor": 1}` — so it is re-derived too.
+
+**The decision layer is not runnable, and the runner says so.** A `"kind": "decision"` vector is
+about what a real client did with a frame it received — what it applied, what it dropped and why,
+what it published, whether it ended — so it needs a subject (a client, named by a command:
+`--subject "my-client --drive"`) and a relay that speaks `selvage/2` to seat it in a room.
+Neither exists. Every such vector is reported **not attempted** with the reason, the summary
+counts `not attempted` separately from `passed`, and `runner/subject.py` holds the protocol the
+next phase will drive it through, tested against a scripted subject rather than against a vector.
+Run `python3 runner/run_vectors.py --layer all` to see the same split from the wire layer's side.
+
+The red line to expect is a vector that pins behaviour the runner does not have; the failure
+names the file, the step and the reason the receiver gave instead.
 
 ## Comparison rules
 
@@ -222,12 +297,33 @@ Four are worth knowing before writing a vector, because the runner enforces them
 
 ## What the vectors do not cover
 
-They are not a conformance suite for a *client*. Every `expect` is the server speaking, and the
-only client-side claims they make are about the bytes a peer receives and what those bytes mean
-once decoded. Client behaviour (renewal, expiry, reconnection, the adapter seam) is tested in
-the reference server's [`crates/harness/tests/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests).
-The cases they do not reach are listed in [`NOTES.md`](NOTES.md) §B, and a second
-implementation will find more.
+Nothing here is a conformance suite for **two** clients. The wire corpus holds a server to its
+transcripts, and every `expect` in it is the server speaking. The peer corpus holds **one**
+client to the rules of `selvage/2`, and it does it twice over: its frame vectors hold any
+*receiver* to `CANONICAL.md` §6.1 — the envelope, the key schedule, the counter mark, the ten
+reasons — with no client at all, and its decision vectors hold a real client to what it does
+with a frame it has received, which is the half that is not runnable yet. What no vector here
+can show is that two clients **agree**: a vector can hold a client to a rule it states, and it
+cannot show that two implementations reach the same state. That stays the interop test's job
+(`vscode_client/test/interop.test.ts` against
+`reference_server/crates/harness/examples/interop_peer.rs`), which is a convergence proof and
+not a conformance one, and it is the reason neither is sufficient alone.
+
+Three more limits, said rather than left to be discovered. A vector asserts the bytes of a
+frame; a conforming implementation whose Ed25519 **randomises** its signatures — Safari's does —
+produces a different 64-byte signature for the same frame, so what such an implementation is
+held to is that its signature **verifies** over §6.1's input, which is what `NOTES.md` §B.31
+records. The peer corpus's mutation census shows that a vector catches a named mutation of the
+runner's own reader; it does not show that a differently-wrong client fails. And the runner's
+frame layer is a **format** check and a **self-consistency** check rather than a second
+implementation: it was written from the same prose as any client will be, so agreement between
+them is weak evidence.
+
+Client behaviour beyond that (renewal, expiry, reconnection, the adapter seam, the two clients'
+agreement) is tested in
+the reference server's [`crates/harness/tests/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests)
+and in the clients' own suites. The cases these vectors do not reach are listed in
+[`NOTES.md`](NOTES.md) §B, and a second implementation will find more.
 
 ## `vectors/anchors/`
 
@@ -275,7 +371,9 @@ minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this ver
    with `client_id` set), and print the frames. A payload with a random client id in it is not a
    vector, it is a flaky test.
 2. **Write the file** as `vectors/NNN-<slug>.json`, where `NNN` is the next free number. A new
-   vector is numbered after the last one, which is `036` as this is written. The members are:
+   vector is numbered after the last one, which is `036` as this is written; a peer vector goes in
+   `vectors/peer/` and is numbered from `101`, so that a corpus of two layers stays readable at a
+   glance. The members are:
 
    ```json
    {
@@ -322,10 +420,40 @@ minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this ver
    Rust, `python3 runner/run_vectors.py` does the same replay against a running server. Then run
    the schema validator, which checks the vector's shape as well as its frames and pins the number
    of vectors, frame checks and assertion steps, so a new vector or a deleted assertion is a red
-   run until those three constants in `schema/validate.py` are updated with it. A new vector also
+   run until those constants in `schema/validate.py` are updated with it. A new vector also
    needs its own entry in that file's `EXPECTED_CODES` census, or the run fails on the vector that
    has no census. The counts and the census move in the same commit as the vector, not in one
    after it.
+
+## Adding a peer vector
+
+Same file, same conventions, two things different.
+
+1. **`vectors/peer/NNN-<slug>.json`, numbered from `101`.** It declares its `layer` (`peer`), its
+   `kind` (`frame` or `decision`), the `fixture` it reads, and the mutation in `catches` that it
+   must go **red** under. That last member is not optional in effect: `run_peer.py
+   --mutation-census` runs the vector twice, once as it stands and once with the one guard it says
+   it catches removed, and a vector that stays green under its own mutation is a fragment. A vector
+   whose `catches` is `null` is the **positive control** and must instead stay green under *every*
+   mutation there is, because the other way to pass a corpus of refusals is to refuse everything.
+2. **A vector carries a recipe when the frame is derivable and `hex` when it is not, and the two
+   must agree.** `seal` carries the recipe — the fixture key, the `kind`, the counter, the nonce,
+   the plaintext as hex or as the JSON object it is — and the step also carries the `hex` that
+   recipe produces; `runner/test_recipe.py` re-derives every frame in the corpus and asserts the
+   two are the same, for the vector as it is written and for the corruption a `corrupt` step
+   applies. A frame that is *not* derivable is a corruption of one, and `corrupt` names the source,
+   the byte it flips or the bytes it appends, and the result — so even the literal bytes in the
+   corpus are re-derived. The one thing nothing re-derives is the signature itself, and the reason
+   is in `NOTES.md` §B.31: Safari's Ed25519 randomises signatures, so a conforming implementation
+   need not produce the bytes a vector carries. What the vector claims about it is that it
+   verifies.
+3. **Assert the consequence, not only the verdict.** A refusal vector that asserts only a reason
+   is passed by a receiver that drops everything, so §13.11 has every rule say what the observable
+   is: the replica the client holds (`expectDoc`), the listing it holds (`expectListing`), the
+   holds it keeps (`expectHolds`), the frames it applied (`expectVerify` after a refusal), or the
+   subject's own report (`expectSubject`). `schema/validate.py` pins the reasons each vector
+   asserts in `EXPECTED_REFUSALS` and the mutation each declares in `EXPECTED_MUTATIONS`, so both
+   move in the same commit as the vector.
 
 ## Why each one exists
 
@@ -343,7 +471,10 @@ minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this ver
 - **The runner** makes replaying the vectors possible without a Rust checkout.
   `runner/run_vectors.py` reads the same JSON, opens a WebSocket to a server it starts itself, and
   compares the bytes, so a second implementation in any language can be held to the transcripts
-  without reading `reference_server/`.
+  without reading `reference_server/`. `runner/run_peer.py` is the same property for the layer
+  whose subject is a client: it seals, signs and refuses `selvage/2`'s frames in one process, with
+  no server, no client and no toolchain, so a stranger implementing the peer rules has something
+  runnable to be held to and something to run their own implementations against.
 - **The notes** exist because a specification has to be able to say what is settled and what is
   not, without either pretending an undecided question is a rule or leaving a reader to infer one
   from an implementation. They are kept apart from `PROTOCOL.md` so that nothing in the

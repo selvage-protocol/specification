@@ -15,6 +15,14 @@ Run it from this directory:
 `--schema-only` runs the frame-level checks alone, which need no server and are what
 CI can run while the reference server is private.
 
+**Two layers, and this runner is the wire one's.** A vector declares its `layer`:
+`vectors/*.json` is `wire` and its subject is the server, which is what this file replays;
+`vectors/peer/*.json` is `peer` and its subject is a client, which is `runner/run_peer.py`'s.
+`--layer all` replays the wire layer and prints one line per peer vector saying it was **not
+attempted** and where it is run, so a corpus with two layers cannot be read as one that all
+passed; `--layer peer` refuses rather than attempting nothing and exiting zero. The peer
+directory is not a glob this file reaches, so nothing about the wire replay changes.
+
 The comparison rules are the ones `README.md` lists: member sets are exact in both
 directions, `peers` is a set, and a text frame is compared twice — structurally, so a
 failure names the member, and then as whole bytes, because the vector is written in
@@ -526,6 +534,29 @@ def describe_failure(
 # or waits, so it reads nothing that a leftover frame could belong to.
 READING_OPS = frozenset({"expect", "expectBinary", "expectClose"})
 
+# Every step op this runner knows. `schema/validate.py` holds the same set as `WIRE_OPS` and
+# `runner/test_runner.py` compares the two, because the halves once disagreed: `apply` was in the
+# validator's pass-through list and this file raises on an op it does not know, so a step could
+# validate there and fail the replay here with nothing saying which half was wrong. `apply` is a
+# *member* of `sendBinary`/`expectBinary` and never a step of its own.
+WIRE_OPS = frozenset(
+    {
+        "open",
+        "send",
+        "expect",
+        "sendBinary",
+        "expectBinary",
+        "expectClose",
+        "close",
+        "wait",
+        "http",
+        "expectStatus",
+        "expectBody",
+        "expectDoc",
+        "expectSameState",
+    }
+)
+
 
 def pending_reads(steps: list[dict], start: int) -> dict[str, int]:
     """How many frames each connection's steps from `start` on would read."""
@@ -714,9 +745,13 @@ async def run_step(session: Session, server: Server, step: dict) -> None:
                     f"{yprotocols.describe_state(wanted)} and "
                     f"{yprotocols.describe_state(held)}"
                 )
+    elif op in WIRE_OPS:
+        # Unreachable while every member of `WIRE_OPS` has a branch above it. It is what keeps
+        # the table and the dispatch one thing instead of two that agree by inspection, which is
+        # how `apply` came to be validated and un-runnable.
+        raise Mismatch(f"`{op}` is in WIRE_OPS and has no step handling")
     else:
         raise Mismatch(f"`{op}` is not a step this runner knows")
-
 
 async def replay(vector: dict, binary: str) -> dict[str, list[Incoming]]:
     """Replays one vector against a fresh server.
@@ -798,6 +833,32 @@ def vector_dir() -> pathlib.Path:
     return pathlib.Path(os.environ.get("SELVAGE_VECTORS", VECTOR_DIR))
 
 
+def peer_vector_dir() -> pathlib.Path:
+    """The layer this runner does not run, and reports rather than passing."""
+    return pathlib.Path(
+        os.environ.get("SELVAGE_PEER_VECTORS", vector_dir() / "peer")
+    )
+
+
+def load_peer_vectors() -> list[dict]:
+    """The peer vectors' names and ids, for the report and not for any replay."""
+    peers = []
+    for path in sorted(peer_vector_dir().glob("*.json")):
+        try:
+            document = json.loads(path.read_text())
+        except json.JSONDecodeError as error:
+            raise ReplayError(f"{path.name} is not JSON: {error}") from error
+        peers.append({"_file": path.name, "id": document.get("id", "?"),
+                      "kind": document.get("kind", "?")})
+    return peers
+
+
+PEER_LAYER_NOTE = (
+    "not attempted: a peer vector's subject is a client, and this runner replays "
+    "transcripts against a server — run `python3 runner/run_peer.py` for the frame layer"
+)
+
+
 def load_vectors() -> list[dict]:
     vectors = []
     for path in sorted(vector_dir().glob("*.json")):
@@ -813,7 +874,7 @@ def check_corpus_size(vectors: list[dict], expected: int) -> None:
 
     The replay checks whatever it finds, so a shrunk directory replays green on less:
     a deleted transcript changes this number, and the number is a check. `expected` is
-    `schema/validate.py`'s `EXPECTED_VECTORS` — the count has one home, and the schema
+    `schema/validate.py`'s `EXPECTED_WIRE_VECTORS` — the count has one home, and the schema
     half already pins it; this is the same pin where the real server is tested.
     """
     if len(vectors) != expected:
@@ -826,7 +887,7 @@ def check_corpus_size(vectors: list[dict], expected: int) -> None:
 def replay_all(binary: str) -> tuple[int, int]:
     vectors = load_vectors()
     try:
-        check_corpus_size(vectors, load_validate_module().EXPECTED_VECTORS)
+        check_corpus_size(vectors, load_validate_module().EXPECTED_WIRE_VECTORS)
     except ReplayError as error:
         print(f"FAIL   corpus: {error}")
         # No vector was attempted: the failure is the corpus itself, not a vector,
@@ -865,7 +926,24 @@ def main(argv: list[str] | None = None) -> int:
         metavar="PATH",
         help=f"the selvaged binary (default: ${SERVER_ENV})",
     )
+    parser.add_argument(
+        "--layer",
+        choices=("wire", "peer", "all"),
+        default="wire",
+        help="which corpus layer to replay; `all` also reports the peer layer it cannot run",
+    )
     args = parser.parse_args(argv)
+
+    if args.layer == "peer":
+        # Refused, not exited zero: this runner cannot run a peer vector, and a run that
+        # attempted nothing must not read as one that passed everything.
+        print(
+            "the peer layer's subject is a client, and this runner replays transcripts against "
+            "a server.\nRun its frame layer with `python3 runner/run_peer.py`; `--layer all` "
+            "reports what it did not attempt.",
+            file=sys.stderr,
+        )
+        return 2
 
     if args.schema_only:
         code, _ = run_schema_checks()
@@ -907,9 +985,30 @@ def main(argv: list[str] | None = None) -> int:
     # A corpus failure attempts no vectors, so `vectors` is 0 and the failure is
     # the corpus itself; the clamp keeps that from reading as negative passes.
     passed = max(vectors - failed, 0)
+    attempted = vectors
+    if args.layer == "all":
+        # The layer that is not this runner's is reported and not passed. `not attempted` is a
+        # third outcome beside ok and FAIL, because a reader of a green run has to be able to
+        # see how much of the corpus it did not run.
+        peers = load_peer_vectors()
+        try:
+            expected = load_validate_module().EXPECTED_PEER_VECTORS
+        except (ReplayError, AttributeError) as error:
+            print(f"FAIL   corpus: {error}")
+            peers = []
+            expected = 0
+        if peers and len(peers) != expected:
+            print(
+                f"FAIL   corpus: the peer layer holds {len(peers)} vectors, and this suite "
+                f"pins {expected}"
+            )
+            failed += 1
+        for peer in peers:
+            print(f"not attempted  {peer['_file']:<33} {PEER_LAYER_NOTE}")
     print(
-        f"summary        {vectors} files, {checks} frame checks, "
+        f"summary        {attempted} files, {checks} frame checks, "
         f"{passed} vectors passed, {failed} failed"
+        + (", 0 peer vectors attempted" if args.layer == "all" else "")
     )
     return 1 if schema_code or failed else 0
 

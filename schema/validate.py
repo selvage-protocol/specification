@@ -36,6 +36,25 @@ a constraint that refuses everything fails beside one that accepts what the vers
 the fault vocabulary of the version's session layer (`session-v2.json`), the two sealed payloads a
 host signs, and the reasons a receiver reports a refused sealed frame in (`sealed.json`).
 
+**The peer layer.** `vectors/peer/*.json` is the second corpus: `selvage/2`'s *client* rules, whose
+subject is a client implementation rather than the server, and whose bytes are sealed frames
+(`CANONICAL.md` §6.1). Each peer vector declares a `"kind"`: a **frame** vector hands
+`runner/run_peer.py` recipes, and it seals, verifies and refuses without a client at all; a
+**decision** vector is about what a real client did with a frame it received and needs a subject and
+a relay that speaks `selvage/2`, so nothing runs it yet — `run_peer.py` reports those as **not
+attempted**, with the reason, because a vector that did not run must not read like one that passed.
+This half is checked here for the things that need no key: the step vocabulary, each recipe's shape,
+the refusal vocabulary a vector asserts, the mutation each vector declares it catches, and the
+absence rules below. It imports no crypto and knows no fixture value — the sealed bytes are
+`run_peer.py`'s, and this file only says which checks do not need them.
+
+**The absence scan.** No server-authored frame carries a path, a role or a byte of content in
+`selvage/2`, and that is checkable with no key at all. Three legs of it are here: the shipped
+`selvage/2` session shapes are scanned for the members the version deletes, every peer vector's
+sealed frames are scanned for the strings its own plaintext names, and the scan is run over the
+`selvage/1` corpus as its own positive control — a scan that read nothing reports zero, and the
+counts it finds there are pinned so that a walker which stopped walking is a red run.
+
 Run it with a JSON Schema implementation available, from the repository root:
 
     pip install jsonschema referencing
@@ -70,12 +89,20 @@ VECTOR_DIR = pathlib.Path(
 BASE = "https://selvageprotocol.com/schema/1/"
 
 # What the corpus is expected to hold. Adding a vector, or an assertion inside one, is a
-# deliberate edit, and these three numbers are what makes the opposite edit — a silent
-# deletion — a red run instead of a smaller number in a line of output. Update them in the
-# same commit that changes the corpus.
-EXPECTED_VECTORS = 36
+# deliberate edit, and these numbers are what makes the opposite edit — a silent deletion — a red
+# run instead of a smaller number in a line of output. Update them in the same commit that changes
+# the corpus. The two layers are counted apart on purpose: they are committed and replayed by
+# different tools, and one number would let one layer's loss be paid by the other's gain.
+EXPECTED_WIRE_VECTORS = 36
+EXPECTED_PEER_VECTORS = 23
 EXPECTED_FRAME_CHECKS = 35022
 EXPECTED_ASSERTIONS = 8676
+# The peer layer's own counts. `PEER_CHECKS` is one per peer step plus one per recipe, and
+# `PEER_ASSERTIONS` counts the assertion steps of the **frame** vectors, which is what
+# `runner/run_peer.py` runs and reports; a decision vector's `expectSubject` steps are checked here
+# and are not in this number, because they are not steps anything has ever run.
+EXPECTED_PEER_CHECKS = 194
+EXPECTED_PEER_ASSERTIONS = 66
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
 # closed vocabulary is schema-valid and count-identical, so this census is what makes one a
@@ -134,6 +161,85 @@ EXPECTED_CODES = {
     "036": ["session.error:bad_message", "session.error:bad_message"],
 }
 
+# The refusal reasons each peer vector asserts, in sorted order, and the mutation it must go red
+# under. The same argument as `EXPECTED_CODES`, one level out: a reason substituted inside
+# §6.1's closed vocabulary (`replayed_counter` for `stale_issued`) is schema-valid and
+# count-identical, so without `EXPECTED_REFUSALS` it is a green run that asserts something else.
+# `EXPECTED_MUTATIONS` is the only pin in this corpus that is a statement about what the corpus
+# *catches* rather than what it contains: `None` is a vector that must stay green under every
+# mutation there is, because the alternative way to pass a corpus of refusals is to refuse
+# everything. `runner/run_peer.py --mutation-census` is what drives it, and a decision vector's
+# entry names a mutation of the *subject*, which nothing can remove yet.
+EXPECTED_REFUSALS = {
+    "101": [],
+    "102": ["bad_signature"],
+    "103": ["replayed_counter"],
+    "104": ["stale_issued", "stale_issued"],
+    "105": ["uncommitted_key"],
+    "106": ["uncommitted_key"],
+    "107": ["uncommitted_key"],
+    "108": ["replayed_counter"],
+    "109": ["bad_payload", "bad_payload"],
+    "110": ["bad_payload", "bad_payload"],
+    "111": ["unauthorised_content"],
+    "112": ["stale_issued", "stale_issued"],
+    "113": ["bad_envelope", "bad_envelope"],
+    "114": ["replayed_counter"],
+    "115": ["unknown_kind"],
+    "116": ["unknown_epoch"],
+    "117": [],
+    "151": ["unauthorised_content"],
+    "152": ["stale_issued"],
+    "153": [],
+    "154": [],
+    "155": [],
+    "156": [],
+}
+EXPECTED_MUTATIONS = {
+    "101": None,
+    "102": "no-verify",
+    "103": "no-mark",
+    "104": "no-issued",
+    "105": "no-commit",
+    "106": "merge-peers",
+    "107": "kind-any",
+    "108": "no-mark",
+    "109": "lenient-key",
+    "110": "no-payload",
+    "111": "no-roles",
+    "112": "no-issued",
+    "113": "lenient-layout",
+    "114": "no-mark",
+    "115": "lenient-kind",
+    "116": "lenient-epoch",
+    "117": "refuse-bad-path",
+    "151": "ignore-roles",
+    "152": "ignore-issued",
+    "153": "announce-once",
+    "154": "no-lease",
+    "155": "any-closing",
+    "156": "wait-for-ever",
+}
+
+# The positive control of the absence scan, and the reason it is a control rather than a
+# comment: the rule is "no server-authored frame carries a path, a role or a byte of content",
+# and every `selvage/1` transcript carries one, so running the scan over the layer that exists
+# is how the scan is shown to read something. These are the counts it finds there. A scan that
+# read nothing reports zero and is a red run; a `selvage/1` vector deleted or re-baselined
+# moves one of these, which is a deliberate edit and not a silent one.
+EXPECTED_V1_MEMBERS = {"role": 8335, "documents": 397, "paths": 10}
+EXPECTED_V1_EVENTS = {
+    "doc.opened": 167,
+    "doc.closed": 13,
+    "doc.granted": 10,
+    "host.attached": 2,
+    "host.detached": 5,
+}
+EXPECTED_V1_NEEDLES = {
+    "expect frames naming `src/main.rs`": 58,
+    "binary steps carrying its bytes": 6,
+}
+
 # A step that reads or asserts something. Every other step only produces input for one, so
 # a vector made of them alone can pass while claiming nothing.
 ASSERTION_OPS = {
@@ -145,6 +251,109 @@ ASSERTION_OPS = {
     "expectDoc",
     "expectSameState",
 }
+
+# Every step op the wire layer's runner knows, and nothing else. It used to be an `else` clause
+# that passed whatever it did not otherwise reach, and `apply` was in it while
+# `runner/run_vectors.py` raises on an op it does not know — so an `apply` step would have
+# validated here and failed the replay. `runner/test_runner.py` compares this set against the
+# runner's own, so the two halves of the tooling cannot disagree about a step name again.
+WIRE_OPS = frozenset(
+    {
+        "open",
+        "send",
+        "expect",
+        "sendBinary",
+        "expectBinary",
+        "expectClose",
+        "close",
+        "wait",
+        "http",
+        "expectStatus",
+        "expectBody",
+        "expectDoc",
+        "expectSameState",
+    }
+)
+
+# The peer layer's two step vocabularies. A **frame** vector is replayed by
+# `runner/run_peer.py` with no client: it seals a recipe, corrupts a frame on purpose, and asks a
+# receiver for a verdict or for what it holds. A **decision** vector drives a real client through
+# the subject protocol and needs a relay that speaks `selvage/2`; nothing runs one yet, so its ops
+# are checked here and reported as not attempted there.
+PEER_FRAME_OPS = frozenset(
+    {
+        "seal",
+        "corrupt",
+        "expectVerify",
+        "expectReject",
+        "expectPlaintext",
+        "expectListing",
+        "expectHolds",
+        "expectDoc",
+    }
+)
+PEER_DECISION_OPS = frozenset(
+    {
+        "start",
+        "stop",
+        "deliver",
+        "expectSubject",
+        "wait",
+    }
+)
+# The ops in a peer vector that assert something, split by kind: a frame vector's are the ones
+# `run_peer.py` counts, and a decision vector's `expectSubject` is the decision channel.
+PEER_ASSERTION_OPS = frozenset(
+    {"expectVerify", "expectReject", "expectPlaintext", "expectListing", "expectHolds",
+     "expectDoc"}
+)
+PEER_OPS = {
+    "frame": PEER_FRAME_OPS,
+    "decision": PEER_DECISION_OPS,
+}
+
+#: The mutations a frame vector may declare it catches: the guards `runner/sealed.py` removes,
+#: one rule each. A decision vector declares a *subject's* mutation instead, and those live in
+#: `runner/subject.py`; this file pins which name each vector declares and leaves the question of
+#: whether the name is implemented to `run_peer.py --mutation-census`, which is the tool that can
+#: answer it.
+PEER_FRAME_MUTATIONS = frozenset(
+    {
+        "lenient-layout",
+        "lenient-kind",
+        "lenient-epoch",
+        "no-commit",
+        "kind-any",
+        "no-mark",
+        "no-verify",
+        "no-payload",
+        "lenient-key",
+        "no-issued",
+        "no-roles",
+        "refuse-bad-path",
+        "merge-peers",
+    }
+)
+PEER_SUBJECT_MUTATIONS = frozenset(
+    {
+        "ignore-roles",
+        "ignore-issued",
+        "announce-once",
+        "no-lease",
+        "any-closing",
+        "wait-for-ever",
+    }
+)
+
+#: The member names no server-authored `selvage/2` frame may carry, and the events the version
+#: deletes. `host` was in the corpus study's table of member names and is not one: `host` appears
+#: in this corpus as the first half of an *event* name, `host.attached` and `host.detached`, and
+#: the study's 186 is a count of something else. A member census and an event census are two
+#: different measurements, so they are two, and the events are pinned as well as scanned.
+FORBIDDEN_MEMBERS = ("role", "path", "paths", "documents", "grant")
+FORBIDDEN_EVENTS = frozenset(
+    {"doc.opened", "doc.closed", "doc.granted", "host.attached", "host.detached"}
+)
 
 METHOD_PARAMS = {
     "session.hello": f"{BASE}methods.json#/$defs/sessionHelloParams",
@@ -564,8 +773,7 @@ def check_vector(reg: Registry, document: object, name: str) -> tuple[int, list[
                         fail(at, f"hex is two hex digits per byte: {wrong}")
             if "frame" in step:
                 check_frame_description(reg, step["frame"], at)
-        elif op in {"open", "close", "wait", "http", "apply", "expectDoc",
-                    "expectStatus", "expectSameState"}:
+        elif op in WIRE_OPS:
             pass
         else:
             fail(at, f"unknown op {op!r}")
@@ -576,12 +784,12 @@ def check_vector(reg: Registry, document: object, name: str) -> tuple[int, list[
 
 
 def check_counts(vectors: int, assertions: int) -> None:
-    """Fails when the corpus is not the one the pinned counts describe."""
+    """Fails when the wire corpus is not the one the pinned counts describe."""
     global CHECKS
-    if vectors != EXPECTED_VECTORS:
+    if vectors != EXPECTED_WIRE_VECTORS:
         fail(
             "vectors",
-            f"{vectors} files, and this suite pins {EXPECTED_VECTORS}: adding or "
+            f"{vectors} files, and this suite pins {EXPECTED_WIRE_VECTORS}: adding or "
             "removing a transcript is a deliberate edit",
         )
     if CHECKS != EXPECTED_FRAME_CHECKS:
@@ -1230,6 +1438,590 @@ def check_refusals(reg: Registry) -> int:
     return checks
 
 
+def _member_names(value: object) -> set[str]:
+    """Every member name anywhere in a JSON value, at any depth.
+
+    The scan the absence rule is asserted with, and the reason it is a walk and not four
+    `in` tests: a `role` nested inside a peer record is the same defect as one at the top of
+    a frame, and a scan that only looked at the top level would report zero.
+    """
+    names: set[str] = set()
+    if isinstance(value, dict):
+        for member, entry in value.items():
+            names.add(member)
+            names |= _member_names(entry)
+    elif isinstance(value, list):
+        for entry in value:
+            names |= _member_names(entry)
+    return names
+
+
+def absence_violations(document: object) -> list[str]:
+    """What a `selvage/2` transcript breaks the absence rule with, if anything.
+
+    The rule, as `docs/studies/peer-corpus.md` §6 corrects it — the study's own sentence said
+    "no server-authored frame contains a path, a role, a file name or a character of text",
+    which the reference server fails on a `display_name` — is:
+
+    > No server-authored frame carries a `path`, a `documents`/`paths`/`grant` member, a
+    > `role`, or any byte of document content or cursor state.
+
+    A frame carrying one of the five member names fails, and so does an `event` naming one of
+    the five events this version deletes: the member is what a receiver would read and the event
+    is what would tell it to look. The three keys the server *does* author — the room id, the
+    token, and a peer's `display_name` — are how a scan that read nothing is told apart from a
+    scan that passed, which is why the caller asserts them separately.
+
+    This is a pure function so that `runner/test_runner.py` can drive it in both directions: a
+    transcript that carries a `role` must be caught and a conforming one must not, and a rule
+    that only ever runs against an empty corpus is not a check.
+    """
+    if not isinstance(document, dict) or document.get("selvage") != "selvage/2":
+        return []
+    violations: list[str] = []
+    for index, step in enumerate(document.get("steps", []) or []):
+        if not isinstance(step, dict):
+            continue
+        if step.get("op") not in ("expect", "expectBody", "send", "sendBinary", "expectBinary"):
+            continue
+        at = f"step {index} ({step.get('op')})"
+        frame = parse_or_none(step.get("text")) if "text" in step else None
+        if isinstance(frame, dict):
+            names = sorted(_member_names(frame) & set(FORBIDDEN_MEMBERS))
+            if names:
+                violations.append(f"{at} carries {names}")
+            if frame.get("event") in FORBIDDEN_EVENTS:
+                violations.append(f"{at} is a `{frame['event']}`, which this version deletes")
+        if "hex" not in step:
+            continue
+        try:
+            raw = bytes.fromhex(step["hex"].replace(" ", ""))
+        except (ValueError, AttributeError):
+            continue
+        for needle in document.get("secret", []) or []:
+            if isinstance(needle, str) and needle and needle.encode() in raw:
+                violations.append(f"{at} carries {needle!r} in its bytes")
+    return violations
+
+
+def check_absence() -> str:
+    """The one negative class checkable with no key at all, and the control that it reads.
+
+    Three legs. **The shipped model**: every `selvage/2` session shape is walked for a member of
+    the forbidden list — a `role` made a *property* or a `required` entry of `session-v2.json`
+    is a red run, which is the structural half and the strongest of the three, because it
+    refuses the member rather than scanning for one. **The rule itself**: `absence_violations`
+    is run over every wire vector declaring `selvage/2` and over every peer vector's sealed
+    frames. **The control**: the same walk is run over the `selvage/1` corpus, where it must
+    find something, and the counts it finds are pinned — a scan that read nothing reports zero,
+    and a pinned zero is a check while an unpinned one is a green line.
+    """
+    # -- the shipped `selvage/2` session shapes --
+    shapes = 0
+    try:
+        session_v2 = json.loads((SCHEMA_DIR / "session-v2.json").read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        fail("session-v2.json", f"not readable as JSON: {error}")
+        session_v2 = {}
+    for definition, shape in sorted(session_v2.get("$defs", {}).items()):
+        if not isinstance(shape, dict):
+            continue
+        shapes += 1
+        declared = set(shape.get("properties", {})) | set(shape.get("required", []))
+        wrong = sorted(declared & set(FORBIDDEN_MEMBERS))
+        if wrong:
+            fail(
+                "session-v2.json",
+                f"`{definition}` declares {wrong}, which no server-authored `selvage/2` frame "
+                "may carry",
+            )
+
+    # -- the rule, over the corpus that declares this version --
+    live = 0
+    for path in sorted(VECTOR_DIR.glob("*.json")) + sorted(PEER_VECTOR_DIR.glob("*.json")):
+        try:
+            document = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        if isinstance(document, dict) and document.get("selvage") == "selvage/2":
+            live += 1
+            for problem in absence_violations(document):
+                fail(path.name, f"a server-authored frame breaks the absence rule: {problem}")
+
+    # -- the control: the same walk over `selvage/1`, where it must find something --
+    members = {name: 0 for name in EXPECTED_V1_MEMBERS}
+    events = {name: 0 for name in EXPECTED_V1_EVENTS}
+    needles = {name: 0 for name in EXPECTED_V1_NEEDLES}
+    wire_frames = 0
+    binary_steps = 0
+    for path in sorted(VECTOR_DIR.glob("*.json")):
+        try:
+            document = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        for step in document.get("steps", []) or []:
+            if not isinstance(step, dict):
+                continue
+            if step.get("op") in ("expect", "expectBody"):
+                frame = parse_or_none(step.get("text"))
+                if frame is None:
+                    continue
+                wire_frames += 1
+                for name in sorted(_member_names(frame) & set(members)):
+                    members[name] += 1
+                if frame.get("event") in events:
+                    events[frame["event"]] += 1
+                if isinstance(step.get("text"), str) and "src/main.rs" in step["text"]:
+                    needles["expect frames naming `src/main.rs`"] += 1
+            elif step.get("op") in ("sendBinary", "expectBinary") and step.get("hex"):
+                binary_steps += 1
+                try:
+                    raw = bytes.fromhex(step["hex"].replace(" ", ""))
+                except ValueError:
+                    continue
+                if b"src/main.rs" in raw:
+                    needles["binary steps carrying its bytes"] += 1
+    for label, found, pinned in (
+        ("member names", members, EXPECTED_V1_MEMBERS),
+        ("deleted events", events, EXPECTED_V1_EVENTS),
+        ("needles", needles, EXPECTED_V1_NEEDLES),
+    ):
+        if found != pinned:
+            fail(
+                "vectors",
+                f"the absence scan finds {found} in the selvage/1 corpus for its {label}, and "
+                f"this suite pins {pinned}: the scan is shown to read something by finding what "
+                "that layer carries, and a walker that stopped walking finds nothing",
+            )
+
+    # -- the sealed frames, against the strings their own plaintext names --
+    sealed_frames = 0
+    secrets = 0
+    for path in sorted(PEER_VECTOR_DIR.glob("*.json")):
+        try:
+            document = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError):
+            continue
+        secret = [s for s in document.get("secret", []) if isinstance(s, str) and s]
+        if not secret:
+            continue
+        present = False
+        for index, step in enumerate(document.get("steps", []) or []):
+            if not isinstance(step, dict) or step.get("op") not in ("seal", "deliver", "publish"):
+                continue
+            at = f"{path.name} step {index} (seal)"
+            plaintext = _recipe_plaintext(step.get("recipe"))
+            if plaintext is not None and any(s.encode() in plaintext for s in secret):
+                present = True
+            try:
+                raw = bytes.fromhex((step.get("hex") or "").replace(" ", ""))
+            except ValueError:
+                continue
+            sealed_frames += 1
+            for needle in secret:
+                secrets += 1
+                if needle.encode() in raw:
+                    fail(
+                        at,
+                        f"the sealed bytes carry {needle!r}, which this frame's own plaintext "
+                        "names: a sealed frame is the whole of the concealment",
+                    )
+        if not present:
+            fail(
+                path.name,
+                f"declares `secret` {secret} and no plaintext of the vector carries one, so "
+                "the scan proves nothing about this vector",
+            )
+    return (
+        f"{shapes} selvage/2 shapes, {live} vectors of this version, {wire_frames} selvage/1 "
+        f"frames ({sum(members.values())} carrying a deleted member, "
+        f"{sum(events.values())} a deleted event), {sealed_frames} sealed frames, "
+        f"{secrets} needle checks"
+    )
+
+
+def _recipe_plaintext(recipe: object) -> bytes | None:
+    """The plaintext a recipe names, without sealing it: hex, or the canonical JSON of a
+    payload. The absence scan needs the plaintext and not the frame, and it has no key."""
+    if not isinstance(recipe, dict):
+        return None
+    if isinstance(recipe.get("plaintext"), str):
+        try:
+            return bytes.fromhex(recipe["plaintext"].replace(" ", ""))
+        except ValueError:
+            return None
+    if "payload" in recipe:
+        return json.dumps(
+            recipe["payload"], sort_keys=True, separators=(",", ":"), ensure_ascii=False
+        ).encode("utf-8")
+    return None
+
+
+# --- the peer layer's vectors ---------------------------------------------------
+
+PEER_VECTOR_DIR = VECTOR_DIR / "peer"
+FIXTURE_PATH = VECTOR_DIR / "fixture" / "keys.json"
+NONCE_HEX = re.compile(r"[0-9a-f]{24}")
+
+
+def refusal_vocabulary() -> list[str]:
+    """The reasons a receiver reports, from the file that fixes them."""
+    try:
+        schema = json.loads((SCHEMA_DIR / "sealed.json").read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    return list(schema.get("$defs", {}).get("refusalReason", {}).get("enum", []))
+
+
+def load_fixture() -> dict:
+    """The fixture's key names and its host key. Values are never read here: this file stays
+    key-free, and what a public key's bytes *mean* is `runner/sealed.py`'s business."""
+    try:
+        document = json.loads(FIXTURE_PATH.read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        fail("fixture", f"{FIXTURE_PATH.name} is not readable as JSON: {error}")
+        return {}
+    keys = document.get("keys")
+    if not isinstance(keys, dict):
+        fail("fixture", "the fixture has no `keys` object")
+        return {}
+    room = document.get("room")
+    if not isinstance(room, dict) or room.get("host") not in keys:
+        fail("fixture", "the fixture's `room.host` does not name one of its keys")
+    return {"keys": sorted(keys), "host": (room or {}).get("host")}
+
+
+def check_recipe(at: str, step: dict, fixture: dict) -> None:
+    """A recipe is what a vector *says*, so its shape is the vector's readability.
+
+    A recipe names a fixture key, a kind, a counter, a nonce and exactly one of `plaintext` and
+    `payload`. `plaintext` is hex and is how a `kind = 0` stream is written and how a plaintext
+    that is deliberately not its kind's object is expressed; `payload` is the object itself, so
+    that a reader sees what the frame means and not only what it is.
+    """
+    recipe = step.get("recipe")
+    if not isinstance(recipe, dict):
+        fail(at, "`seal` needs a `recipe` object")
+        return
+    for member in ("sign", "kind", "counter", "nonce"):
+        if member not in recipe:
+            fail(at, f"the recipe has no {member!r}")
+    sign = recipe.get("sign")
+    if sign not in fixture.get("keys", []):
+        fail(at, f"the recipe signs with {sign!r}, which the fixture does not have")
+    kind = recipe.get("kind")
+    if not isinstance(kind, int) or isinstance(kind, bool) or kind < 0:
+        fail(at, f"`kind` is a count, not {kind!r}")
+    epoch = recipe.get("epoch", 0)
+    if not isinstance(epoch, int) or isinstance(epoch, bool) or epoch < 0:
+        fail(at, f"`epoch` is a count, not {epoch!r}")
+    counter = recipe.get("counter")
+    if not isinstance(counter, int) or isinstance(counter, bool) or counter < 1:
+        fail(
+            at,
+            f"`counter` is {counter!r}: a sender gives its first frame under one key ``1``, "
+            "and each later frame a strictly greater one",
+        )
+    nonce = recipe.get("nonce")
+    if not isinstance(nonce, str) or not NONCE_HEX.fullmatch(nonce):
+        fail(at, f"`nonce` is 12 bytes of lowercase hex, and {nonce!r} is not")
+    has_plaintext = "plaintext" in recipe
+    has_payload = "payload" in recipe
+    if has_plaintext == has_payload:
+        fail(at, "the recipe carries exactly one of `plaintext` and `payload`")
+    if has_plaintext:
+        text = recipe["plaintext"]
+        wrong = (
+            [byte for byte in text.split() if not TWO_HEX_DIGITS.fullmatch(byte)]
+            if isinstance(text, str)
+            else [text]
+        )
+        if wrong:
+            fail(at, f"`plaintext` is two hex digits per byte: {wrong}")
+    if has_payload and kind not in (1, 2, 3, 4):
+        fail(
+            at,
+            f"`payload` is for the kinds whose plaintext is a JSON object, and kind {kind} 's "
+            "plaintext is a y-protocols stream",
+        )
+
+
+def check_peer_step(at: str, step: dict, kind: str, fixture: dict, vocab: list[str]) -> list[str]:
+    """One peer step. Returns the refusal reasons it asserts."""
+    op = step.get("op")
+    refusals: list[str] = []
+    if op == "seal":
+        if not isinstance(step.get("frame"), str) or not step["frame"]:
+            fail(at, "`seal` needs a `frame` name")
+        check_recipe(at, step, fixture)
+    elif op == "corrupt":
+        if not isinstance(step.get("as"), str) or not step["as"]:
+            fail(at, "`corrupt` needs an `as` name for the frame it produces")
+        variants = [name for name in ("xor", "truncate", "append") if name in step]
+        if len(variants) != 1:
+            fail(at, f"`corrupt` needs exactly one of `xor`, `truncate` and `append`, not {variants}")
+        if "xor" in step and not isinstance(step.get("at"), int):
+            fail(at, "`xor` needs the `at` byte it flips")
+        if "append" in step:
+            text = step["append"]
+            wrong = (
+                [byte for byte in text.split() if not TWO_HEX_DIGITS.fullmatch(byte)]
+                if isinstance(text, str)
+                else [text]
+            )
+            if wrong:
+                fail(at, f"`append` is two hex digits per byte: {wrong}")
+    elif op in ("expectVerify", "expectReject", "expectPlaintext"):
+        if not isinstance(step.get("frame"), str):
+            fail(at, f"`{op}` needs the `frame` it reads")
+        if op == "expectReject":
+            reason = step.get("reason")
+            if reason not in vocab:
+                fail(at, f"`{reason!r}` is not one of the reasons {vocab}")
+            else:
+                refusals.append(reason)
+        if op == "expectPlaintext" and "signed_by" in step and step["signed_by"] not in fixture.get("keys", []):
+            fail(at, f"`signed_by` names {step['signed_by']!r}, which the fixture does not have")
+    elif op == "expectListing":
+        listing = step.get("listing")
+        if not isinstance(listing, list) or any(not isinstance(p, str) for p in listing):
+            fail(at, "`listing` is a list of paths")
+    elif op == "expectHolds":
+        if step.get("sign") not in fixture.get("keys", []):
+            fail(at, f"`sign` names {step.get('sign')!r}, which the fixture does not have")
+        holds = step.get("holds")
+        if not isinstance(holds, list) or any(not isinstance(p, str) for p in holds):
+            fail(at, "`holds` is a list of paths")
+    elif op == "expectDoc":
+        if not isinstance(step.get("path"), str) or not isinstance(step.get("text"), str):
+            fail(at, "`expectDoc` needs a `path` and the `text` held there")
+    elif op == "expectSubject":
+        if not [
+            member
+            for member in ("applied", "dropped", "published", "ended", "listing", "text",
+                           "holds", "at_least", "frozen")
+            if member in step
+        ]:
+            fail(at, "`expectSubject` asserts nothing about the subject's report")
+        dropped = step.get("dropped")
+        if dropped is not None:
+            if not isinstance(dropped, list):
+                fail(at, "`dropped` is a list of `{frame, reason}` entries")
+            else:
+                for entry in dropped:
+                    reason = entry.get("reason") if isinstance(entry, dict) else None
+                    if reason not in vocab:
+                        fail(at, f"`{reason!r}` is not one of the reasons {vocab}")
+                    else:
+                        refusals.append(reason)
+        for member in ("text", "holds", "at_least"):
+            if member in step and not isinstance(step[member], dict):
+                fail(at, f"`{member}` is an object")
+        if "applied" in step and not isinstance(step["applied"], list):
+            fail(at, "`applied` is a list of `{frame, kind}` entries")
+        frozen = step.get("frozen")
+        if frozen is not None and (
+            not isinstance(frozen, list) or any(not isinstance(m, str) for m in frozen)
+        ):
+            fail(at, "`frozen` names the report members that must not move")
+        if "within_ms" in step and (
+            not isinstance(step["within_ms"], int)
+            or isinstance(step["within_ms"], bool)
+            or step["within_ms"] < 0
+        ):
+            fail(at, "`within_ms` is the deadline the predicate is polled to")
+    elif kind == "decision":
+        # A decision vector drives a subject through the frames the runner hands it, and nothing
+        # runs one yet. Its `expectSubject` is the decision channel and its members are the
+        # observables `PROTOCOL.md` §13.11 fixes: the exact members are compared exactly, `at_least`
+        # is a monotone bound it may exceed, `frozen` names the members that must not move over one
+        # more window, and `within_ms` is the deadline the predicate is polled to rather than slept
+        # through.
+        if op != "wait" and "conn" not in step:
+            fail(at, f"`{op}` needs a `conn`")
+        if op in ("deliver", "publish"):
+            if not isinstance(step.get("frame"), str) or not step["frame"]:
+                fail(at, f"`{op}` needs a `frame` name")
+            check_recipe(at, step, fixture)
+        if op == "start" and step.get("key") not in fixture.get("keys", []):
+            fail(at, f"`key` names {step.get('key')!r}, which the fixture does not have")
+        if op == "wait" and (
+            not isinstance(step.get("ms"), int)
+            or isinstance(step["ms"], bool)
+            or step["ms"] < 0
+        ):
+            fail(at, "`wait` needs `ms`")
+    if op in ("seal", "corrupt", "deliver", "publish"):
+        text = step.get("hex")
+        wrong = (
+            [byte for byte in text.split() if not TWO_HEX_DIGITS.fullmatch(byte)]
+            if isinstance(text, str)
+            else [text]
+        )
+        if wrong:
+            fail(at, f"`hex` is two hex digits per byte: {wrong}")
+    return refusals
+
+
+def check_peer_vector(
+    document: object, name: str, fixture: dict, vocab: list[str]
+) -> tuple[int, int, list[str]]:
+    """One peer vector: its steps, its recipes and the reasons it asserts."""
+    if not isinstance(document, dict):
+        fail(name, "a peer vector is a JSON object")
+        return 0, 0, []
+    where = f"{name} [{document.get('id')}]"
+    for member in ("id", "title", "spec", "layer", "kind", "fixture", "steps"):
+        if member not in document:
+            fail(where, f"missing {member!r}")
+    for member, want in (("layer", "peer"), ("selvage", "selvage/2"), ("canonical", "SJ-C/1")):
+        if document.get(member) != want:
+            fail(where, f"{member} must be `{want}`")
+    kind = document.get("kind")
+    if kind not in PEER_OPS:
+        fail(where, f"kind must be one of {sorted(PEER_OPS)}, not {kind!r}")
+        return 0, 0, []
+    if document.get("fixture") != "fixture/keys.json":
+        fail(where, "a peer vector reads the one fixture, `fixture/keys.json`")
+    secret = document.get("secret", [])
+    if not isinstance(secret, list) or any(not isinstance(s, str) or not s for s in secret):
+        fail(where, "`secret` is a list of non-empty strings")
+    catches = document.get("catches")
+    allowed = PEER_FRAME_MUTATIONS if kind == "frame" else PEER_SUBJECT_MUTATIONS
+    if catches is not None and catches not in allowed:
+        fail(
+            where,
+            f"`catches` is {catches!r}, which is not one of the {kind} layer's mutations "
+            f"{sorted(allowed)}",
+        )
+
+    steps = document.get("steps")
+    if not isinstance(steps, list) or not steps:
+        fail(where, "steps must be a non-empty list")
+        return 0, 0, []
+    checks = 0
+    assertions = 0
+    refusals: list[str] = []
+    nonces: dict[str, str] = {}
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict):
+            fail(f"{where} step {index}", "a step is a JSON object")
+            continue
+        at = f"{where} step {index} ({step.get('op')})"
+        checks += 1
+        if step.get("op") not in PEER_OPS[kind]:
+            fail(at, f"`{step.get('op')}` is not a step of a {kind} vector")
+            continue
+        if step.get("op") in PEER_ASSERTION_OPS:
+            assertions += 1
+        if step.get("op") in ("seal", "deliver"):
+            # One check per step and one per recipe: a recipe is a claim of its own, and a
+            # vector that keeps its bytes while losing what they are made of is the drift the
+            # recipe exists to catch.
+            checks += 1
+            recipe = step.get("recipe")
+            nonce = recipe.get("nonce") if isinstance(recipe, dict) else None
+            if isinstance(nonce, str):
+                # A nonce is fresh for one frame, so two steps may share one only when they
+                # carry the same bytes — the shape a vector has when it delivers one frame
+                # twice, as 155 delivers a closing before and after the state.
+                hex_text = " ".join((step.get("hex") or "").split())
+                if nonce in nonces and nonces[nonce] != hex_text:
+                    fail(
+                        at,
+                        f"the nonce {nonce} is also {nonces[nonce]}'s, and these are two "
+                        "different frames: a nonce is fresh for one",
+                    )
+                else:
+                    nonces[nonce] = hex_text
+        refusals.extend(check_peer_step(at, step, kind, fixture, vocab))
+    if kind == "frame" and not assertions:
+        fail(where, "asserts nothing: no step reads a verdict or what the receiver holds")
+    return checks, assertions, sorted(refusals)
+
+
+def check_peer_corpus() -> dict:
+    """Every peer vector, the two censuses, and the peer layer's own counts."""
+    fixture = load_fixture()
+    vocab = refusal_vocabulary()
+    paths = sorted(PEER_VECTOR_DIR.glob("*.json"))
+    if not paths:
+        fail("vectors", f"no peer vectors in {PEER_VECTOR_DIR}")
+    checks = 0
+    assertions = 0
+    frames = 0
+    decisions = 0
+    refusals: dict[str, list[str]] = {}
+    mutations: dict[str, object] = {}
+    for path in paths:
+        try:
+            document = json.loads(path.read_text())
+        except json.JSONDecodeError as error:
+            fail(path.name, f"not JSON: {error}")
+            continue
+        count, asserts, reasons = check_peer_vector(document, path.name, fixture, vocab)
+        checks += count
+        assertions += asserts
+        vid = document.get("id") if isinstance(document, dict) else None
+        key = vid if isinstance(vid, str) else path.name
+        refusals[key] = reasons
+        mutations[key] = document.get("catches") if isinstance(document, dict) else None
+        if isinstance(document, dict):
+            if document.get("kind") == "frame":
+                frames += 1
+            elif document.get("kind") == "decision":
+                decisions += 1
+
+    for label, found, pinned in (
+        ("files", len(paths), EXPECTED_PEER_VECTORS),
+        ("checks", checks, EXPECTED_PEER_CHECKS),
+        ("assertion steps", assertions, EXPECTED_PEER_ASSERTIONS),
+    ):
+        if found != pinned:
+            fail(
+                "vectors",
+                f"the peer layer holds {found} {label}, and this suite pins {pinned}: adding or "
+                "removing one is a deliberate edit",
+            )
+
+    for vid in sorted(set(refusals) | set(EXPECTED_REFUSALS)):
+        want = EXPECTED_REFUSALS.get(vid)
+        have = refusals.get(vid)
+        if want is None:
+            fail("vectors", f"peer vector {vid!r} asserts {have} and this suite pins no census for it")
+        elif have is None:
+            fail("vectors", f"peer vector {vid!r} is in the pinned census and the corpus has no such vector")
+        elif have != want:
+            fail(
+                "vectors",
+                f"peer vector {vid!r} asserts {have}, and this suite pins {want}: an asserted "
+                "reason was added, removed or substituted inside a closed vocabulary",
+            )
+    for vid in sorted(set(mutations) | set(EXPECTED_MUTATIONS)):
+        want = EXPECTED_MUTATIONS.get(vid)
+        have = mutations.get(vid)
+        if vid not in EXPECTED_MUTATIONS:
+            fail(
+                "vectors",
+                f"peer vector {vid!r} declares `catches: {have}` and this suite pins no census "
+                "for it: a vector is added with the mutation it must go red under",
+            )
+        elif vid not in mutations:
+            fail("vectors", f"peer vector {vid!r} is in the pinned census and the corpus has no such vector")
+        elif have != want:
+            fail(
+                "vectors",
+                f"peer vector {vid!r} declares `catches: {have}`, and this suite pins {want}",
+            )
+    return {
+        "vectors": len(paths),
+        "frame": frames,
+        "decision": decisions,
+        "checks": checks,
+        "assertions": assertions,
+    }
+
+
 def main() -> int:
     """Checks every schema and every claim the corpus makes, and reports what it found."""
     global CHECKS
@@ -1239,6 +2031,7 @@ def main() -> int:
     sealed = check_sealed_payloads(reg)
     refusals = check_refusals(reg)
     session_v2 = check_session_v2(reg)
+    absence = check_absence()
     print(
         f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas, {refusals_by_the_rule} values "
         "checked against the control-character refusal"
@@ -1264,12 +2057,20 @@ def main() -> int:
     check_counts(len(vectors), assertions)
     check_codes(collected)
 
+    peer = check_peer_corpus()
+
     for problem in FAILURES:
         print(f"FAIL           {problem}")
     print(
         f"vectors        {len(vectors)} files, {CHECKS} frame checks, "
         f"{assertions} assertion steps"
     )
+    print(
+        f"peer vectors   {peer['vectors']} files, {peer['frame']} frame, "
+        f"{peer['decision']} decision, {peer['checks']} checks, "
+        f"{peer['assertions']} assertion steps"
+    )
+    print(f"absence        {absence}")
     print(f"result         {'FAIL' if FAILURES else 'OK'}")
     return 1 if FAILURES else 0
 
