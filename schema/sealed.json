@@ -6,7 +6,7 @@
   "$defs": {
     "refusalReason": {
       "title": "the reason a refused frame is reported in",
-      "description": "The receiver's local report, and the check order it is read in: CANONICAL.md §6.1's table, whole. A frame is refused for the first of these that applies to it, and PROTOCOL.md §13.2 requires a client to report the reason rather than drop a frame silently. It is a closed *value* rather than a member — no frame carries it, and a receiver tolerates a member it does not know (§3) — so this is the one place in this file where a string an implementation invents is refused. `bad_tag` is the reason a reader would expect and cannot have: the signature covers the ciphertext, so a flipped tag byte reaches a verifier as a signature failure and no conforming receiver can report a tag failure at all (CANONICAL.md §6.1; `docs/studies/peer-corpus.md` §5.4 measured it). `unauthorised_content` is the one reason here that is not a property of the envelope: an authentic frame from a key the host's state gives role `viewer` carrying document content is refused by the peer rules (PROTOCOL.md §13.5). `bad_payload` is the one reason about the plaintext: an authentic frame whose plaintext is not the object its `kind` defines, which no reason about the envelope reaches (CANONICAL.md §6.1 step 8).",
+      "description": "The receiver's local report, and the check order it is read in: CANONICAL.md §6.1's table, whole. A frame is refused for the first of these that applies to it, and PROTOCOL.md §13.2 requires a client to report the reason rather than drop a frame silently. It is a closed *value* rather than a member — no frame carries it, and a receiver tolerates a member it does not know (§3) — so this is the one place in this file where a string an implementation invents is refused. `bad_tag` is the reason a reader would expect and cannot have: the signature covers the ciphertext, so a flipped tag byte reaches a verifier as a signature failure and no conforming receiver can report a tag failure at all (CANONICAL.md §6.1; `docs/studies/peer-corpus.md` §5.4 measured it). `unauthorised_content` is the one reason here that is not a property of the envelope: an authentic frame from a key the host's state gives role `viewer` carrying document content is refused by the peer rules (PROTOCOL.md §13.5). `bad_payload` is the one reason about the plaintext: an authentic frame whose plaintext is not an object of the members its `kind` fixes with each member of the type that kind gives it, which no reason about the envelope reaches (CANONICAL.md §6.1 step 8). A *value* of the right type that a rule elsewhere governs is not read at step 8 and is not this reason: a listing's path or a holds' path that `PROTOCOL.md` §5 refuses is dropped by the receiver and refuses neither the frame nor the state (§13.3, §13.7).",
       "type": "string",
       "enum": [
         "bad_envelope",
@@ -16,16 +16,15 @@
         "replayed_counter",
         "bad_signature",
         "bad_aead",
+        "bad_payload",
         "stale_issued",
-        "unauthorised_content",
-        "bad_payload"
+        "unauthorised_content"
       ]
     },
     "sealedIssued": {
       "type": "integer",
-      "minimum": 1,
       "maximum": 9007199254740991,
-      "description": "The host's edition of a sealed value: the room state's `issued`, and the `issued` a closing carries above every state the host has published. A count, in CANONICAL.md §2.4's form and inside its bound, because the receiver that compares it against the highest it has accepted may be a JavaScript one. It orders the two values the host signs; a frame's `counter` orders the frames one key signs, and the two are different numbers with different jobs (CANONICAL.md §6.1). The first state a host publishes carries `1` and a closing can therefore never carry one: a receiver's mark starts at `0` and a state or a closing that is not above it is refused `stale_issued` (CANONICAL.md §6.1, PROTOCOL.md §7.1)."
+      "description": "The host's edition of a sealed value: the room state's `issued`, and the `issued` a closing carries above every state the host has published. A count, in CANONICAL.md §2.4's form and inside its bound, because the receiver that compares it against the highest it has accepted may be a JavaScript one. It orders the two values the host signs; a frame's `counter` orders the frames one key signs, and the two are different numbers with different jobs (CANONICAL.md §6.1). `0` is a count and this is not where it is refused: a receiver's mark starts at `0`, so a state or a closing at `0` is refused `stale_issued` at CANONICAL.md §6.1's step 9, and step 8 reads this member's type and not its value. The first state a host publishes therefore carries `1`, above the mark (CANONICAL.md §6.1, PROTOCOL.md §7.1)."
     },
     "sealedRole": {
       "type": "string",
@@ -42,12 +41,12 @@
         "guest",
         "viewer"
       ],
-      "description": "The role a client may declare in its session-key announcement: `guest` or `viewer`, and never `host`. A state names exactly one `host` entry and it is the host's own connection's, so `host` is not a role a peer can declare for itself; a conforming host honours a declaration, and what a role is enforced by is the clients that conform to it (PROTOCOL.md §7.1, §13.5)."
+      "description": "The role a client may declare in its session-key announcement: `guest` or `viewer`, and never `host`. A state names exactly one `host` entry and it is the host's own connection's, so `host` is not a role a peer can declare for itself; a conforming host honours a declaration when it first commits that key, and a declaration about a key the state already commits changes that key's role not at all (PROTOCOL.md §7.1). What a role is enforced by is the clients that conform to it (§13.5)."
     },
     "sealedPeerKey": {
       "type": "string",
-      "pattern": "^[A-Za-z0-9_-]{43}$",
-      "description": "A peer's public key: the name of its entry in the room state's `peers`, and the value a session-key announcement carries. 32 bytes of Ed25519 in the encoding the invite URL's fragment writes one in — base64url, RFC 4648 §5, unpadded, so exactly 43 characters and no escape in a canonical JSON string (CANONICAL.md §2.3). The key itself and not its 8-byte id: an id is something a receiver derives (SHA-256 of these 32 bytes, first 8) and an id alone verifies nothing, so a state that named one would commit nothing anyone could check."
+      "pattern": "^[A-Za-z0-9_-]{42}[AEIMQUYcgkosw048]$",
+      "description": "A peer's public key: the name of its entry in the room state's `peers`, and the value a session-key announcement carries. 32 bytes of Ed25519 in the encoding the invite URL's fragment writes one in — base64url, RFC 4648 §5, unpadded, so exactly 43 characters and no escape in a canonical JSON string (CANONICAL.md §2.3). The last character carries four bits of the value and two that are zero (RFC 4648 §3.5), so it is one of `AEIMQUYcgkosw048`: a 43-character string whose last character is any other spells no 32-byte value, and a receiver refuses it `bad_payload` at CANONICAL.md §6.1's step 8 rather than resolving it to one a strict decoder would not — two spellings of one key are one key only to a lenient reader, and this file is where the two ends of a connection agree. The key itself and not its 8-byte id: an id is something a receiver derives (SHA-256 of these 32 bytes, first 8) and an id alone verifies nothing, so a state that named one would commit nothing anyone could check."
     },
     "sealedPeer": {
       "type": "object",
@@ -59,7 +58,7 @@
       "properties": {
         "peer_id": {
           "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId",
-          "description": "The seat the host believes this key's holder is seated under. It is what a client reads to answer a question about presence — whether the state's `host` entry is seated (PROTOCOL.md §13.8), whether a key's holder has left (§13.7) — and it decides no attribution and no role (§13.4)."
+          "description": "The seat the host believes this key's holder is seated under. It is what a client reads to answer a question about presence — whether the state's `host` entry is seated (PROTOCOL.md §13.8), whether a key's holder has left (§13.7) — and it decides no attribution and no role (§13.4). A host commits every announcement it accepts and labels the entry with the seat it believes holds the key or with any seat the roster names, because a missing label would leave the peer's whole session uncommitted while a wrong one costs only the presence questions (§7.1)."
         },
         "role": {
           "$ref": "#/$defs/sealedRole"
@@ -80,8 +79,11 @@
           "$ref": "#/$defs/sealedIssued"
         },
         "listing": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentList",
-          "description": "The host's working tree as it enumerated it: paths, carrying no content, each held to `PROTOCOL.md` §5's path rule and each a candidate rather than a promise of a readable file, exactly as a `selvage/1` grant's `paths` is. Written ascending by UTF-16 code unit (CANONICAL.md §2.7), which is the only order `selvage/2` promises."
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "The host's working tree as it enumerated it: paths, carrying no content, each a candidate rather than a promise of a readable file, exactly as a `selvage/1` grant's `paths` is. Written ascending by UTF-16 code unit (CANONICAL.md §2.7), which is the only order `selvage/2` promises. Each path is held to `PROTOCOL.md` §5's rule for one, and that rule is not read here: a receiver that will not carry a path *drops the path* and applies the rest of the listing and the state's roles, refusing neither the frame nor the state, so this member is held to step 8's member set and types and not to the value of each path (`PROTOCOL.md` §13.3, CANONICAL.md §6.1). `common.json`'s `documentList` is `selvage/1`'s shape and is not this one: there a blank or control-carrying path is refused `bad_params` at a method, which is a refusal about a request and not about a frame."
         },
         "peers": {
           "type": "object",
@@ -124,9 +126,9 @@
         "holds": {
           "type": "array",
           "items": {
-            "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath"
+            "type": "string"
           },
-          "description": "The set of paths the sender holds open, replaced wholesale by the next holds message under the same key. A set, so no order is promised (`CANONICAL.md` §2.7), and each path is held to `PROTOCOL.md` §5's rule as a listing's is; a receiver refuses a blank or control-carrying path rather than the message, exactly as `PROTOCOL.md` §13.3 refuses one in a listing."
+          "description": "The set of paths the sender holds open, replaced wholesale by the next holds message under the same key. A set, so no order is promised (`CANONICAL.md` §2.7), and each path is held to `PROTOCOL.md` §5's rule as a listing's is — read at the receiver and not here: a receiver **drops** a blank or control-carrying path from the set it keeps for that peer, and refuses neither the message nor the session (`PROTOCOL.md` §13.7, `CANONICAL.md` §6.1)."
         }
       }
     },
@@ -144,7 +146,7 @@
         },
         "role": {
           "$ref": "#/$defs/declaredRole",
-          "description": "The role the sender believes it has been given. Optional, and the one statement about a peer's role that comes from the peer's own key; a conforming host honours it (PROTOCOL.md §7.1)."
+          "description": "The role the sender believes it has been given. Optional, and the one statement about a peer's role that comes from the peer's own key; a conforming host honours it when it first commits that key, and a later declaration about a key the state already commits leaves that key's role as the state has it (PROTOCOL.md §7.1)."
         }
       }
     }

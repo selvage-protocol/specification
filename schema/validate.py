@@ -747,14 +747,25 @@ SEALED_STATE_CONFORMING = {
         # the refusals below: what a schema cannot do is forbid the older shape's member.
         "peers": {SEALED_KEY_A: {"key": SEALED_KEY_A, "peer_id": "p-1", "role": "host"}},
     },
-}
-SEALED_STATE_REFUSED = {
-    "a state with no `issued`": {"listing": [], "peers": {}},
-    "a state at `issued` 0, which a receiver's mark already refuses": {
+    # The next two are the *drop* side of a rule `PROTOCOL.md` §13.3 re-homes, and their being
+    # here rather than below is the whole of what step 8 does with them: it reads the member set
+    # and each member's type, so a listing is a list of strings and the value of one string is
+    # not its business. Whether a receiver carries the path is §13.3's rule — it drops the path
+    # and applies the rest of the listing and the state's roles — and no schema can express a
+    # drop, which is why the fixture is the value a receiver must *accept* and then not offer.
+    "a listing whose path carries a control character, which §13.3 drops and does not refuse": {
+        "issued": 1,
+        "listing": ["src/main\u0000.rs"],
+        "peers": {},
+    },
+    "a state at `issued` 0, which step 9 refuses `stale_issued` and step 8 does not refuse": {
         "issued": 0,
         "listing": [],
         "peers": {},
     },
+}
+SEALED_STATE_REFUSED = {
+    "a state with no `issued`": {"listing": [], "peers": {}},
     "a state that names a `peer_id` where a key belongs": {
         "issued": 1,
         "listing": [],
@@ -781,21 +792,35 @@ SEALED_STATE_REFUSED = {
         "listing": [],
         "peers": {SEALED_KEY_A[:-1] + "+": {"peer_id": "p-1", "role": "host"}},
     },
-    "a listing that carries a control character": {
+    "a key whose final character carries non-zero pad bits": {
         "issued": 1,
-        "listing": ["src/main\u0000.rs"],
+        "listing": [],
+        "peers": {SEALED_KEY_A[:-1] + "N": {"peer_id": "p-1", "role": "host"}},
+    },
+    "a listing whose member is not a string": {
+        "issued": 1,
+        "listing": [7],
         "peers": {},
     },
     "a listing that is not a list": {"issued": 1, "listing": "README.md", "peers": {}},
     "a closing offered as a state": {"closing": True, "issued": 2},
 }
-SEALED_CLOSING_CONFORMING = {"a closing": {"closing": True, "issued": 2}}
+SEALED_CLOSING_CONFORMING = {
+    "a closing": {"closing": True, "issued": 2},
+    # `0` is a count (CANONICAL.md §2.4), so step 8 reads the type and the value is `issued`'s
+    # own step: a receiver's mark starts at `0` and a closing at `0` is refused `stale_issued`
+    # at §6.1's step 9. No schema can express a comparison against the receiver's mark.
+    "a closing at `issued` 0, which step 9 refuses `stale_issued` and step 8 does not refuse": {
+        "closing": True,
+        "issued": 0,
+    },
+}
 SEALED_CLOSING_REFUSED = {
     "a closing with no `issued`": {"closing": True},
     "a closing whose `closing` is false": {"closing": False, "issued": 3},
+    "a closing whose `issued` is not a count": {"closing": True, "issued": "2"},
     "a room state offered as a closing": {"issued": 2, "listing": [], "peers": {}},
     "an `issued` above the JavaScript bound": {"closing": True, "issued": 9007199254740992},
-    "a closing at `issued` 0": {"closing": True, "issued": 0},
 }
 SEALED_HOLDS_CONFORMING = {
     "a hold set of one path": {"holds": ["src/main.rs"]},
@@ -805,12 +830,18 @@ SEALED_HOLDS_CONFORMING = {
         "holds": ["README.md"],
         "renewed": True,
     },
+    # §13.7's drop, on the same reading as the state's listing above: a holds message whose set
+    # carries a path §5 refuses is a message of the right member set and types, applied, with
+    # the path left out of the set the receiver keeps for that peer.
+    "a hold carrying a control character, which §13.7 drops and does not refuse": {
+        "holds": ["src/main\u0000.rs"],
+    },
+    "a hold that is blank, which §13.7 drops and does not refuse": {"holds": [""]},
 }
 SEALED_HOLDS_REFUSED = {
     "holds that is not a list": {"holds": "src/main.rs"},
     "a message with no `holds`": {"renewed": True},
-    "a hold carrying a control character": {"holds": ["src/main\u0000.rs"]},
-    "a hold that is blank": {"holds": [""]},
+    "a hold that is not a string": {"holds": [7]},
     "a room state offered as holds": {"issued": 1, "listing": [], "peers": {}},
 }
 SEALED_ANNOUNCEMENT_CONFORMING = {
@@ -822,6 +853,7 @@ SEALED_ANNOUNCEMENT_CONFORMING = {
 SEALED_ANNOUNCEMENT_REFUSED = {
     "an announcement with no `key`": {"role": "guest"},
     "a key that is not 32 bytes": {"key": SEALED_KEY_A[:-1]},
+    "a key whose final character carries non-zero pad bits": {"key": SEALED_KEY_A[:-1] + "N"},
     "a declaration of `host`, which no peer can make": {"key": SEALED_KEY_A, "role": "host"},
     "a declaration this version has not": {"key": SEALED_KEY_A, "role": "admin"},
     "a room state offered as an announcement": {"issued": 1, "listing": [], "peers": {}},
@@ -1105,7 +1137,12 @@ def check_sealed_payloads(reg: Registry) -> int:
     Nothing else in this suite reads that file — a sealed frame is bytes rather than JSON, and
     the vectors for one are the corpus layer's — so a member set relaxed here (the state's `key`
     back to the `key_id` that verifies nothing, or a fourth role) would leave every other check
-    green. Both directions are checked, so a constraint that refuses everything fails too.
+    green. Both directions are checked, so a constraint that refuses everything fails too. What
+    step 8 reads is the member set and each member's *type* (`CANONICAL.md` §6.1), so a value a
+    rule elsewhere re-homes — a listing's path and a holds' path, which `PROTOCOL.md` §13.3 and
+    §13.7 have a receiver drop rather than refuse — is conforming here and its drop is that
+    rule's; the alternative, a `$ref` to `common.json`'s `documentPath`, would make the schema
+    refuse a frame the prose applies and put two conforming receivers at odds about one state.
     """
     checks = 0
     for label, ref, conforming, refused in SEALED_SITES:
@@ -1131,9 +1168,10 @@ def check_refusals(reg: Registry) -> int:
     The reasons a receiver reports a refused sealed frame in are a closed vocabulary and nothing
     else in this suite reads them: a reason added to the schema with no rule behind it, a rule's
     reason dropped from it, and an implementation's invented spelling would all leave every other
-    check green. The census below is that table, and the two bad ones are the two ways a vocabulary
-    like this goes wrong in practice: a reason no conforming receiver can produce (`bad_tag`, which
-    the signature's coverage of the ciphertext makes unreachable, measured in
+    check green. The census below is that table in the order the table reads — `bad_payload` at
+    §6.1's step 8, before `stale_issued` at step 9 — and the two bad ones are the two ways a
+    vocabulary like this goes wrong in practice: a reason no conforming receiver can produce
+    (`bad_tag`, which the signature's coverage of the ciphertext makes unreachable, measured in
     `docs/studies/peer-corpus.md` §5.4) and a misspelling of one that exists.
     """
     expected = [
@@ -1144,9 +1182,9 @@ def check_refusals(reg: Registry) -> int:
         "replayed_counter",
         "bad_signature",
         "bad_aead",
+        "bad_payload",
         "stale_issued",
         "unauthorised_content",
-        "bad_payload",
     ]
     checks = 0
     try:
