@@ -110,13 +110,12 @@ An array's order is part of what a frame *says* only where `PROTOCOL.md` promise
 arrays are in that position:
 
 - **`documents`**, "the room's open-document set, in first-opened order" (§6.2), which a
-  comparison holds to that order; and
+  comparison holds to that order;
 - **a grant's `paths`** (`doc.grant`, `doc.granted`), which `PROTOCOL.md` §5 requires its
   *publisher* to write in ascending order by UTF-16 code unit and requires a server to carry
   unchanged. This one is written in an order the sender chose rather than one the server arrived
   at, which is the only thing that distinguishes it from `documents` here: the order is still a
   claim, and a comparison holds the bytes to it.
-
 - **the sealed room state's `listing`** (§6.1), written ascending by UTF-16 code unit like a
   grant's `paths`, and the one array a `selvage/2` frame carries. Nothing else `selvage/2` writes
   is ordered: the room state's `peers` is an object whose members §2.1 orders by name, and not the
@@ -360,14 +359,13 @@ frame: neither carries `v`, and §2.5 is not theirs. §3 is: a receiver drops a 
 know and does not refuse the value. A producer **MUST NOT** write a member this version does not
 define — the member sets below are fixed, and §2.7's order for `listing` is part of them.
 
-The **room state** has exactly three members. `PROTOCOL.md` §7.1 says what each means.
+The **room state** has exactly three members. `PROTOCOL.md` §7.1 says what each means:
 
 ```json
-{"issued":1,"listing":["README.md","src/main.rs"],
- "peers":{"p-0f1e2d3c4b5a6978":{"key":"GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM","role":"host"}}}
+{"issued":1,"listing":["README.md","src/main.rs"],"peers":{"p-0f1e2d3c4b5a6978":{"key":"GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM","role":"host"}}}
 ```
 
-- `issued`: a count in §2.4's form, at most 2 53 − 1 like every other count this protocol bounds.
+- `issued`: a count in §2.4's form and inside its bound.
 - `listing`: an array of paths, each held to `PROTOCOL.md` §5's rule for one, written ascending by
   UTF-16 code unit.
 - `peers`: an object whose names are `peer_id`s, each value an object of two members: `key`, the
@@ -383,6 +381,8 @@ The **closing** has exactly two members:
 ```
 
 `closing` is `true`; `issued` is a count in the same form, above every state the host published.
+Both objects are canonical as written — §2's form, with §2.7's order for `listing` — and a plaintext
+is the UTF-8 bytes of one.
 
 **The envelope's own cost.** A frame costs 104 bytes over its plaintext while the ciphertext's
 length fits one varint byte — a plaintext of up to 111 bytes — and 105 from there: 8 for the key
