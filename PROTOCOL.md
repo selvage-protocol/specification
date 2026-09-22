@@ -1253,9 +1253,15 @@ commitment costs the peer its whole session, because §13.1's step 4 leaves a pe
 commits unable to publish anything at all. **At most one key per seat is committed**: a seat is one
 connection (§9), so a state that commits a new key for a seat replaces the key it held there and the
 replaced key's frames are refused `uncommitted_key` from that state on (§13.3). **An announcement
-whose key the state already commits publishes nothing**: the room knows the key, the announcement
-changes no role (below), and a peer re-announcing one (§13.1) obliges no peer to re-send a listing
-the room already holds.
+whose key the state already commits publishes nothing new**: the room knows the key, the announcement
+changes no role (below), and what it does say is that its sender has not applied the state that
+commits its key — the only reading a re-announcement (§13.1) has. So a host **MUST** answer one with a
+state that sender can apply, either the fresh one it would publish anyway or the one it already holds
+re-sent unchanged (below), and **MAY** treat one answer as answering every announcement of that kind
+it accepts inside the next `awareness_renew_ms`. That window is what keeps the obligation from being a
+flood: a peer that announces without bound obliges at most one state frame a window, while a peer
+whose state went missing gets it back inside that window rather than waiting for the room's next
+change.
 
 **The host assigns the role, and its pairing can be wrong.** What a host has to pair a key with is
 the roster it was sent — `peer_id`s and display names — and whatever it handed out, and nothing on
@@ -1286,7 +1292,8 @@ existence;
   asking and how a departure's key leaves the room's statement with it (§6.1), and on every
   session-key announcement it accepts that commits a key its `peers` does not already carry, which is
   how a key it has just learned reaches every other peer. An announcement whose key the state already
-  commits changes no member of it and publishes nothing;
+  commits changes no member of it: it brings no state of its own, and what the host owes it is the
+  state its sender has not applied, re-sent as the paragraph above says;
 - **MUST** write an `issued` above every state it has published and, once it has verified a state at
   or above that edition, above that one instead. Its first state carries `issued` `1`, because the
   mark a receiver compares against starts at `0` and a state that is not above it is refused
@@ -2214,9 +2221,11 @@ and the order is part of what follows:
    one frame. The clock is the recovery's bound and not decoration: a client cannot tell a dropped
    announcement from a slow host, and a rule whose only trigger is applying a state cannot start when
    the host never answers. Each re-announcement is the same frame at the next counter under the same
-   key ([`CANONICAL.md`](CANONICAL.md) §6.1). A client whose key a state commits stops re-announcing
-there, and one that re-announces a key the host has already committed changes nothing: §7.1 has that
-announcement publish nothing.
+   key ([`CANONICAL.md`](CANONICAL.md) §6.1), and a client whose key a state commits stops
+   re-announcing there. §7.1 states what a host owes an announcement whose key its state already
+   commits — the state its sender has not applied, re-sent — so the same timer recovers that drop
+   too, within a window: a client cannot tell a dropped announcement from a dropped state, and it
+   does not have to.
 5. **Verify each room state against the host key the fragment names, and apply it if it verifies
    and its `issued` is above the mark this receiver holds** ([`CANONICAL.md`](CANONICAL.md) §6.1).
    Arrival is not the order: §13.3 orders states by `issued`, so a state that verifies and arrives
@@ -2686,7 +2695,7 @@ ending (`ended`).
 | Every accepted announcement is committed (§7.1) | the state the subject publishes next carries the announced key; `published` counts it | a fixture announcement whose key no seat in the roster can be placed; a host that withholds the commitment for want of a label must fail — the announcing peer then never publishes |
 | A seat holds one key, a departure drops it, and a re-announcement changes nothing (§7.1) | the state published after a second announcement placed at one seat carries the new key and drops the old, and a frame from the replaced key is refused `uncommitted_key`; the state published after that seat's `peer.left` carries neither key; `published` does not move for an announcement whose key the state already commits | two announcements placed at one seat, then the replaced key's holds message, then a `peer.left` for the seat; a third announcement from the committed key on the renewal clock. The mutation that keeps both keys, or that leaves a departed seat's key in the state, or that publishes a state per announcement, must fail this leg |
 | A client with no state ends at its window (§13.3) | `ended` within the no-state window of being seated, and not before | a fixture room whose host never publishes a state, with a compressed `awareness_expire_ms`; a client that waits for ever, or that ends inside the window, must fail |
-| A dropped announcement is recovered (§13.1) | `published` counts announcements across a window with no committing state, and the key is committed by the host's state once it arrives | a fixture relay that drops the subject's first announcement, with a compressed `awareness_renew_ms`; a client that announces once and waits must fail |
+| A dropped announcement is recovered (§13.1) | `published` counts announcements across a window with no committing state, the key is committed by the host's state once it arrives, and a state the host already holds is re-sent for an announcement whose key it already commits; the subject applies it and stops announcing | a fixture relay that drops the subject's first announcement, with a compressed `awareness_renew_ms`, and a second leg whose relay drops the *state* that commits the key; a client that announces once and waits, or a host that answers neither within a window, must fail |
 | A key that is not the canonical encoding is refused (§13.2) | `dropped` with `bad_payload`, in a state's `peers` name and in an announcement's `key` | a state naming a key whose final character carries non-zero pad bits, and the plaintext's own spelling of one that does; a lenient decoder that resolves it to a 32-byte key must fail |
 | A verified closing ends; an unverified one does not (§13.10) | `ended` true for the first, false for the second and for a closing delivered to a subject holding no state | two `kind = 2` frames, one above the mark and one at it, and one delivered before any state; the mutation that drops the `issued` ordering must fail the first leg |
 | The room is gone, not retryable (§13.10) | the subject sends no second `session.hello` to the id; `published` shows the one hello | an absence scan over the transcript after `room_unknown`, as §6's scans are |

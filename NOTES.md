@@ -1122,7 +1122,9 @@ costs the peer its whole session. Three rules close the amplification the same p
 `viewer` may announce, so one read-only peer could make a room re-broadcast its listing per frame
 and grow every peer's key set: **at most one key per seat is committed** (a seat is one connection,
 so a new key replaces the old and the replaced key's frames are refused `uncommitted_key`), an
-announcement whose key the state **already commits** publishes nothing, and a receiver's held set is
+announcement whose key the state **already commits** publishes nothing new and is answered with a
+state its sender can apply — the one the host holds, re-sent unchanged — at most once per
+`awareness_renew_ms`, which is what recovers a *state* the relay dropped, and a receiver's held set is
 what its state commits — a key only an announcement has named is held until the state that omits it,
 with a **MAY** cap on how many such keys it keeps, §13.7's remedy applied to a key set. A fourth
 belongs with the first two and is the one this pass added beyond the review's list: the host
