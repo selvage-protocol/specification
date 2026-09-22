@@ -30,7 +30,7 @@ session layer, one for the corpus counts, and `result OK`:
 ```
 schema ok      11 schemas, 39 values checked against the control-character refusal
 sealed         19 values checked against the sealed payloads of selvage/2
-session v2     25 values checked against selvage/2's session layer
+session v2     42 values checked against selvage/2's session layer
 vectors        36 files, 35022 frame checks, 8676 assertion steps
 result         OK
 ```
@@ -110,15 +110,19 @@ in every vector against them. It prints a line for the schemas, a line for the c
   belong to the corpus layer that is not written. Until they exist this check is what keeps the
   model from being relaxed unnoticed, which is why it is here rather than with the layer that owns
   the vectors.
-- that `schema/session-v2.json` describes the three shapes `selvage/2`'s session layer states and
+- that `schema/session-v2.json` describes the shapes `selvage/2`'s session layer states and
   `selvage/1`'s do not — a `/meta` body of four members whose `wire_versions` name `selvage/2` or a
-  later minor and whose `keepalive` carries `room_grace_ms`, a `PeerInfo` without `role`, and the
-  two replies to `session.hello` without `documents` — the same way and for the same reason: `/meta`
-  carries no `v`, the transcripts are `selvage/1`'s until the corpus is re-baselined, and nothing
-  else in this suite reaches a frame of that version. It pins the tolerance as well as the shape:
-  a body, a peer record or a reply carrying a member the version does not define must still
-  validate, because `PROTOCOL.md` §4.1 has a receiver ignore one, and a capability of a server's
-  own is one of those.
+  later minor and whose `keepalive` carries `room_grace_ms`, a `PeerInfo` without `role`, the two
+  replies to `session.hello` without `documents`, the `peer.joined` whose params that peer record
+  is, and the fault vocabulary of a server that does not know who the host is — the same way and for
+  the same reason: `/meta` carries no `v`, the transcripts are `selvage/1`'s until the corpus is
+  re-baselined, and nothing else in this suite reaches a frame of that version. It pins the
+  tolerance as well as the shape: a body, a peer record, an event or a reply carrying a member the
+  version does not define must still validate, because `PROTOCOL.md` §4.1 has a receiver ignore one,
+  and a capability of a server's own is one of those. The fault code is the exception, and it is a
+  closed value rather than a member: the two codes `PROTOCOL.md` §11 takes out of this version —
+  `host_present` and the reserved `doc_not_open` — must validate under `selvage/1`'s vocabulary and
+  be refused by this one, which is checked in the same run.
 
 Testing a refusal means sending a frame the server must reject. Such a frame carries
 `"refused": true`, and its params are not schema-checked. When the frame is not JSON at all, it

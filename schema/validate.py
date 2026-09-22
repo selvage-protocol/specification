@@ -864,12 +864,16 @@ SEALED_SITES = (
 # passages fix them. A `selvage/2` `/meta` body and its `session.hello` replies are not session
 # frames — `/meta` carries no `v`, and the transcripts are `selvage/1`'s until the corpus is
 # re-baselined — so nothing else here reaches them, and a `roles` made required again, a `documents`
-# readmitted, a peer record's `display_name` dropped, an advertisement naming `selvage/1`, or a
-# `keepalive` with no `room_grace_ms` would leave every other check in this suite green. Both
-# directions are checked, so a shape that refuses everything fails too. A member these values carry
-# and the shape does not define is deliberate: a receiver tolerates one (`PROTOCOL.md` §4.1), so the
-# model must not forbid it, and what holds a *server* to the member set of its version is the
-# corpus's exact comparison rather than a schema.
+# readmitted, a peer record's `display_name` dropped, an advertisement naming `selvage/1`, a
+# `peer.joined` whose peer is not this version's record, a `host_present` readmitted to the fault
+# vocabulary, or a `keepalive` with no `room_grace_ms` would leave every other check in this suite
+# green. Both directions are checked, so a shape that refuses everything fails too. A *member* these
+# values carry and the shape does not define is deliberate: a receiver tolerates one (`PROTOCOL.md`
+# §4.1), so the model must not forbid it, and what holds a *server* to the member set of its version
+# is the corpus's exact comparison rather than a schema. A fault *code* is a closed value and not a
+# member, which is why the vocabulary is the one place one of these shapes refuses a value: see
+# `check_session_v2`'s last block, which checks that the two versions' vocabularies differ in exactly
+# the codes §11 says they do.
 SESSION_V2_KEEPALIVE = {
     "ping_interval_ms": 30000,
     "awareness_renew_ms": 15000,
@@ -938,6 +942,58 @@ SESSION_V2_PEER_REFUSED = {
     "a peer whose `peer_id` is empty": {"peer_id": "", "display_name": "Bob"},
 }
 
+# The one event of the seven `PROTOCOL.md` §6 gives a `selvage/2` server whose params are this
+# version's peer record, and therefore the one that differs from `selvage/1`'s shape. `peer.left`,
+# `peer.renamed` and `room.gone` are `events.json`'s unchanged and are checked there; `session.error`
+# is the same event, and its params in this version are `session-v2.json#/$defs/errorObject`.
+SESSION_V2_PEER_JOINED_CONFORMING = {
+    "a `peer.joined`": {"peer": {"peer_id": "p-3d33", "display_name": "Bob"}},
+    "one whose peer carries an awareness id": {
+        "peer": {"peer_id": "p-3d33", "display_name": "Bob", "awareness_client_id": 42},
+    },
+    "one carrying a member this version does not define": {
+        "peer": {"peer_id": "p-3d33", "display_name": "Bob", "role": "guest"},
+    },
+}
+SESSION_V2_PEER_JOINED_REFUSED = {
+    "a `peer.joined` with no `peer`": {},
+    "one whose peer has no `display_name`": {"peer": {"peer_id": "p-3d33"}},
+    "one whose peer has no `peer_id`": {"peer": {"display_name": "Bob"}},
+}
+
+# The fault vocabulary of this version (`PROTOCOL.md` §11): `selvage/1`'s nine codes that survive,
+# and an implementation's own `x.` name. The two codes that go are the ones whose fault this
+# server's shape cannot produce, and the second set below is what makes that a difference between
+# two shipped schemas rather than a claim: the same value must still validate against
+# `errors.json#/$defs/errorObject`, or the version's enum would be a copy that happened to drop a
+# value rather than the version's vocabulary.
+SESSION_V2_FAULT_CONFORMING = {
+    "a refusal this version carries": {"code": "room_unknown", "message": "no such room"},
+    "a fault a seated connection is answered with": {
+        "code": "already_seated",
+        "message": "session.hello sent twice",
+    },
+    "a capacity code of the implementation's own": {
+        "code": "x.room_full",
+        "message": "the room is full",
+    },
+}
+SESSION_V2_FAULT_REFUSED = {
+    "`host_present`, whose fault this server cannot have": {
+        "code": "host_present",
+        "message": "a host is already connected",
+    },
+    "`doc_not_open`, reserved for a method this version does not have": {
+        "code": "doc_not_open",
+        "message": "no such error to raise",
+    },
+    "a name that is neither code nor `x.` name": {
+        "code": "cursor.teleport",
+        "message": "no such method",
+    },
+    "a fault with no `message`": {"code": "room_unknown"},
+}
+
 SESSION_V2_JOIN = {
     "room_id": "r-a0bca377bb4e",
     "self": {"peer_id": "p-3d33", "display_name": "Bob", "awareness_client_id": 42},
@@ -980,6 +1036,18 @@ SESSION_V2_SITES = (
         SESSION_V2_PEER_REFUSED,
     ),
     (
+        "a `selvage/2` `peer.joined`",
+        "session-v2.json#/$defs/peerJoined",
+        SESSION_V2_PEER_JOINED_CONFORMING,
+        SESSION_V2_PEER_JOINED_REFUSED,
+    ),
+    (
+        "a `selvage/2` fault",
+        "session-v2.json#/$defs/errorObject",
+        SESSION_V2_FAULT_CONFORMING,
+        SESSION_V2_FAULT_REFUSED,
+    ),
+    (
         "a `selvage/2` `room.joined`",
         "session-v2.json#/$defs/roomJoined",
         SESSION_V2_JOIN_CONFORMING,
@@ -998,7 +1066,10 @@ def check_session_v2(reg: Registry) -> int:
     """Runs the shipped `session-v2.json` against `selvage/2`'s session-layer shapes.
 
     Both directions, as for the sealed payloads: a shape that refuses everything this version
-    writes fails beside a shape that accepts what it does not.
+    writes fails beside a shape that accepts what it does not. The fault vocabulary is the one
+    shape here that refuses a *value* rather than tolerating it, so its last block checks the other
+    half of that claim: the two codes this version drops must still validate against `selvage/1`'s
+    vocabulary, or the version's `enum` would be a copy that happens to be missing two entries.
     """
     checks = 0
     for label, ref, conforming, refused in SESSION_V2_SITES:
@@ -1015,6 +1086,21 @@ def check_session_v2(reg: Registry) -> int:
                     "schema",
                     f"{label} accepts {name}, which `schema/session-v2.json` does not describe",
                 )
+
+    v1_fault = Draft202012Validator(
+        {"$ref": f"{BASE}errors.json#/$defs/errorObject"}, registry=reg
+    )
+    v2_fault = Draft202012Validator(
+        {"$ref": f"{BASE}session-v2.json#/$defs/errorObject"}, registry=reg
+    )
+    for code in ("host_present", "doc_not_open"):
+        value = {"code": code, "message": f"{code} as `selvage/1` carries it"}
+        checks += 1
+        if list(v1_fault.iter_errors(value)):
+            fail("schema", f"`selvage/1`'s fault vocabulary refuses its own code `{code}`")
+        checks += 1
+        if not list(v2_fault.iter_errors(value)):
+            fail("schema", f"`selvage/2`'s fault vocabulary accepts `{code}`")
     return checks
 
 

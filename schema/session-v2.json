@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://selvageprotocol.com/schema/1/session-v2.json",
   "title": "Selvage Session Protocol — `selvage/2`'s session layer",
-  "description": "The shapes `selvage/2`'s session layer states that `selvage/1`'s do not: the `GET /meta` body its server advertises, the peer record its replies carry, and the two replies to `session.hello`. Valid against PROTOCOL.md §2, §5 and §6.1. A member `selvage/1` gives a frame and this version does not carry is not a member of it, so the four objects here are what a `selvage/2` producer writes; a receiver tolerates one it is handed anyway (PROTOCOL.md §4.1), so nothing here forbids a member, and what holds a *server* to the member set of its version is the corpus's exact comparison and not this file. `session.hello`'s params are not repeated here: `role` is optional in `methods.json` and its absence is already that schema, so the version's handshake needs no second shape. No vector reaches this file yet — the transcripts are `selvage/1`'s until the corpus is re-baselined — which is why `validate.py` exercises it against values that must and must not validate.",
+  "description": "The shapes `selvage/2`'s session layer states that `selvage/1`'s do not: the `GET /meta` body its server advertises, the peer record its frames carry, the two replies to `session.hello`, the `peer.joined` event whose params that record is, and the fault vocabulary the server of this version answers with. Valid against PROTOCOL.md §2, §5, §6 and §11. A member `selvage/1` gives a frame and this version does not carry is not a member of it, so the objects here are what a `selvage/2` producer writes; a receiver tolerates one it is handed anyway (PROTOCOL.md §4.1), so nothing here forbids a *member*, and what holds a *server* to the member set of its version is the corpus's exact comparison and not this file. The error code is a *value* rather than a member and is closed in both versions (PROTOCOL.md §11, §10.1), so the one place this file does refuse something is a code the version cannot carry. `session.hello`'s params are not repeated here: `role` is optional in `methods.json` and its absence is already that schema, so the version's handshake needs no second shape. No vector reaches this file yet — the transcripts are `selvage/1`'s until the corpus is re-baselined — which is why `validate.py` exercises it against values that must and must not validate.",
   "$defs": {
     "meta": {
       "title": "`GET /meta`, as a `selvage/2` server answers it",
@@ -49,6 +49,48 @@
         "peer_id": {
           "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId"
         }
+      }
+    },
+    "peerJoined": {
+      "title": "`peer.joined`, in `selvage/2`",
+      "description": "The one event whose params this version's peer record is, and therefore the only one of the seven `PROTOCOL.md` §6 gives it that differs from `selvage/1`'s shape. It has one meaning here — a connection was seated — because there is no reclaim in this version, so the `selvage/1` reading in which `peer.joined` may be a host returning does not apply. `peer.left`, `peer.renamed`, `room.gone` and `session.error` are `events.json`'s shapes unchanged (`PROTOCOL.md` §6) and are not repeated here.",
+      "type": "object",
+      "required": ["peer"],
+      "properties": {
+        "peer": {
+          "$ref": "#/$defs/peer",
+          "description": "The connection `session.hello` has just seated, as this version writes a peer record."
+        }
+      }
+    },
+    "errorCode": {
+      "title": "a `selvage/2` fault code",
+      "description": "The nine codes `PROTOCOL.md` §11 gives this version, plus an implementation's own reserved `x.` name (§10.1). It is `selvage/1`'s vocabulary less the two whose fault this server cannot produce: `host_present` is a refusal for a host that is already connected, and this version's server does not know who the host is; `doc_not_open` is reserved for a `doc.*` method this version does not have. A code is a closed value in both versions rather than a member a receiver tolerates, which is why this file refuses one here where it forbids no member.",
+      "anyOf": [
+        {
+          "enum": [
+            "unknown_method",
+            "bad_message",
+            "bad_params",
+            "hello_required",
+            "unsupported_version",
+            "room_unknown",
+            "token_invalid",
+            "room_gone",
+            "already_seated"
+          ]
+        },
+        { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/extensionCode" }
+      ]
+    },
+    "errorObject": {
+      "title": "a `selvage/2` fault",
+      "description": "`error` on a response and `params` on a `session.error` event are this shape in both versions (`PROTOCOL.md` §4.2, §6, §11). It is `errors.json`'s `errorObject` with the code narrowed to this version's vocabulary, and it is written out rather than referenced for the reason `meta` is: JSON Schema has no way to take two values out of another schema's `enum`. `message` is human-readable and explicitly not stable, so nothing may depend on it.",
+      "type": "object",
+      "required": ["code", "message"],
+      "properties": {
+        "code": { "$ref": "#/$defs/errorCode" },
+        "message": { "type": "string", "minLength": 1 }
       }
     },
     "roomReply": {
