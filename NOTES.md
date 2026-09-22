@@ -1340,6 +1340,17 @@ two implementations agree; a vector can hold a client to a rule it states and ca
 clients reaching the same state, which stays the interop test's job. And the byte layout's
 reading rules the spec leaves unstated are recorded below rather than invented as checks.
 
+**Revised 2026-09-23: `154-lease-expires-a-silent-peer` could not pass and now does.** Its state
+committed `host-session` and `guest-1` while its holds message was signed by `guest-2`, which no
+state committed, so §13.4 and `CANONICAL.md` §6.1's step 4 refused the frame `uncommitted_key` and
+the vector asserted what no conforming client could do — the defect §B.40 found and declined to fix.
+Its state now commits `guest-2` under a `peer_id` label and role `guest`, the key its holds message
+is signed with, and the state's `hex` is re-derived from its recipe; the vector passes against the
+Rust subject and goes red under `no-lease` and no other guard, so the lease §13.7 states is what it
+tests. `EXPECTED_PEER_VECTORS` 23, `EXPECTED_PEER_CHECKS` 194 and `EXPECTED_PEER_ASSERTIONS` 66 are
+unmoved: a `peers` member and a `hex` live inside a recipe, and neither is one of the corpus's
+counts.
+
 **What this pass could not settle.** (1) **A non-minimal varint.** §6.1 says the envelope's
 `varUint` fields are LEB128 and does not forbid an overlong spelling, so `80 00` and `00` are two
 spellings of the counter `0` whose signature inputs are identical — one frame to a verifier, two
@@ -1446,20 +1457,19 @@ shift 63 with any bit above bit 0, which is `NOTES.md` §B.38's other question l
 overlong *spelling* of a value inside 64 bits (`80 00` for `0`) is still read as written, in both
 readers.
 
-**What the corpus found, and what is not this pass's to fix.** Vector
-`154-lease-expires-a-silent-peer` **cannot pass**, and the vector is what is wrong. Its state commits
-`host-session` and `guest-1`, and its holds message is signed by `guest-2`, which that state does not
-commit: §13.4 resolves a `kind = 3` frame against the keys the applied state commits and
-`CANONICAL.md` §6.1's step 4 refuses one from any other key `uncommitted_key`, which is also what
+**What the corpus found, and what a later pass fixed.** Vector
+`154-lease-expires-a-silent-peer` **could not pass**, and the vector was what was wrong. Its state
+committed `host-session` and `guest-1`, and its holds message is signed by `guest-2`, which that
+state did not commit: §13.4 resolves a `kind = 3` frame against the keys the applied state commits
+and `CANONICAL.md` §6.1's step 4 refuses one from any other key `uncommitted_key`, which is also what
 §13.11's own table says twice — a holds message applies "under a fixture state that commits it", and
 "a holds message signed by a key the fixture state does not name" is the row for `uncommitted_key`.
 The vector's own fixture line asks for "a peer that announces once and is then silent", which is a
-*committed* peer, so its state is missing the entry its premise needs; the fix is to re-seal the
-state frame with `guest-2` in `peers` and update the `hex`. A vector is not this pass's to change, so
-it is unfixed and named here, and `reference_server`'s
-`crates/harness/tests/decisions.rs` pins the defect with a test that fails when the corpus is
-corrected. The other five — 151, 152, 153, 155 and 156 — pass, and each goes red under the guard it
-declares it catches.
+*committed* peer, so its state was missing the entry its premise needed. **Revised 2026-09-23:**
+`NOTES.md` §B.38 records the fix — the state commits `guest-2` and the `hex` is re-derived, so the
+vector passes and the lease is what it tests — and `reference_server`'s
+`crates/harness/tests/decisions.rs` replays 154 with the other five and no longer pins it. The other
+five — 151, 152, 153, 155 and 156 — pass, and each goes red under the guard it declares it catches.
 
 **A third disagreement between the two readers, found by review and left open.** `kind = 0`'s
 plaintext is the y-protocols stream of `PROTOCOL.md` §7 and what a receiver does with bytes that
