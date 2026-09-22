@@ -711,16 +711,193 @@ def check_control_refusal(reg: Registry) -> int:
     return checks
 
 
+# The sealed payloads `selvage/2` carries, as `CANONICAL.md` §6.1 and `schema/sealed.json`
+# fix them. Nothing else here reads that file: a sealed frame is bytes and the corpus's vectors
+# for it are the next layer's, so without this check the state's member set could be relaxed
+# — `key` back to the `key_id` that verifies nothing, or a fourth role — with every other
+# check in this suite still green.
+SEALED_CONFORMING = {
+    "an empty room": {"issued": 0, "listing": [], "peers": {}},
+    "a listing of one path": {"issued": 1, "listing": ["src/main.rs"], "peers": {}},
+    "a host and a viewer": {
+        "issued": 1,
+        "listing": ["README.md", "src/main.rs"],
+        "peers": {
+            "p-0f1e2d3c4b5a6978": {
+                "key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM",
+                "role": "host",
+            },
+            "p-8796a5b4c3d2e1f0": {
+                "key": "laGjN1Xs9WCrmojozXGfP9_-1ppPlIwOcog-ef1AdIc",
+                "role": "viewer",
+            },
+        },
+    },
+    "a closing": {"closing": True, "issued": 2},
+}
+SEALED_REFUSED = {
+    "a state with no `issued`": {"listing": [], "peers": {}},
+    "a state that commits an id": {
+        "issued": 1,
+        "listing": [],
+        "peers": {"p-1": {"key_id": "efc57a77c8a86a55", "role": "host"}},
+    },
+    "a peer with no role": {"issued": 1, "listing": [], "peers": {"p-1": {"key": "GT" * 1 + "yGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM"}}},
+    "a role this version has not": {
+        "issued": 1,
+        "listing": [],
+        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM", "role": "admin"}},
+    },
+    "a key that is not 32 bytes": {
+        "issued": 1,
+        "listing": [],
+        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfe", "role": "host"}},
+    },
+    "a key with a character base64url has not": {
+        "issued": 1,
+        "listing": [],
+        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfe+", "role": "host"}},
+    },
+    "a listing that carries a control character": {
+        "issued": 1,
+        "listing": ["src/main\u0000.rs"],
+        "peers": {},
+    },
+    "a listing that is not a list": {"issued": 1, "listing": "README.md", "peers": {}}
+}
+SEALED_STATE_CONFORMING = {
+    "an empty room": {"issued": 0, "listing": [], "peers": {}},
+    "a listing of one path": {"issued": 1, "listing": ["src/main.rs"], "peers": {}},
+    "a host and a viewer": {
+        "issued": 1,
+        "listing": ["README.md", "src/main.rs"],
+        "peers": {
+            "p-0f1e2d3c4b5a6978": {
+                "key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM",
+                "role": "host",
+            },
+            "p-8796a5b4c3d2e1f0": {
+                "key": "laGjN1Xs9WCrmojozXGfP9_-1ppPlIwOcog-ef1AdIc",
+                "role": "viewer",
+            },
+        },
+    },
+    "a state carrying a member this version does not define": {
+        "issued": 1,
+        "listing": [],
+        "peers": {
+            "p-1": {
+                "key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM",
+                "key_id": "efc57a77c8a86a55",
+                "role": "host",
+            }
+        },
+    },
+}
+SEALED_STATE_REFUSED = {
+    "a state with no `issued`": {"listing": [], "peers": {}},
+    "a state that commits an id instead of a key": {
+        "issued": 1,
+        "listing": [],
+        "peers": {"p-1": {"key_id": "efc57a77c8a86a55", "role": "host"}},
+    },
+    "a peer with no key": {
+        "issued": 1,
+        "listing": [],
+        "peers": {"p-1": {"role": "host"}},
+    },
+    "a peer with no role": {
+        "issued": 1,
+        "listing": [],
+        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM"}},
+    },
+    "a role this version has not": {
+        "issued": 1,
+        "listing": [],
+        "peers": {
+            "p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM", "role": "admin"}
+        },
+    },
+    "a key that is not 32 bytes": {
+        "issued": 1,
+        "listing": [],
+        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfe", "role": "host"}},
+    },
+    "a key with a character base64url has not": {
+        "issued": 1,
+        "listing": [],
+        "peers": {"p-1": {"key": "GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfe+", "role": "host"}},
+    },
+    "a listing that carries a control character": {
+        "issued": 1,
+        "listing": ["src/main\u0000.rs"],
+        "peers": {},
+    },
+    "a listing that is not a list": {"issued": 1, "listing": "README.md", "peers": {}},
+    "a closing offered as a state": {"closing": True, "issued": 2},
+}
+SEALED_CLOSING_CONFORMING = {"a closing": {"closing": True, "issued": 2}}
+SEALED_CLOSING_REFUSED = {
+    "a closing with no `issued`": {"closing": True},
+    "a closing whose `closing` is false": {"closing": False, "issued": 3},
+    "a room state offered as a closing": {"issued": 2, "listing": [], "peers": {}},
+    "an `issued` above the JavaScript bound": {"closing": True, "issued": 9007199254740992},
+}
+
+SEALED_SITES = (
+    (
+        "the sealed room state",
+        "sealed.json#/$defs/roomState",
+        SEALED_STATE_CONFORMING,
+        SEALED_STATE_REFUSED,
+    ),
+    (
+        "the sealed closing",
+        "sealed.json#/$defs/roomClosing",
+        SEALED_CLOSING_CONFORMING,
+        SEALED_CLOSING_REFUSED,
+    ),
+)
+
+
+def check_sealed_payloads(reg: Registry) -> int:
+    """Runs the shipped `sealed.json` against what `CANONICAL.md` §6.1 says it describes.
+
+    Nothing else in this suite reads that file — a sealed frame is bytes rather than JSON, and
+    the vectors for one are the corpus layer's — so a member set relaxed here (the state's `key`
+    back to the `key_id` that verifies nothing, or a fourth role) would leave every other check
+    green. Both directions are checked, so a constraint that refuses everything fails too.
+    """
+    checks = 0
+    for label, ref, conforming, refused in SEALED_SITES:
+        validator = Draft202012Validator({"$ref": f"{BASE}{ref}"}, registry=reg)
+        for name, value in conforming.items():
+            checks += 1
+            errors = list(validator.iter_errors(value))
+            if errors:
+                fail("schema", f"{label} refuses the conforming {name}: {errors[0].message}")
+        for name, value in refused.items():
+            checks += 1
+            if not list(validator.iter_errors(value)):
+                fail(
+                    "schema",
+                    f"{label} accepts {name}, which `CANONICAL.md` §6.1 does not describe",
+                )
+    return checks
+
+
 def main() -> int:
     """Checks every schema and every claim the corpus makes, and reports what it found."""
     global CHECKS
     reg = registry()
     check_method_map()
     refusals = check_control_refusal(reg)
+    sealed = check_sealed_payloads(reg)
     print(
         f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas, {refusals} values "
         "checked against the control-character refusal"
     )
+    print(f"sealed         {sealed} values checked against the sealed payloads of selvage/2")
 
     vectors = sorted(VECTOR_DIR.glob("*.json"))
     assertions = 0

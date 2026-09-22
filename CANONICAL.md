@@ -8,7 +8,9 @@ are written.
 It is versioned with the prose it belongs to: this is **SJ-C/1**, the canonical form for wire
 version `selvage/1`. A future wire version that changes a frame's members changes this document's
 version at the same time, and [`vectors/`](vectors/) records which of the two each transcript is
-valid against.
+valid against. §6.1 is the one passage here that is not `selvage/1`'s: it fixes the bytes of a
+`selvage/2` binary frame, which is not a JSON frame at all, and it says of itself which of the two
+versions reads it.
 
 ## 1. Scope
 
@@ -19,7 +21,10 @@ SJ-C applies to:
 - **the `GET /meta` response body** (§2), which is JSON but not a frame.
 
 It does not apply to binary frames, which are opaque y-protocols bytes (§7, §8) and are compared
-and relayed byte for byte (§6 below), or to the WebSocket framing itself.
+and relayed byte for byte (§6 below), or to the WebSocket framing itself. A `selvage/2` binary
+frame is the one exception the other way round: §6.1 fixes its layout, because two implementations
+that read one have to agree on bytes no JSON rule reaches. The JSON inside such a frame — the room
+state and the closing — is §2's, and §6.1 says which of §2's rules a value read there keeps.
 
 ## 2. The rule
 
@@ -101,8 +106,8 @@ particular `"params": null` is not the same as an absent `params`.
 
 ### 2.7 Array order
 
-An array's order is part of what a frame *says* only where `PROTOCOL.md` promises one. Two arrays
-are in that position:
+An array's order is part of what a frame *says* only where `PROTOCOL.md` promises one. Three
+arrays are in that position:
 
 - **`documents`**, "the room's open-document set, in first-opened order" (§6.2), which a
   comparison holds to that order; and
@@ -111,6 +116,11 @@ are in that position:
   unchanged. This one is written in an order the sender chose rather than one the server arrived
   at, which is the only thing that distinguishes it from `documents` here: the order is still a
   claim, and a comparison holds the bytes to it.
+
+- **the sealed room state's `listing`** (§6.1), written ascending by UTF-16 code unit like a
+  grant's `paths`, and the one array a `selvage/2` frame carries. Nothing else `selvage/2` writes
+  is ordered: the room state's `peers` is an object whose members §2.1 orders by name, and not the
+  array `PROTOCOL.md` §6.2 gives that name to.
 
 Every other array this protocol defines is a **set**: `peers` ("No order is promised for it",
 §6.2), `capabilities` (§2, §6.2, §10), `wire_versions` and `roles` (§2). There is no order to write
@@ -204,11 +214,181 @@ dropped, because silence is how version skew becomes a timeout.
 
 ## 6. Binary frames
 
-A binary frame is a stream of y-protocols messages (§7). It is **not** canonicalised, re-encoded
-or inspected: the server relays the bytes it received, unchanged, to every other member of the
-room, and the vectors assert byte equality in both directions. Two implementations conform on the
-document-sync path when the bytes they exchange encode the same messages, which is a property of
-`y-protocols`, not of SJ-C.
+In `selvage/1` a binary frame is a stream of y-protocols messages (§7); in `selvage/2` it is one
+**sealed frame** (§6.1) whose plaintext is that same stream. Either way it is **not**
+canonicalised, re-encoded or inspected: the server relays the bytes it received, unchanged, to
+every other member of the room, and the vectors assert byte equality in both directions. Two
+implementations conform on the document-sync path when the bytes they exchange encode the same
+messages, which is a property of `y-protocols`, not of SJ-C.
+
+
+### 6.1 Sealed frames (`selvage/2`)
+
+**Scope.** This subsection is `selvage/2`'s and nothing above it is: a `selvage/1` binary frame is
+the bare y-protocols stream §6 describes, and a `selvage/2` one is an envelope whose plaintext is
+that same stream. It fixes the envelope's bytes, the two values the invite URL's fragment carries,
+and the order a receiver reads the bytes in. `PROTOCOL.md` §7.1 says what the envelope carries and
+§5.1 says where the two values sit in a link. No implementation speaks `selvage/2` yet, so every
+rule here is written from the design rather than observed on a wire.
+
+**The envelope.** A `selvage/2` binary frame is exactly one envelope: nothing precedes it, nothing
+follows it, and its bytes are these, in this order.
+
+| field | width | meaning |
+|---|---|---|
+| `key_id` | 8 bytes | the sender's key id |
+| `kind` | `varUint` | `0` a sealed y-protocols stream, `1` the sealed room state, `2` the sealed closing |
+| `epoch` | `varUint` | `0`; reserved and unused in this version |
+| `counter` | `varUint` | the sender's counter under the key it signed with |
+| `nonce` | 12 bytes | fresh for this frame |
+| `ciphertext` | `varUint8Array` | the AEAD's output, its 16-byte tag included |
+| `signature` | 64 bytes | Ed25519 over the signature input |
+
+`varUint` and `varUint8Array` are `PROTOCOL.md` §7's: LEB128, and a byte length in front of the
+bytes. The three fixed-width fields are fixed: a frame whose bytes run out inside one, or that has
+any byte left over after the signature, is **malformed**, and a receiver drops it (below) rather
+than reading it as a variant of this layout.
+
+**The two keys in the fragment.** An invite URL's fragment carries two values, both in one
+encoding: **base64url** (RFC 4648 §5, the URL- and filename-safe alphabet) without padding, over a
+**32-byte** value.
+
+- **`k`** is the **room key**: 32 random bytes minted when the room is minted, from the platform's
+  CSPRNG, and the whole of the confidentiality.
+- **`h`** is the **host key**: the 32 bytes of the Ed25519 public key whose private half the host
+  holds. It is the room's root of trust — it verifies a room state and a closing, and nothing else
+  verifies those.
+
+The **frame key** is derived from the room key once per room, and seals every frame of every kind:
+
+```
+frame_key = HKDF-SHA256(ikm = room key, salt = the room id in UTF-8, info = "selvage/2 frame", L = 32)
+```
+
+There is no per-sender sealing key, because every member holds the room key and could derive one
+anyway. The host key is **not** derived from the room key: a signing key every guest can compute
+from its own link is a key every guest can forge with.
+
+Each connection also mints a **session keypair**, Ed25519 again, in memory and never persisted,
+whose public key the host's room state commits (`PROTOCOL.md` §7.1). A session key signs one
+peer's `kind = 0` frames; the host key signs `kind = 1` and `kind = 2`, and a receiver refuses
+those two from any other key.
+
+**What is authenticated.** The AEAD is **AES-256-GCM**; the tag is the 16 bytes GCM appends to the
+ciphertext; the nonce is the envelope's 12 bytes, drawn fresh from the CSPRNG for every frame and
+never derived from a counter, a key, or a value another sender also holds. Its **associated data**
+is:
+
+```
+aad = varUint8Array("selvage/2") ‖ varUint8Array(room id) ‖ varUint(kind) ‖ varUint(epoch) ‖ varUint8Array(key_id)
+```
+
+Each byte string in it is length-prefixed, so that no two different inputs write the same bytes:
+the version, the room, the kind, the epoch and the key id are all authenticated by the AEAD itself,
+before the signature is looked at.
+
+**What is signed.** The **signature input** is the associated data followed by the envelope's three
+authenticated values, in the order the envelope writes them:
+
+```
+signed = aad ‖ varUint(counter) ‖ varUint8Array(nonce) ‖ varUint8Array(ciphertext)
+```
+
+The signature is **Ed25519** (RFC 8032) over exactly those bytes, and it is Ed25519's own 64-byte
+encoding of the result. The signature covers the counter, the nonce and the ciphertext as well as
+the AAD, so one verification checks both the AEAD's input and its output. That is why a corrupted
+tag is a **signature** failure and not a tag failure, and why this version has no refusal reason of
+its own for one.
+
+**`key_id`.** The first **8 bytes of the SHA-256** of a public key's 32 bytes. It is not carried as
+a member anywhere and is not signed on its own: the room state carries the keys themselves and a
+receiver derives each id. It is an **index** into the keys a receiver holds and not an identity — a
+receiver resolves it by verifying the signature against every key that id names, and attributes the
+frame to the key that verified. A collision therefore costs a verification that fails, and never a
+mis-attribution.
+
+**The counter, the mark and `issued`.** A sender **MUST** give its first frame under one key the
+counter `1`, and each later frame under that key a strictly greater one. A receiver keeps, for each
+key it holds, the highest counter it has accepted, starting at `0`, and advances that mark **only**
+for a frame whose signature verified: a frame that does not verify never moves a mark, so a relay
+cannot poison one with a forged frame and lock out the frames that follow it. A `kind = 0` frame at
+or below the mark is refused whatever else is right about it, and there is no window around the
+mark: the transport `PROTOCOL.md` §7 describes is ordered, one connection's frames arrive in the
+order they were sent, so a counter that does not advance is a replay. A **gap** is not a fault —
+the relay may drop frames — and a receiver **MUST** accept a counter above the mark however far
+above it is.
+
+The two kinds the host signs are ordered by the `issued` member of their own plaintext instead, and
+their counter is not read for that purpose: a room state and a closing come from the host key,
+which is minted with the room and outlives the connection any one of them was published on, so it
+is `issued` and not a per-key counter that says which of two states is the later. A receiver keeps
+the highest `issued` it has accepted from the host, also starting at `0`, and refuses a room state
+or a closing that is not above it. The host **MUST** publish a state whose `issued` is above the
+state it replaces, and a closing whose `issued` is above every state it has published.
+
+**Reading an envelope.** A receiver reads the bytes in this order and reports the first step that
+refuses the frame.
+
+| # | step | reason |
+|---|---|---|
+| 1 | the layout: every field present, nothing left over | `bad_envelope` |
+| 2 | `kind` is one this version defines | `unknown_kind` |
+| 3 | `epoch` is one this version defines | `unknown_epoch` |
+| 4 | the key: a `kind = 0` frame is signed by a committed session key, a `kind = 1` or `2` frame by the host key | `uncommitted_key` |
+| 5 | the mark, for `kind = 0` | `replayed_counter` |
+| 6 | the signature | `bad_signature` |
+| 7 | the AEAD opens | `bad_aead` |
+| 8 | `issued`, for `kind = 1` and `2` | `stale_issued` |
+
+Those reasons are the receiver's **local report** and not wire values. Nothing about a refused
+frame is sent, no connection is closed, no code of `PROTOCOL.md` §11 is involved, and a frame that
+is dropped leaves the session as it was. The order is normative because the report is observable:
+the same bytes refused at two different steps would be two reports for one frame. Two consequences
+worth naming: a frame whose counter does not advance is a replay whether or not its signature
+would have verified, and `bad_aead` — reachable only by a sender that signs a ciphertext its own
+room's key cannot open — is a report about a sender's bug rather than about an attack.
+
+**The kinds.** `0` carries the y-protocols stream of `PROTOCOL.md` §7 as its plaintext, whole: one
+binary frame is one envelope, and the messages inside it are that section's, exactly as they are
+in `selvage/1`. `1` and `2` carry one JSON object each, as the UTF-8 bytes of its canonical form:
+`1` the room state, `2` the closing. Values above `2`, and every `epoch` but `0`, are this
+version's to leave unused: a later revision defines one, and a receiver of this version refuses a
+frame that uses one rather than reading it by the nearest rule it knows.
+
+**The two sealed payloads.** Both are JSON objects, read as §2 writes one, and neither is a session
+frame: neither carries `v`, and §2.5 is not theirs. §3 is: a receiver drops a member it does not
+know and does not refuse the value. A producer **MUST NOT** write a member this version does not
+define — the member sets below are fixed, and §2.7's order for `listing` is part of them.
+
+The **room state** has exactly three members. `PROTOCOL.md` §7.1 says what each means.
+
+```json
+{"issued":1,"listing":["README.md","src/main.rs"],
+ "peers":{"p-0f1e2d3c4b5a6978":{"key":"GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM","role":"host"}}}
+```
+
+- `issued`: a count in §2.4's form, at most 2 53 − 1 like every other count this protocol bounds.
+- `listing`: an array of paths, each held to `PROTOCOL.md` §5's rule for one, written ascending by
+  UTF-16 code unit.
+- `peers`: an object whose names are `peer_id`s, each value an object of two members: `key`, the
+  peer's public key in the fragment's encoding (base64url, 32 bytes), and `role`, one of `host`,
+  `guest` and `viewer`. Where one key is named under two `peer_id`s the receiver reads the role
+  from the entry whose `peer_id` comes first in UTF-16 code-unit order, so that two conforming
+  receivers read one state the same way.
+
+The **closing** has exactly two members:
+
+```json
+{"closing":true,"issued":2}
+```
+
+`closing` is `true`; `issued` is a count in the same form, above every state the host published.
+
+**The envelope's own cost.** A frame costs 104 bytes over its plaintext while the ciphertext's
+length fits one varint byte — a plaintext of up to 111 bytes — and 105 from there: 8 for the key
+id, 1 each for the kind, the epoch and the counter, 12 for the nonce, 1 for the ciphertext's
+length, 16 for the GCM tag and 64 for the signature. Measured on the layout above with the fixture
+values [`NOTES.md`](NOTES.md) §B.31 records.
 
 ## 7. `GET /meta`
 

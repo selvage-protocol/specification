@@ -3,7 +3,10 @@
 **Status: DRAFT.** Wire version `selvage/1`. Every requirement below was observed on the wire of
 the running implementation before it was written down, in the sessions in
 [`crates/harness/tests/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests),
-and nothing here is ratified.
+and nothing here is ratified. The one passage that is not `selvage/1`'s is §7.1, which fixes
+`selvage/2`'s sealed frame and the two keys that go with it ([`CANONICAL.md`](CANONICAL.md) §6.1):
+no implementation speaks `selvage/2` yet, so that section is written from the design rather than
+from a session, and it says so itself.
 
 This document is normative, and §1.1 says which sentences bind a reader and what a conforming
 implementation is. Three sibling artifacts fix the other halves of the same thing, and all four
@@ -37,7 +40,7 @@ This draft covers, and only covers:
 
 It does **not** cover, in this slice: persistence, accounts, authentication beyond a room token,
 file access (the room's grant is a list of *names* the server carries and never resolves, §5),
-terminals, rich text, E2EE, or any HTTP API other than `GET /meta`.
+terminals, rich text, E2EE in `selvage/1` (§7.1), or any HTTP API other than `GET /meta`.
 
 Everything outside the core layer is a **named optional profile**. One profile name is reserved
 here so that a later draft can define it without competing for the name: **`terminal/1`, shared
@@ -67,7 +70,9 @@ conforms when it satisfies both.
 **client** implements §4–§10 on the client side. Both implement `CANONICAL.md`, both are bound by
 §12 and §13, and both are bound by the [frames of the version they
 speak](#10-version-and-capability-negotiation): conformance is per wire version, and this document
-is `selvage/1`.
+is `selvage/1`. The exception is `selvage/2`'s, and it is three passages: §7.1, §5.1's fragment
+paragraph, and [`CANONICAL.md`](CANONICAL.md) §6.1. A peer that speaks `selvage/1` is not held to
+them, and the rest of `selvage/2`'s session layer is not written yet.
 
 Two rules follow, and they are what makes the keywords worth reading:
 
@@ -294,6 +299,11 @@ the open-document set, and relays binary frames to the rest of the room byte for
 y-protocols payload. In particular the server holds no CRDT, and document convergence is achieved
 peer to peer through the relay, not against the server.
 
+**In `selvage/2` a binary frame is a sealed frame** (§7.1): an envelope sealed under a key that
+travels in the invite URL's fragment and signed with a key the room's state commits. The paragraph
+above is unchanged by it and gains no carve-out — the server relays the envelope byte for byte,
+does not open it, does not verify it, and writes no member into it.
+
 ## 4. Session envelope
 
 Every text frame is one JSON object. Three shapes exist, distinguished by which keys are present.
@@ -486,6 +496,39 @@ truncated-invite case the `token`-without-`room` rule above describes.
 
 The two forms carry the same secret and differ only in which scheme names the same address, so
 §12's rule about an invite URL covers both.
+
+**An invite also carries the room's two keys, in its fragment.** The fragment is the one part of a
+URL a user agent dereferences itself and never puts in a request (RFC 3986 §3.5, RFC 9110 §17.11),
+which is what makes it the one place a key can travel from a host to a guest without the server, its
+logs, or anybody on the path reading it. Both values are **32 bytes** written in **base64url**
+(RFC 4648 §5) without padding, under the names `k` for the **room key** and `h` for the **host's
+public key**, in that order:
+
+```
+https://host/page/?room=<room_id>&token=<tok>#k=<room key>&h=<host public key>
+ws://host:port/session?room=<room_id>&token=<tok>#k=<room key>&h=<host public key>
+```
+
+The two are minted together, when the room is minted, silently and from the platform's CSPRNG, the
+way the room id and the token already are; the host's private half never leaves the host's machine
+and is never in a link. `k` is the key every frame of the room is sealed under and `h` is the
+room's root of trust, and [`CANONICAL.md`](CANONICAL.md) §6.1 fixes both. A receiver reads the
+fragment with the query's own decoding rule above — RFC 3986 `%XX` escapes, and a literal `+` is a
+`+` — and a value that does not decode to exactly 32 bytes is not a key. Each name appears **at
+most once**, as `room` and `token` do, and a parameter the receiver does not know is ignored, as an
+unknown query parameter is.
+
+The fragment is **never sent**, by construction: it is not part of a request line, and nothing this
+protocol defines puts it in a frame. A `selvage/2` client **MUST** strip it before it builds the
+socket URL, **MUST NOT** log it, and **MUST NOT** send it to the server in any form. It **MUST**
+refuse an invite whose fragment is absent, whose `k` or `h` is missing, or whose `k` or `h` is not a
+32-byte value — **locally, and before it opens a socket**. Without both values it can neither read
+a frame nor verify one, so there is no fallback and no plaintext mode: the honest refusal says the
+key is missing and asks for the whole link, `#` and all. What this document fixes is that the
+refusal happens; the sentence is the client's.
+
+In `selvage/1` the fragment carries nothing and no `selvage/1` frame is sealed: a link that carries
+`k` and `h` joins the same room in the clear, and neither value is read.
 
 The token is **never echoed after the mint.** `room.created` is the only frame that carries it
 (§6.1) and nothing re-sends it, so a client that might have to reconnect has to keep the token it
@@ -846,6 +889,47 @@ Follows [`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/mast
 - **Ordering.** The server offers no cross-peer ordering guarantee (each peer has its own queue).
   yjs convergence does not require one, but an editor adapter **MUST NOT** assume ordering between
   documents or between peers.
+
+### 7.1 The sealed frame (`selvage/2`)
+
+A `selvage/2` binary frame is one **sealed frame**. Its bytes are [`CANONICAL.md`](CANONICAL.md)
+§6.1's — the AEAD, the key schedule, the key id, the counter, the signature, and the order a
+receiver checks them in — and this section says what the frame carries. The message table above is
+unchanged by it: it is the plaintext of a `kind = 0` frame.
+
+**Where the keys are.** The room key and the host's public key travel in the invite URL's fragment
+(§5.1), which a user agent never sends to the server. A peer derives the frame key from the room
+key and mints a **session keypair** for the connection it holds, whose public key the host commits
+in the room state. The server holds none of the three: it relays a sealed frame byte for byte (§3)
+and can read neither what the frame carries nor who wrote it.
+
+**The room state** (`kind = 1`) is what the host publishes, sealed under the frame key and signed
+by the host key: the room's listing, the roles the host assigns, and the state's own edition.
+
+- `listing` is the room's working tree as the host enumerated it — names, no content, and the same
+  kind of value and the same kind of claim as a path in `selvage/1`'s grant (§5) — replaced
+  wholesale by every state, so a shorter listing is a smaller working tree and not a partial
+  update.
+- `peers` is the roster the host seats, one entry per connected peer and the host's own included:
+  the peer's public key, which is what its frames are verified against, and its role, `host`,
+  `guest` or `viewer`. A peer's key is not a value the server can supply — the server does not know
+  it and could lie about it — so the host commits it and a receiver uses the one it verified.
+- `issued` is the state's edition, and a receiver applies a state only if it is above the one it
+  holds.
+
+Nothing else carries the listing or the roles in `selvage/2`, and a joiner therefore holds no
+committed key until a state arrives: until then it refuses every content frame, because the
+envelope's own key resolution — not a second rule beside it — is what makes content authentic.
+
+**The closing** (`kind = 2`) is the host's statement that the room is over. It is signed by the
+host key and ordered by `issued`, so a relay that replays an old one changes nothing, and a peer
+that holds a verified one treats the session as ended.
+
+*(informative)* No implementation speaks `selvage/2` yet. This section and
+[`CANONICAL.md`](CANONICAL.md) §6.1 exist so that a corpus, a client and a server can be written
+against frozen bytes; the session layer they will run on — §5's method surface, §6's events, the
+roles off the server, the open-document set and the leases — is the revision that moves the wire
+version, and until it lands those sections are `selvage/1`'s.
 
 ### Document content: line endings and the trailing newline
 
@@ -1472,7 +1556,18 @@ advertises. A capability name **MUST NOT** be used to decide whether a peer is s
 - [RFC 6455] Fette, Melnikov, *The WebSocket Protocol*: the framing, the Ping/Pong keepalive, the
   close codes and the 125-byte control-frame payload this document relies on.
 - [RFC 9110] Fielding, Nottingham, Reschke, *HTTP Semantics*: for `GET /meta`, which deviates
-  from it in one respect (§2).
+  from it in one respect (§2), and for what a fragment is not: a URL's fragment is dereferenced by
+  the user agent and never sent, which is why the invite's two keys travel there (§5.1).
+- [RFC 4648] Josefsson, *The Base16, Base32, and Base64 Data Encodings*: §5's URL- and
+  filename-safe alphabet, which is how the invite's room key and host key are written into a
+  fragment (§5.1, `CANONICAL.md` §6.1).
+- [RFC 5869] Krawczyk, Eronen, *HMAC-based Extract-and-Expand Key Derivation Function (HKDF)*: the
+  frame key a sealed frame is sealed under (`CANONICAL.md` §6.1).
+- [RFC 8032] Josefsson, Liusvaara, *Edwards-Curve Digital Signature Algorithm (EdDSA)*: Ed25519,
+  the signature algorithm of a sealed frame, of the room state and of a closing (§7.1,
+  `CANONICAL.md` §6.1).
+- [SP 800-38D] Dworkin, *Recommendation for Block Cipher Modes of Operation: GCM and GMAC*:
+  AES-256-GCM, the AEAD of a sealed frame (`CANONICAL.md` §6.1).
 - [y-protocols] [`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md):
   the document-sync and awareness payloads this layer carries and does not define (§7, §8).
 - [`CANONICAL.md`](CANONICAL.md): SJ-C/1, the byte form of a session text frame.
