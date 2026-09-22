@@ -2061,9 +2061,10 @@ and the order is part of what follows:
 3. **Open the socket, send `session.hello`, and read `room.created` or `room.joined`.** Its
    `self.peer_id` is the name this connection's session key has to be committed under.
 4. **Publish nothing** until a state that commits this connection's session key has verified. Until
-   then a client **MUST NOT** send a binary frame — not content, and not awareness — because it does
-   not yet know its own role and no peer can attribute what it sends (§6.1). The one frame it may
-   send first is a room state signed by the host key, which only the host can produce (§7.1).
+   then a client **MUST NOT** send a binary frame — not content, not awareness and no holds message —
+   because it does not yet know its own role and no peer can attribute what it sends (§6.1). The one
+   frame it may send first is a room state signed by the host key, which only the host can produce
+   (§7.1).
 5. **Verify each room state against the host key the fragment names,** and apply the first one that
    verifies ([`CANONICAL.md`](CANONICAL.md) §6.1). Until one does, §13.3's waiting rules hold.
 6. **Re-run the sync handshake, once.** Everything the relay handed this client before that point
@@ -2219,8 +2220,8 @@ Two obligations follow from §13.2's drops, and both are about what a client sen
   been applying them look the same from inside, and only the handshake tells the room which it is.
 - **A client publishes what it is allowed to publish, and nothing else**: not until a state commits
   its session key (§13.1), no document content at all on a connection the state commits as `viewer`
-  (§13.5), and nothing beyond what §7's messages carry. A listing, a path or a role a client invents
-  is not a peer's frame, and every conforming receiver refuses it.
+  (§13.5), and nothing beyond what §7's messages and §7.1's sealed values carry. A listing, a path or
+  a role a client invents is not a peer's frame, and every conforming receiver refuses it.
 
 ### 13.7 The holds, and their lease
 
