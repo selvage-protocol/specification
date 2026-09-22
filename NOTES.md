@@ -1354,3 +1354,26 @@ vector pins it either way. (4) **Whether the subject protocol's report is the ri
 study's own largest uncertainty, and unchanged by writing it down. (5) **The lease and the
 no-state window are asserted by polls with deadlines in the decision vectors, and no poll has
 ever run**: `within_ms` is a member a runner has to implement and nothing has implemented it.
+
+**B.39 `/meta`'s version list, for a server that implements both versions.** `PROTOCOL.md` §2
+said a `selvage/2` server **MUST NOT** name a version below `selvage/2` in `wire_versions`. That
+is true of a server that implements only `selvage/2`, and it forbids the one shape the release
+wave needs: a server that seats both versions while the published clients still speak
+`selvage/1`. **Changed** (2026-09-22): the sentence now says that a server which implements both
+advertises both, which is what it accepts, and keeps the prohibition for a server that
+implements only `selvage/2`. The anti-downgrade rule is unmoved and is what makes the list safe
+to widen: §10 forbids a client that can speak `selvage/2` to take an earlier version whatever
+`/meta` offers, so the list can never be the thing that moves a client down. Nothing else in §2
+moved, and no vector, fixture or count is touched: the change is a sentence about what a server
+may advertise, and the corpus's transcripts pin one server's body.
+
+**The room's version is pinned by its mint, which this version's prose does not say.** A room
+cannot serve both versions at once — a `selvage/1` client expects the server to hold the
+open-document set and the grant, and a `selvage/2` one requires that it hold neither — so an
+implementation that seats both has to decide where a room's version comes from and what a
+connection speaking the other version gets. The reference server pins the room to the version
+its **minting connection** spoke and refuses the other version `unsupported_version` with close
+**4005**, which is §10's code and §10's refusal shape at the handshake. That is an
+implementation decision with a wire-visible consequence and no passage of this document states
+it; it is recorded here so that the next implementation does not have to guess, and it is a
+candidate for a sentence of its own if a second server has to agree with this one.
