@@ -300,9 +300,9 @@ y-protocols payload. In particular the server holds no CRDT, and document conver
 peer to peer through the relay, not against the server.
 
 **In `selvage/2` a binary frame is a sealed frame** (§7.1): an envelope sealed under a key that
-travels in the invite URL's fragment and signed with a key the room's state commits. The paragraph
-above is unchanged by it and gains no carve-out — the server relays the envelope byte for byte,
-does not open it, does not verify it, and writes no member into it.
+travels in the invite URL's fragment and signed with a key the fragment carries or the room's state
+commits. The paragraph above is unchanged by it and gains no carve-out — the server relays the
+envelope byte for byte, does not open it, does not verify it, and writes no member into it.
 
 ## 4. Session envelope
 
