@@ -2627,17 +2627,15 @@ last rule), and the key it announced is the thing the state names.**
   what makes it a `viewer` is that it does not and that a conforming receiver will not apply one
   (§13.5's residual).
 - **What it still sends.** Its own **SyncStep1**, once it applies a verified state that commits its
-  session key, and again after any interval in which it refused a content frame — the same interval
-  §13.6 defines, and the same two bounds (§13.1's steps 4 and 6): a
-  SyncStep1 is a state vector and a request
-  rather than content, and it is how a `viewer` is sent anything at all — peers answer it with a
-  SyncStep2 and the `viewer` receives the room. What a `viewer` re-syncs after is a content frame
-  *it* refused to apply; its own content being refused by its peers is the refusal §13.3 says never
-  reaches its publisher, so it is not an event this client can observe and not one it answers. Its
-  **awareness**, renewed on the session's clock
-  (§8.2), so the room shows its cursor. Its **holds**, renewed on §13.7's lease, because a hold is
-  not content. Nothing else: a `viewer` publishes no other frame, and in particular no content, no
-  listing and no role.
+  session key and again after any interval in which it refused a content frame — the interval §13.6
+  defines, with the same floor and ceiling (§13.1's steps 4 and 6). A SyncStep1 is a state vector and
+  a request rather than content, and it is how a `viewer` is sent anything at all: peers answer it
+  with a SyncStep2 and the `viewer` receives the room. What a `viewer` re-syncs after is a content
+  frame *it* refused to apply; its own content being refused by its peers is the refusal §13.3 says
+  never reaches its publisher, so it is not an event this client can observe and not one it answers.
+  Its **awareness**, renewed on the session's clock (§8.2), so the room shows its cursor. Its
+  **holds**, renewed on §13.7's lease, because a hold is not content. Nothing else: a `viewer`
+  publishes no other frame, and in particular no content, no listing and no role.
 - **What it applies.** Everything a `guest` applies: document content from peers that may send it,
   awareness, holds and the room state. A `viewer`'s *own* content is what is refused; what it
   receives is not.
