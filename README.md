@@ -30,7 +30,7 @@ and `result OK`:
 
 ```
 schema ok      11 schemas, 39 values checked against the control-character refusal
-sealed         39 values checked against the sealed payloads of selvage/2
+sealed         48 values checked against the sealed payloads of selvage/2
 refusals       13 values checked against selvage/2's local report vocabulary
 session v2     42 values checked against selvage/2's session layer
 vectors        36 files, 35022 frame checks, 8676 assertion steps
@@ -110,7 +110,12 @@ in every vector against them. It prints a line for the schemas, a line for the c
   closing, the holds and the session-key announcement — by running it against values that must
   validate and values that must not,
   and, beside them, the vocabulary a receiver reports a refused sealed frame in, which `PROTOCOL.md`
-  §13.2 binds a client to produce. No vector reaches either yet: a sealed frame is bytes rather than JSON, and
+  §13.2 binds a client to produce. Step 8 is read as `CANONICAL.md` §6.1 reads it — an object of the
+  members its `kind` fixes, each member of the type that kind gives it — so a value a rule elsewhere
+  re-homes is one of the values that **must** validate: a listing whose path carries a control
+  character and a holds message whose set does, because `PROTOCOL.md` §13.3 and §13.7 have a receiver
+  drop such a path rather than refuse the frame or the state, and a model that refused it would put
+  two conforming receivers at odds about one state. No vector reaches either yet: a sealed frame is bytes rather than JSON, and
   the vectors for one belong to the corpus layer that is not written. Until they exist this check is
   what keeps the model from being relaxed unnoticed, which is why it is here rather than with the
   layer that owns the vectors. The report vocabulary is a closed *value* rather than a member, which

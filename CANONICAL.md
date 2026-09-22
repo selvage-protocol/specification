@@ -258,6 +258,18 @@ encoding: **base64url** (RFC 4648 §5, the URL- and filename-safe alphabet) with
   holds. It is the room's root of trust — it verifies a room state and a closing, and nothing else
   verifies those.
 
+**The encoding is canonical, and a value it cannot produce is not a key.** Over 32 bytes it is 43
+characters, the last of which carries four bits of the value and two that are zero (RFC 4648 §3.5),
+so a key's final character is one of `AEIMQUYcgkosw048` — the sixteen whose six-bit value has its
+low two bits clear — and a 43-character string whose last character is any other spells no 32-byte
+value however leniently a decoder reads it. A receiver refuses such a value where it appears rather
+than resolving it to something a strict decoder would not: in a sealed payload a `key` or a `peers`
+name that is not a 32-byte key is refused `bad_payload` at §6.1's step 8, whose member-type rule
+fixes the encoding there, and the fragment's `k` and `h` take the local refusal `PROTOCOL.md` §5.1
+fixes before a socket is opened, because a value nothing encodes is not a key there either. Two
+spellings of one key are one key only to a lenient reader, and a strict reader and a lenient one
+reaching opposite verdicts on the same bytes is the disagreement this rule removes.
+
 The **frame key** is derived from the room key once per room, and seals every frame of every kind:
 
 ```
@@ -323,6 +335,14 @@ rather than facts about the socket it heard them on, a reconnect does not reset 
 (`PROTOCOL.md` §9.1, §13.10), and a client that reset them would apply a replayed state and obey a
 replayed closing.
 
+**A key an announcement names is held until a state decides it.** A receiver keeps a mark for a key
+an applied state commits — now or earlier — for as long as it holds the room's keys, and for a key
+only an announcement has named until the state that does not commit it, because an announcement is a
+claim about a key and the state is the room's answer to it (`PROTOCOL.md` §7.1). The mark beside an
+uncommitted key guards that announcement alone, since a `kind = 0` or `3` frame from such a key is
+refused `uncommitted_key` whatever mark stands against it. `PROTOCOL.md` §13.3 says what a receiver
+may do when a peer announces keys without bound.
+
 The two kinds the host signs are ordered by the `issued` member of their own plaintext instead, and
 their counter is not read for that purpose: a room state and a closing come from the host key,
 which is minted with the room and outlives the connection any one of them was published on, so it
@@ -346,7 +366,7 @@ refuses the frame.
 | 5 | the mark, for `kind = 0`, `3` and `4` | `replayed_counter` |
 | 6 | the signature | `bad_signature` |
 | 7 | the AEAD opens | `bad_aead` |
-| 8 | the plaintext is the object its kind defines | `bad_payload` |
+| 8 | the plaintext is an object of the members its kind fixes, each of the type that kind gives it | `bad_payload` |
 | 9 | `issued`, for `kind = 1` and `2` | `stale_issued` |
 | 10 | the sender's role, for a `kind = 0` frame carrying document content: a key the state gives role `viewer` may not send one | `unauthorised_content` |
 
@@ -386,6 +406,22 @@ unreported (`PROTOCOL.md` §13.2, §13.11). `bad_payload` is that report. Readin
 step 8 rather than at step 1 is deliberate: the envelope's layout is what `bad_envelope` is about,
 and the plaintext is not visible until the AEAD opens.
 
+**Step 8 reads a member set and each member's type, and no value a rule elsewhere governs.** What it
+refuses is a plaintext that is not an object of the members its kind fixes with each member of the
+type that kind gives it: a bare string, a list, an object missing one of them, or one carrying a
+member of the wrong type. A **value** of the type its kind gives it that another rule governs is not
+read here, because that rule is a different rule with a different consequence: a listing's path and
+a holds' path are held to `PROTOCOL.md` §5's rule for one, and a receiver that will not carry such a
+path **drops the path** — it is not shown, not offered and never written out as a name — while the
+rest of the listing, the rest of the set and the state's roles are applied (`PROTOCOL.md` §13.3,
+§13.7). A receiver that refused the frame for one of those values instead would disagree with a
+receiver that drops it on the very same bytes: such a string is canonical (§2.3 forbids a `\u007F`
+*escape* and not the character, and every `Cc` character is legal inside a JSON string), U+007F is a
+legal character in a filename on the platform a client runs on, and two conforming receivers
+reaching opposite verdicts about one state is the one thing the `issued` ordering exists to prevent.
+A path over §13.3's 4096-byte bound is the same kind of value and takes the same read: §2.8 keeps a
+value over a bound canonical and leaves the bound to the receiver that will not carry it.
+
 **The kinds.** `0` carries the y-protocols stream of `PROTOCOL.md` §7 as its plaintext, whole: one
 binary frame is one envelope, and the messages inside it are that section's, exactly as they are
 in `selvage/1`. `1`, `2`, `3` and `4` carry one JSON object each, as the UTF-8 bytes of its canonical
@@ -405,10 +441,12 @@ The **room state** has exactly three members. `PROTOCOL.md` §7.1 says what each
 {"issued":1,"listing":["README.md","src/main.rs"],"peers":{"GTyGPrJPL8dWM6BbKJSHRp1PNSjzbSpwiACHGklgfeM":{"peer_id":"p-0f1e2d3c4b5a6978","role":"host"}}}
 ```
 
-- `issued`: a positive count in §2.4's form and inside its bound, `1` on the first state the host
-  publishes.
+- `issued`: a count in §2.4's form and inside its bound, `1` on the first state the host
+  publishes. `0` is a count and not a malformed member: a receiver's mark starts at `0`, so a state
+  or a closing at `0` is refused `stale_issued` at step 9 above, which is where the value is read.
 - `listing`: an array of paths, each held to `PROTOCOL.md` §5's rule for one, written ascending by
-  UTF-16 code unit.
+  UTF-16 code unit. A path that breaks that rule is dropped at the receiver, and neither the frame
+  nor the state is refused for it (§13.3, and step 8 above).
 - `peers`: an object whose names are **public keys** — 32 bytes of Ed25519 in the fragment's
   encoding (base64url, unpadded, 43 characters) — each value an object of two members: `role`, one
   of `host`, `guest` and `viewer`, and `peer_id`, the seat the host believes the key's holder is
@@ -439,7 +477,8 @@ The **holds** message has exactly one member:
 `holds` is the set of paths the sender keeps open — the same kind of value and the same kind of
 claim as a `selvage/1` `doc.open` path, and the thing `PROTOCOL.md` §13.7 leases. It is replaced
 wholesale by the next holds message under the same key, its order carries nothing (§2.7), and a path
-in it is held to `PROTOCOL.md` §5's rule for one. No member names the peer the set belongs to: the
+in it is held to `PROTOCOL.md` §5's rule for one, and a path that breaks it is dropped at the
+receiver rather than refused (§13.7). No member names the peer the set belongs to: the
 sender is the key that signed the frame, so a receiver attributes it by the verification it already
 made rather than by a value inside the plaintext.
 

@@ -1028,7 +1028,10 @@ anything. It is **exempt from §13.1's step 4**, and that is the whole of what i
 one binary frame a client may send before a state commits its key, and the frame that makes such a
 commitment possible. A peer **MUST** announce again when it applies a verified state that does not
 commit its key, because a relay may drop one; a host **MUST NOT** commit a key it cannot place in
-its roster, because an entry beyond the server's seats is a role nothing answers for.
+its roster, because an entry beyond the server's seats is a role nothing answers for. **Revised
+2026-09-22 by §B.37**, which has a host commit every announcement it accepts and label the entry
+with the best seat it has, because a withheld commitment silences the peer for the session and the
+label is read for two presence questions and nothing else.
 
 **The host assigns the role, and its pairing can be wrong.** Nothing on the wire joins a key to a
 seat with any authority, so a host can commit the wrong role for a key. A client **MAY** declare in
@@ -1044,7 +1047,8 @@ the state stands.
 
 **The nine smaller findings, as they landed.** `issued` has a first value — `1`, because the mark
 starts at `0` and a state at or below it is refused, and `CANONICAL.md` §6.1's worked example and
-`sealed.json`'s `minimum` say so. The marks a receiver keeps — the `issued` it has accepted and the
+`sealed.json`'s `minimum` said so; **§B.37 removed that `minimum`**, which had made the same value a
+step-8 refusal as well as step 9's `stale_issued`. The marks a receiver keeps — the `issued` it has accepted and the
 counter mark for each key — are **retained for as long as it holds the room's keys**, and a
 `kind = 2` closing is applied **only when the receiver already holds a verified state below it**:
 a replayed closing delivered to a fresh joiner passed the old rule and drove it out of a live room,
@@ -1080,7 +1084,7 @@ cannot be verified before it is opened.
 members a seat has (`peer_id`, `role`) with the key now the object's name, and `check_sealed_payloads`
 runs eleven more values (four conforming, seven refused) while `check_refusals` gains the tenth
 reason. The published run moves on two lines and `README.md`'s transcript with it: `sealed` is 39
-where it was 28, and `refusals` is 13 where it was 12. Nothing in the corpus moved:
+where it was 28, and `refusals` is 13 where it was 12; **§B.37 moved `sealed` to 48**. Nothing in the corpus moved:
 `EXPECTED_VECTORS` is 36, `EXPECTED_FRAME_CHECKS` 35022, `EXPECTED_ASSERTIONS` 8676 and
 `EXPECTED_CODES` is untouched, because no vector was added, deleted or re-pointed and the
 transcripts are still `selvage/1`'s. Six mutations were shown red against the new checks: dropping
@@ -1095,3 +1099,125 @@ checkable half is the receiver's drop (`PROTOCOL.md` §13.3).
 (`docs/studies/e2ee-plan.md` §11), and §13.11's fixture list gains what this pass added: an
 announcement signed by the key it names and one that is not, and a `kind = 1` plaintext that is not
 the room state's object. The wire version does not move, and no implementation speaks it.
+
+**B.37 `selvage/2`'s authority text, second pass: the host's seat pairing, step 8's read, and five
+smaller fixes.** `PROTOCOL.md` §3, §5.1, §7.1, §13.1, §13.3, §13.10 and §13.11, `CANONICAL.md`
+§6.1, `schema/sealed.json`, `schema/validate.py` and `README.md` now carry what a second, focused
+review of §B.36 found. **Decided** (2026-09-22), from an independent re-review that confirmed
+§B.36's binding decision holds and the room bootstraps, and found two blocking defects and five
+smaller ones in its text. **Nothing implements it**: no client speaks `selvage/2`, no vector is
+written against one, and every rule below was written from the design rather than observed on a
+wire.
+
+**The host commits every announcement it accepts, and the label costs nothing.** §B.36 had a host
+commit each key it had accepted *that it can place in its roster* and **MUST NOT** commit one it
+cannot, which left the step between a key arriving and the room working undefined: an announcement
+names no seat, a `peers` entry requires a `peer_id`, and the strict reading silences the peer
+entirely, because its frames are refused `uncommitted_key` and §13.3's rule that a refusal does not
+reach its publisher means it is never told. The prose now has the host commit **every announcement
+it accepts**, labelling the entry with the seat it believes holds the key or, with nothing to go on,
+with the announcer's own seat or any seat the roster names: the label decides no attribution and no
+role (§13.4), so a wrong one costs the two presence questions that read it and a withheld commitment
+costs the peer its whole session. Three rules close the amplification the same passage left open — a
+`viewer` may announce, so one read-only peer could make a room re-broadcast its listing per frame
+and grow every peer's key set: **at most one key per seat is committed** (a seat is one connection,
+so a new key replaces the old and the replaced key's frames are refused `uncommitted_key`), an
+announcement whose key the state **already commits** publishes nothing new and is answered with a
+state its sender can apply — the one the host holds, re-sent unchanged — at most once per
+`awareness_renew_ms`, which is what recovers a *state* the relay dropped, and a receiver's held set is
+what its state commits — a key only an announcement has named is held until the state that omits it,
+with a **MAY** cap on how many such keys it keeps, §13.7's remedy applied to a key set. A fourth
+belongs with the first two and is the one this pass added beyond the review's list: the host
+**drops from every state it publishes a key whose entry labels a seat the roster no longer has**, so
+the roster's size bounds `peers` as one key per seat bounds it within a seat — otherwise a peer that
+reconnected N times leaves N keys behind, which is the same unbounded growth by another road. A
+fifth bounds the *rate* rather than the size, and is the one a review comment on this pass raised: a
+host **MUST NOT** be obliged to publish more than one state in any `awareness_renew_ms` for the
+announcements it accepts, because one state carries every key it has committed by then — so a peer
+that mints keys without bound obliges one state broadcast a window instead of one per frame, and a
+host that answers each announcement at once is choosing to answer a frame rate it cannot attribute,
+which is its own policy as §2.1's inbound bounds are a server's. A
+declaration of a role in an announcement about a key the state **already** commits changes that
+key's role not at all: the stickiness is new, and without it a committed `viewer` could ask to be
+re-roled. The residual is stated with the rules rather than implied: the state carries one key per
+seat and drops a seat the roster has lost, the publish obligation is discharged by one state a
+window, and a receiver's cap on the keys it holds is a permission — so a conforming host may still
+publish more often than a window, and a conforming receiver may still hold a mark for every key it
+was ever told about. Neither is a divergence between conforming peers; both are the room's own
+capacity policy.
+
+**Step 8 reads a member set and each member's type, and a value a rule elsewhere re-homes is not
+read there.** §6.1's step 8 said "the plaintext is the object its `kind` defines" and `sealed.json`
+`$ref`'d `common.json`'s `documentPath` from a listing and a holds set, so a control-carrying path —
+a legal filename on the platform a client runs on, and a legal string in canonical JSON — was a
+**frame** refusal in the model and a **drop** in §13.3 and §13.7. Two conforming receivers could
+reach opposite verdicts about one state, which is the one disagreement `issued` exists to prevent.
+`documentPath` was `selvage/1`'s shape in any case: there a bad path is refused `bad_params` at a
+method, which is a refusal about a request and not about a frame. Step 8 now reads the object's
+member set and each member's type, and the two values are plain strings in `sealed.json` with the
+drop moved wholly to §13.3 and §13.7. The fixtures follow: a listing whose path carries a control
+character, a holds set that carries one and a blank hold are **conforming** values now — what a
+receiver must accept and then not offer, and nothing in the check file can express a drop, which is
+said at the fixtures — while a listing member or a hold that is not a string is refused instead. The
+`refusalReason` enum and `check_refusals`'s census are reordered to the table, `bad_payload` at step
+8 before `stale_issued` at step 9, and `sealedIssued`'s `minimum` of `1` is gone: a negative `issued`
+is not a count (§2.4), so the bound it carries now is `0` and step 8 refuses a negative one, while
+`0` is a count and a state or a closing at `0` is refused `stale_issued` at step 9 — the reason
+§6.1's own justification names, and one no schema can express. A state at `issued` 0 is a
+conforming fixture for that reason, as a closing at `0` is.
+
+**The five smaller ones.** (a) §3's account of the relay names the second harm its roster power
+carries: a forged `peer.left` for the seat the state's `host` entry labels arms §13.8's host-away
+clock, and a client whose clock has passed the window **MUST** end its session, so one frame the
+relay authors ends a live room's sessions for every guest at the window's delay — 30 s at the
+defaults — with nothing in any frame to say a lie occurred; a withheld `peer.left` is the other
+half, keeping a departed peer's holds and a hostless room looking live. §13.10 names the
+closing-replay composition beside it, and §7.1's claim that a closing is the one value a replay
+cannot use at all is corrected with it: a replayed *state* is applied by a receiver that holds none,
+so a replayed genuine closing above it ends a joiner's session, and "a receiver that holds no state
+cannot be told a room is over by a frame" is a bound on one frame and not on a relay. (b) A dropped
+announcement is recovered by a bounded timer: §13.1's step 4 re-announces on the session's
+`awareness_renew_ms` for as long as no applied state commits the key, because the old only trigger —
+applying a state that omits the key — cannot start when the state itself is what went missing.
+(c) A client seated with no state and no host has a clock now: **the no-state window**, one
+`awareness_expire_ms` from being seated, after which it **MUST** end and say why, or name the room
+again on a new socket and learn from the answer which room it was in. §13.8's clock needs a state to
+arm and §13.3 forbade ending for the absence of one, so such a client waited for ever with its seat
+keeping a dead room alive and nobody ever reaching `room_unknown`. (d) A key's encoding is
+canonical: RFC 4648 §3.5 leaves the last of a 32-byte value's 43 base64url characters carrying two
+zero bits, so a 43-character string whose final character is not one of `AEIMQUYcgkosw048` spells no
+32-byte value at all. A strict decoder and a lenient one disagreed about one state's key —
+`bad_payload` against an applied state, on the same bytes — so `sealedPeerKey`'s pattern fixes the
+final character, and both the sealed payloads (step 8) and the invite's fragment (§5.1's local
+refusal) say what a spelling that is not canonical gets. The fragment's `k` and `h` are the interop
+half of the same ambiguity and are fixed with it. (e) §13.11's table gains a row for each rule
+above, and its account of what a vector can pin and what the fixture must carry follows them.
+
+**The schema's gain, and the counts.** `sealedIssued` lost its `minimum` of `1` and took a `minimum`
+of `0` in its place: a negative `issued` is not a count and step 8 refuses it `bad_payload`, while
+`0` is a count and stays step 9's `stale_issued`. `sealedPeerKey` gained the
+pad-bit constraint on its final character and the `minLength`/`maxLength` of 43, because `$` in a
+`pattern` matches before a trailing newline in Python's `re`, which is the engine the shipped
+`jsonschema` runs. The room state's `listing` and the holds' `holds`
+became arrays of strings rather than `$ref`s to `common.json`. `check_sealed_payloads` runs nine
+more values: five moved from the refused side to the conforming one (a listing's control-carrying
+path, a blank hold, a control-carrying hold, and `issued` 0 in a state and in a closing) and nine
+new refused ones (a listing member that is not a string, a hold that is not a string, a key whose
+final character carries non-zero pad bits in a state's `peers` and in an announcement's `key`, a key
+with a trailing newline in each of those, and a negative `issued` in a state and in a closing). The published run moves on one line and `README.md`'s
+transcript with it: `sealed` is **48** where it was 39. Nothing else moves: `schema ok` is 39,
+`refusals` 13, `session v2` 42, and the corpus counts are untouched, because no vector was added,
+deleted or re-pointed. Eleven mutations were shown red against the new checks: `minimum: 1` back on
+`sealedIssued` and a `minimum: 2` beside the bound (against the conforming `issued` 0 fixtures),
+`minimum: 0` dropped (against the negative `issued` fixtures), `bad_payload` back to the end of the
+enum, the same census line in `validate.py` back to its old order, the listing back to `common.json`'s
+`documentList` (against the conforming control-carrying listing), the holds' `items` back to
+`documentPath` (against the conforming blank and control-carrying holds), that `items` type dropped
+altogether (against a hold that is not a string), `sealedPeerKey`'s pattern back to
+`[A-Za-z0-9_-]{43}` (against the pad-bit refusals), its length bounds dropped (against the
+trailing-newline refusals), and a `sealedPeer` that no longer requires `peer_id` (against a peer with
+no seat).
+
+**What is not here, and which step owns it.** The corpus still is **step 4b**'s
+(`docs/studies/e2ee-plan.md` §11). §13.11's fixture list grows with the pass's shapes. The wire
+version does not move, and no implementation speaks it.
