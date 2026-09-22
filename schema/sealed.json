@@ -47,7 +47,7 @@
     "sealedPeerKey": {
       "type": "string",
       "pattern": "^[A-Za-z0-9_-]{43}$",
-      "description": "A peer's public key, and a key the host has committed for it to sign its own frames with: 32 bytes of Ed25519 in the encoding the invite URL's fragment writes one in — base64url, RFC 4648 §5, unpadded, so exactly 43 characters and no escape in a canonical JSON string (CANONICAL.md §2.3). The key itself and not its 8-byte id: an id is something a receiver derives (SHA-256 of these 32 bytes, first 8) and an id alone verifies nothing, so a state that carried one would commit nothing anyone could check."
+      "description": "A peer's public key: the name of its entry in the room state's `peers`, and the value a session-key announcement carries. 32 bytes of Ed25519 in the encoding the invite URL's fragment writes one in — base64url, RFC 4648 §5, unpadded, so exactly 43 characters and no escape in a canonical JSON string (CANONICAL.md §2.3). The key itself and not its 8-byte id: an id is something a receiver derives (SHA-256 of these 32 bytes, first 8) and an id alone verifies nothing, so a state that named one would commit nothing anyone could check."
     },
     "sealedPeer": {
       "type": "object",

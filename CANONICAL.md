@@ -309,7 +309,8 @@ mis-attribution.
 
 **The counter, the mark and `issued`.** A sender **MUST** give its first frame under one key the
 counter `1`, and each later frame under that key a strictly greater one. A receiver keeps, for each
-key it holds, the highest counter it has **not refused**, starting at `0`: a frame it refuses never
+key it holds — every key its applied state commits and every key it has accepted an announcement
+from — the highest counter it has **not refused**, starting at `0`: a frame it refuses never
 moves a mark, whatever step refused it, so a relay cannot poison one with a forged frame and lock
 out the frames that follow it, and the same bytes are refused for the same reason however often they
 arrive. A `kind = 0`, `3` or `4` frame at or below the mark is refused whatever else is right about
