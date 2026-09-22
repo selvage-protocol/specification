@@ -1003,9 +1003,9 @@ predates the frozen layout and its room states carry a `key_id` per peer where �
 version does not move.
 
 **B.36 `selvage/2`'s key binding: the session-key announcement, a state keyed by key, and nine
-smaller fixes.** `PROTOCOL.md` §7.1, §8, §9.1, §13.1, §13.3, §13.4, §13.8 and §13.10,
-`CANONICAL.md` §6.1 and `schema/sealed.json` now carry the version's second new sealed `kind` and
-the rules that depend on it. **Decided** (2026-09-22), in a fix pass over §B.34's text taken from
+smaller fixes.** `PROTOCOL.md` §7.1, §8's awareness passage, §9.1 and the §13 subsections that
+name a key or a mark, `CANONICAL.md` §6.1 and `schema/sealed.json` now carry the version's second
+new sealed `kind` and the rules that depend on it. **Decided** (2026-09-22), in a fix pass over §B.34's text taken from
 an independent review of that pass. **Nothing implements it**: no client speaks `selvage/2`, no
 vector is written against one, and every rule below was written from the design rather than observed
 on a wire.
@@ -1087,7 +1087,9 @@ transcripts are still `selvage/1`'s. Six mutations were shown red against the ne
 `bad_payload` from the enum (both directions), `issued` back to a minimum of `0`, `peers` keyed by
 `peer_id` again, a declaration of `host` allowed, an announcement with no `key`, and a peer entry
 that requires a member this version no longer defines (which turns the *conforming* tolerance case
-red).
+red). The listing's 4096-byte path bound is the one rule here with no schema behind it, deliberately:
+`CANONICAL.md` §2.8 keeps a value over a bound canonical, so the model must not refuse it, and the
+checkable half is the receiver's drop (`PROTOCOL.md` §13.3).
 
 **What is not here, and which step owns it.** The corpus still is **step 4b**'s
 (`docs/studies/e2ee-plan.md` §11), and §13.11's fixture list gains what this pass added: an
