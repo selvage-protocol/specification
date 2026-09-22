@@ -1303,13 +1303,14 @@ existence;
   its publisher (§13.3);
 - **MUST** give exactly one key the role `host`, its own connection's, because that entry is what
   tells a receiver which seated peer holds the host key;
-- **MUST** keep its `peers` a statement about the seats the roster has, dropping from every state it
-  publishes a key whose entry labels a seat the roster no longer has. That is what puts a bound on
-  the roster's size as well as one key per seat within one, and the label is what it is read for
-  here: the roster is the authority on which connections are seated (§13.4), so the host's statement
-  follows it. Its own `host` entry is the one it cannot outlive — a host that has left publishes
-  nothing, and the state it last published is what tells its peers the host is away (§13.8) — so it
-  prunes while it is seated and its peers' next state replaces the entry when it returns (§9.1);
+- **MUST** keep its `peers` a statement about the seats the roster has: a key whose entry labels a
+  seat the roster no longer has is dropped from every state it publishes. One key per seat within a
+  seat, and the roster's size across seats, are then together the bound on `peers`. The label is what
+  it is read for here — the roster is the authority on which connections are seated (§13.4), so the
+  host's statement follows it — and its own entry survives by that rule while it is seated, because
+  the seat it labels is one the roster has. A host that has left publishes nothing, and the state it
+  last published is what tells its peers the host is away (§13.8); the state it publishes on its
+  return carries its own new key and replaces that entry (§9.1);
 - **MUST NOT** hold two host sessions for one room at a time. Two connections that share a host key
   and a counter series publish one edition twice, and §13.3 states what a receiver does with that.
 
@@ -2293,7 +2294,7 @@ The state replaces what a receiver held, and it is ordered by its own `issued`.
   many keys it holds and how many marks**, keeping what its state commits and the most recently
   announced of the rest, for §13.7's reason applied to a key set rather than a hold set: a peer that
   holds the room key can announce keys without bound, and a receiver that keeps every one of them
-  carries state and a longer lookup for every frame it resolves for the life of the room.
+  carries that state for the life of the room.
 - **The listing's paths are held to §5's rule.** A host **MUST NOT** write a blank path or one
   carrying a control character into a listing, and a receiver **MUST** refuse that path — not the
   frame and not the state, whose remaining members are as authentic as they would have been. To
@@ -2506,9 +2507,9 @@ receiver on one it runs.
 
 ### 13.8 The presence clock, and the host that is away
 
-**No synchronised clock is needed and none travels.** The timers a client reasons about are its
-own monotone elapsed time, armed by events it observed, and none is a value it reads from a frame
-or sends.
+**No synchronised clock is needed and none travels.** Every timer a client reasons about is its own
+monotone elapsed time, armed by an event it observed, and none is a value it reads from a frame or
+sends.
 
 - **What a client measures.** Every clock in this section is **local monotone elapsed time**, on the
   client's own machine and from an event it observed, read with the platform's monotone timer
