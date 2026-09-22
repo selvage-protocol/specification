@@ -189,9 +189,9 @@ What survives here is only the part about identity and the link, which is `B.1`'
 **B.3 Read-only guests: the `viewer` role, endpoint-side.** The design has the host serving content
 and guests reading it, and this slice has both roles editing, because the conformance gate requires
 concurrent edits from both sides. What is settled is **where enforcement lives**: the server never
-inspects a payload, and under the encrypted shape `PROTOCOL.md` §12 is being revised toward it will
-not be able to read one at all, so the enforcement the design wants is not a thing the server can
-perform. It is endpoint-side instead — a client denies a change that came from a viewer. The role is
+inspects a payload, and `PROTOCOL.md` §12 is being revised toward an encrypted shape in which the
+server will not be able to read a payload at all, so the enforcement the design wants is not a thing
+the server can perform. It is endpoint-side instead — a client denies a change that came from a viewer. The role is
 **`viewer`** beside `host` and `guest`, and the next revision carries it the way it carries every
 other room fact, which is a change from what this item first recorded: **the host assigns it and
 signs it**, in the room state the host publishes, so no server seats it and `session.hello`'s `role`
