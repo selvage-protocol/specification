@@ -1420,9 +1420,10 @@ that message is what the renewal clock counts from. (b) §13.6 said a client re-
 interval in which content was refused" and never defined the interval, which is the difference
 between a client that re-syncs and one that answers a peer frame for frame. It now defines it as
 the client's own renewal clock, with a floor (one re-sync after a refusal, on the next renewal tick
-at the latest) and a ceiling (never more than one per `awareness_renew_ms`), and says that the
-envelope's `kind` is what "content" is read from, since a frame refused at step 4, 5 or 6 has a
-plaintext nobody can read. (c) §13.9 used the same phrase for a `viewer`, where it read as its own
+at the latest) and a ceiling (never more than one per `awareness_renew_ms`), and states what a
+content refusal is once: a `kind = 0` frame refused at step 3 or later of §6.1's order, since a
+frame refused at step 4, 5 or 6 has a plaintext nobody can read and steps 1 and 2 are refusals of
+the bytes themselves. (c) §13.9 used the same phrase for a `viewer`, where it read as its own
 content being refused by its peers — which §13.3 says never reaches its publisher. It now says what
 a `viewer` re-syncs after is a content frame *it* refused. (d) §13.8's host-away clock and §13.3's
 no-state window can run in sequence for one client, and neither section said so: a client seated
