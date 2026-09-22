@@ -585,3 +585,79 @@ is the only thing that makes either terminal. The same question is recorded for 
 publisher in `B.23`. Whether a later version defines `room_full`, `server_full` and a rate-limit
 code as `selvage/1` codes with their own closes, or keeps them private and leaves a client to treat
 every refusal the same, is **unresolved**.
+
+**B.31 The sealed frame's bytes, and Ed25519 over ECDSA P-256.** `PROTOCOL.md` §7.1 and §5.1's
+fragment paragraph, `CANONICAL.md` §6.1 and `schema/sealed.json` now fix `selvage/2`'s sealed
+frame: the envelope's field list, the key schedule, the associated data, the signature input, the
+key id, the counter and the replay rule, the two keys in the invite's fragment, and the two payloads
+`kind = 1` and `kind = 2` carry. **Decided** (2026-09-22), first of the revision's pieces because
+the corpus's vectors are byte-exact against these and cannot be written until they are frozen.
+**Nothing implements it**: no client seals, no server relays a sealed frame, the wire version is
+`selvage/1`, and every rule there was written from the design and measured on this host rather than
+observed on a wire. The measurement script lived in `.tmp/envelope/envelope.mjs` in this pass's
+worktree and is not committed, as `docs/studies/peer-corpus.md` §10's was not; it rebuilds that
+study's vector 101's ciphertext and signature byte for byte (apart from the three length bytes this
+layout drops), and exercises every refusal rule below.
+
+**The signature is Ed25519**, measured against ECDSA P-256 rather than preferred. The two are the
+same size on the wire once the encoding is pinned — 64 bytes either way — so "ECDSA P-256 has a
+bigger signature" is false as a wire claim: it is bigger only as DER (70 to 72 bytes over 200
+signings, and the length varies), which is what a runtime produces unless the implementation asks
+for `dsaEncoding: "ieee-p1363"`, and a spec that left that to the runtime would give two
+implementations two frame lengths for one message. Both need a Rust crate, so "ECDSA P-256 needs no
+new dependency" is false too, for the Rust client: `ed25519-dalek` 2.2.0 (BSD-3-Clause, 24 crates
+with default features, 3.2 s for a clean release build) against `p256` 0.13.2 (MIT OR Apache-2.0, 25
+crates, 3.1 s), both sets permissive and neither crate in the tree today (`Cargo.lock`'s only
+crypto is what `yrs` pulls in). What is not even: speed, at 13.7 µs a signature and 26.3 µs a
+verification against 135 µs and 231 µs on this host, and malleability, because P-256's `s` and
+`n − s` are both valid signatures for one message, so a verifier that normalises and one that does
+not disagree about a frame. Ed25519 has no parameter, no encoding choice and no such pair. P-256's
+one real advantage is its WebCrypto floor, which is why the other algorithm was priced at all:
+**Ed25519 needs Chrome 137, Firefox 129, Safari 17, Deno 1.26 or Node 16.17**, where P-256 has been
+in every browser since 2017. The floor is accepted rather than argued away: the page needs Chromium
+to host (the File System Access API), joining is the path the other two browsers take, all three
+were released more than a year before this date, and a client that finds no `crypto.subtle`
+Ed25519 refuses locally in the same register as a missing fragment. In the browser the two are
+within 1.5× of each other (Chrome 152: 26.0/46.3 µs a signature and a verification against
+39.8/66.3 µs; Node 22, the clients' runtime: 43.6/103.1 against 41.1/73.3), so the Rust side is
+what the speed decides.
+
+**Where the bytes differ from the two studies.** The corpus study's §5.2 layout was adopted wherever
+the plan did not force otherwise — the AAD and the signature input are its own, byte for byte,
+including the length-prefixed `"selvage/2"` and room id, and `kind = 2` is its proposal for
+`room.closing` — and this pass's own implementation reproduces its `key_id` derivation on all three
+fixture keys (`SHA-256` of the 32-byte public key, first 8). Four things changed. The envelope
+writes `key_id` (8 bytes), the nonce (12) and the signature (64) at their fixed widths instead of as
+`varUint8Array`: 104 bytes of overhead a frame rather than the study's measured 107, and a 63-byte
+signature is malformed rather than a variant of the layout. The room state carries each peer's
+**public key** where the plan and the study both wrote the `key_id` only: an 8-byte id verifies
+nothing, and the plan's own sentence has a receiver "verifying against the key `key_id` names"
+without anywhere that key could have come from. There is **no replay window**, because the transport
+is ordered and a window would only widen what a captured frame can do; the plan's "small window for
+reordering" is a window a single WebSocket never needs. And a room state and a closing are ordered
+by their own `issued` rather than by the envelope counter, because the host key is minted with the
+room and outlives the connection that published any one state — a host that reloads would otherwise
+be refused by the peers it had just returned to. It follows that the host **MUST** publish a closing
+above every state it has published, or an old closing replayed after a resume would end a live room.
+The two sealed payloads are JSON and inherit §2 and §3, with no `v` of their own: §2.5 is not
+theirs, and `schema/validate.py` runs `sealed.json` against conforming and refused values, so the
+member set cannot be relaxed with every other check still green.
+
+**The fixture.** `docs/studies/peer-corpus.md` §5 rests on a fixture room key, fixture host keys and
+fixed nonces, and no word in this file described one until now, because nothing here had a place
+for it. A fixture is a set of **public test values** — a room id, a room key, three Ed25519 keypairs
+and one nonce a frame — whose job is to make a sealed frame a constant two implementations can be
+held to; it lives in a public repository and is never a room's. Its authority is reproducibility and
+not secrecy, and `test_recipe.py` re-derives what is derivable and asserts the bytes a vector
+carries. One thing a fixture cannot make derivable is the signature: Safari's Ed25519 **randomises**
+signatures (its compat data says so, citing the noise draft; Node, Chrome, Firefox and Rust follow
+RFC 8032), so a conforming implementation need not produce the bytes a vector carries. A sealed
+vector therefore asserts that a signature verifies and carries its own as literal hex, which is
+`docs/studies/peer-corpus.md` §5.1's "`hex` is a checked cache" rule applied to the one part of the
+envelope that has no derivation at all.
+
+**What is not here.** The holds and their lease (whose carrier is a `kind` this version leaves
+unused), the resume and what a returning host signs, the rule that refuses a committed `viewer`'s
+content, and `selvage/2`'s method surface and events are the revision's remaining text rather than
+this item's. `dropped`, the mutation switches and whether a client persists the host's private key
+are open where `docs/studies/peer-corpus.md` §9 and `docs/studies/e2ee-plan.md` §14 left them.

@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://selvageprotocol.com/schema/1/sealed.json",
+  "title": "Selvage Session Protocol — the two sealed payloads that are JSON",
+  "description": "`selvage/2`'s binary frame is an envelope of bytes, not a JSON frame, and its layout is CANONICAL.md §6.1's; what the envelope carries sealed is either opaque y-protocols bytes or one of these two objects. Valid against PROTOCOL.md §7.1: the room state the host publishes and the closing that ends the room. Neither is a session frame — neither carries `v` — and both are canonical when they follow CANONICAL.md §2, `listing` in the order §2.7 gives it, with §3's tolerance for a member the receiver does not know. Every object here tolerates a member it does not know, as every schema in this directory does.",
+  "$defs": {
+    "sealedIssued": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 9007199254740991,
+      "description": "The host's edition of a sealed value: the room state's `issued`, and the `issued` a closing carries above every state the host has published. A count, in CANONICAL.md §2.4's form and inside its bound, because the receiver that compares it against the highest it has accepted may be a JavaScript one. It orders the two values the host signs; a frame's `counter` orders the frames one key signs, and the two are different numbers with different jobs (CANONICAL.md §6.1)."
+    },
+    "sealedRole": {
+      "type": "string",
+      "enum": [
+        "host",
+        "guest",
+        "viewer"
+      ],
+      "description": "The role the host assigns to a peer in the room state: `host`, `guest`, or `viewer`, the role the host denies a peer's edits to. It is `common.json`'s `role` with one more value and a different author — that one is the claim a `selvage/1` connection makes about itself in `session.hello` (`PROTOCOL.md` §9), this one is a fact the host states and signs, and no server seats it. What a receiver does with a committed `viewer` is the peer rules' business (`NOTES.md` §B.3)."
+    },
+    "sealedPeerKey": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_-]{43}$",
+      "description": "A peer's public key, and a key the host has committed for it to sign its own frames with: 32 bytes of Ed25519 in the encoding the invite URL's fragment writes one in — base64url, RFC 4648 §5, unpadded, so exactly 43 characters and no escape in a canonical JSON string (CANONICAL.md §2.3). The key itself and not its 8-byte id: an id is something a receiver derives (SHA-256 of these 32 bytes, first 8) and an id alone verifies nothing, so a state that carried one would commit nothing anyone could check."
+    },
+    "sealedPeer": {
+      "type": "object",
+      "description": "One peer as the host's state seats it. Nothing here is a value the server supplies: the server knows a peer's `peer_id` and its display name and neither of these.",
+      "required": [
+        "key",
+        "role"
+      ],
+      "properties": {
+        "key": {
+          "$ref": "#/$defs/sealedPeerKey"
+        },
+        "role": {
+          "$ref": "#/$defs/sealedRole"
+        }
+      }
+    },
+    "roomState": {
+      "title": "the sealed room state",
+      "description": "The host's whole statement about a room, published sealed under the frame key with kind 1 and signed by the host key (PROTOCOL.md §7.1). It replaces the receiver's previous state wholesale: a shorter `listing` is a smaller working tree and not a partial update.",
+      "type": "object",
+      "required": [
+        "issued",
+        "listing",
+        "peers"
+      ],
+      "properties": {
+        "issued": {
+          "$ref": "#/$defs/sealedIssued"
+        },
+        "listing": {
+          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentList",
+          "description": "The host's working tree as it enumerated it: paths, carrying no content, each held to `PROTOCOL.md` §5's path rule and each a candidate rather than a promise of a readable file, exactly as a `selvage/1` grant's `paths` is. Written ascending by UTF-16 code unit (CANONICAL.md §2.7), which is the only order `selvage/2` promises."
+        },
+        "peers": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/sealedPeer"
+          },
+          "description": "The roster the host seats, by `peer_id`, the host's own entry included: the key each peer signs its frames with and the role it is given. An object rather than `room.joined`'s array of the same name, because this one is looked up by `peer_id` and not listed. Two names for one value are a host's error and not a peer's: a receiver that reads one key under two names uses the entry whose `peer_id` comes first in UTF-16 code-unit order, so two conforming receivers read one state the same way (CANONICAL.md §6.1)."
+        }
+      }
+    },
+    "roomClosing": {
+      "title": "the sealed closing",
+      "description": "The host's statement that a room is over, published sealed under the frame key with kind 2 and signed by the host key (PROTOCOL.md §7.1). One member is a constant and the other is what makes a replay of an old closing a drop rather than an end: a closing is ordered by `issued`, above every state the host has published.",
+      "type": "object",
+      "required": [
+        "closing",
+        "issued"
+      ],
+      "properties": {
+        "closing": {
+          "const": true,
+          "description": "Constant. The kind is already what makes this a closing; the member is what a reader of the plaintext sees, and what keeps the payload an object rather than an empty one."
+        },
+        "issued": {
+          "$ref": "#/$defs/sealedIssued"
+        }
+      }
+    }
+  }
+}

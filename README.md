@@ -24,15 +24,17 @@ pip install jsonschema referencing     # or: nix develop  (the same package, pin
 python3 schema/validate.py
 ```
 
-A green run prints one line for the schemas, one for the corpus counts, and `result OK`:
+A green run prints one line for the schemas, one for the sealed payloads, one for the corpus
+counts, and `result OK`:
 
 ```
-schema ok      9 schemas, 39 values checked against the control-character refusal
+schema ok      10 schemas, 39 values checked against the control-character refusal
+sealed         19 values checked against the sealed payloads of selvage/2
 vectors        36 files, 35022 frame checks, 8676 assertion steps
 result         OK
 ```
 
-Those three numbers are pinned in `schema/validate.py`, so a deleted vector, frame check or
+Those three counts are pinned in `schema/validate.py`, so a deleted vector, frame check or
 assertion fails the run. The [section below](#validating-the-schemas-and-the-vectors) lists what
 the run checks.
 
@@ -61,7 +63,7 @@ silent, without reading the Rust.
 | Path | What it is |
 |---|---|
 | [`PROTOCOL.md`](PROTOCOL.md) | **The specification.** What the members mean, and what a conforming peer must, should or may do. §1.1 says which sentences bind a reader and what conformance is. |
-| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1**, the canonical byte form of a session text frame. Normative for the bytes. |
+| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1**, the canonical byte form of a session text frame, and §6.1, the byte form of a `selvage/2` sealed frame. Normative for the bytes. |
 | [`schema/`](schema/) | The machine-readable model: JSON Schema 2020-12, one file per concern, plus `validate.py`. |
 | [`runner/`](runner/) | The language-neutral replay: `run_vectors.py` starts a server and replays every transcript against it, with no Rust toolchain. |
 | [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by the reference server's [`crates/harness/tests/vectors.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors.rs) and by `runner/`. |
@@ -100,7 +102,13 @@ in every vector against them. It prints a line for the schemas, a line for the c
   not schema-checked;
 - that the error and close codes each vector asserts are the ones `EXPECTED_CODES` pins for it, so
   a substitution inside a closed vocabulary (`unknown_method` for `bad_params`, say) is a red run
-  rather than a corpus that keeps every count and quietly asserts something else.
+  rather than a corpus that keeps every count and quietly asserts something else;
+- that `schema/sealed.json` describes the two payloads `selvage/2` carries sealed — the room state
+  and the closing — by running it against values that must validate and values that must not. No
+  vector reaches that file yet: a sealed frame is bytes rather than JSON, and the vectors for one
+  belong to the corpus layer that is not written. Until they exist this check is what keeps the
+  model from being relaxed unnoticed, which is why it is here rather than with the layer that owns
+  the vectors.
 
 Testing a refusal means sending a frame the server must reject. Such a frame carries
 `"refused": true`, and its params are not schema-checked. When the frame is not JSON at all, it
