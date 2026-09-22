@@ -76,7 +76,8 @@ its own, and all of them are listed here so that nothing of that version has to 
 token-without-`room` paragraphs; §7.1;
 and the passages of this document whose lead-in carries the version — §1.2's `host`, `guest`,
 `grace period` and `set` entries, §2's `/meta` passage, §2.1's bounded-state passage, §3's server
-passage, §4.1's fixed-member-set clause, §5's handshake and minting passages, §6's vocabulary
+passage, §4.1's fixed-member-set clause, §5's method-surface, handshake and minting passages,
+§6's vocabulary
 passage, §6.1's join passage, §9's room passage, §9.1's and §9.2's lead-ins, §10's version-gate
 passage, and §11's vocabulary passage.
 
@@ -478,7 +479,14 @@ significant and is not stable (`CANONICAL.md` §2.1).
 
 ## 5. Methods
 
-Five methods exist. A method is cited by its name; this table is the index.
+**Two methods exist in `selvage/2`, and the two are subsections below.** `session.hello` and
+`session.rename` are the version's whole method surface, and they are the first and last of the
+method subsections here; the three `doc.*` rows of the table below are `selvage/1`'s, because a
+`selvage/2` server holds no document set and no grant for them to change (§1.1). What surrounds a
+request — one answer per request, no pipelining, the bounded wait, failing the in-flight request
+on a drop — holds in both versions.
+
+Five methods exist in `selvage/1`. A method is cited by its name; this table is the index.
 
 | method | `params` | answered with | effect on the room's open-document set | events |
 |---|---|---|---|---|
@@ -871,7 +879,9 @@ Four obligations on the request side, none of which changes the wire:
   `doc.grant` and `session.rename` are answered with a result or an error, and nothing obliges a
   server to answer promptly. A client **SHOULD** bound the wait, and the bound cannot be a
   protocol number: it has to be at least a round trip on the connection in use, and less than
-  "for ever". (The two reference clients differ here; [`NOTES.md`](NOTES.md) §A.2.)
+  "for ever". (The two reference clients differ here; [`NOTES.md`](NOTES.md) §A.2.) In `selvage/2`
+  `session.rename` is the only request answered this way: that version's `session.hello` is
+  answered with `room.created` or `room.joined`, an event and not a response (§5, §6.1).
 - **A socket that drops fails every request in flight.** When the connection ends, whether the
   client asked for it or not, each outstanding request **MUST** be failed locally: no answer can
   arrive on a socket that is gone, and a caller left holding a request that never completes cannot
@@ -880,7 +890,9 @@ Four obligations on the request side, none of which changes the wire:
   `selvage/1` it does not matter: a hold is a set, so a second `doc.open` for a path already held
   changes nothing, a grant is a snapshot, so a second `doc.grant` that repeats a listing changes
   nothing, and an applied rename reaches the mover as the `peer.renamed` every peer receives
-  (§6).
+  (§6). In `selvage/2` the only request that can be outstanding is a rename — the handshake is
+  answered with an event (§5) — and it is the same: its effect reaches the mover as the
+  `peer.renamed` every peer receives.
 - **A request id is not reused on a connection.** The id is the only correlation the wire has, and
   a client that reuses one cannot tell a late answer from a current one. A new connection may
   count from the beginning again, because it is a new connection: nothing survives it (§9.1).
@@ -900,9 +912,9 @@ All event `params` are flat objects.
 | event | params | when | and therefore the receiver |
 |---|---|---|---|
 | `room.created` | `SessionParams` with `token` | reply to a `session.hello` that minted a room | is the room's host, and **MUST** keep `token`: nothing re-sends it (§5.1) |
-| `room.joined` | `SessionParams` without `token` | reply to a `session.hello` that joined one | adopts `keepalive` and reads `documents` as the room's membership, not as its content (§6.1) |
-| `peer.joined` | `{ "peer": PeerInfo }` | to the peers already in the room when a connection is seated | adds the peer to the roster, and reads `peer.role` rather than assuming a guest arrived |
-| `peer.left` | `{ "peer_id": string }` | to the remaining peers when a connection ends | removes the peer, and **SHOULD** drop its awareness state (§8.4). A host leaving is *not* the end of the room (§9) |
+| `room.joined` | `SessionParams` without `token` | reply to a `session.hello` that joined one | adopts `keepalive` and reads `documents` as the room's membership, not as its content (§6.1; `documents` is `selvage/1`'s and this version's reply does not carry it — §6.1's version passage) |
+| `peer.joined` | `{ "peer": PeerInfo }` | to the peers already in the room when a connection is seated | adds the peer to the roster, and reads `peer.role` rather than assuming a guest arrived (`peer.role` is `selvage/1`'s: this version's peer record has no role, §6.1) |
+| `peer.left` | `{ "peer_id": string }` | to the remaining peers when a connection ends | removes the peer, and **SHOULD** drop its awareness state (§8.4). A host leaving is *not* the end of the room (`selvage/1`: in `selvage/2` a room outlives any one connection and ends `room_grace_ms` after its last, §9) |
 | `peer.renamed` | `{ "peer_id": string, "display_name": string }` | to every peer when a peer renames itself | replaces the peer's name and keeps the peer |
 | `doc.opened` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer opens a document | replaces its view of the room's set with `documents` |
 | `doc.closed` | `{ "peer_id": string, "path": string, "documents": [string] }` | to every peer when a peer closes one, whether or not the closer held the path | the same |
@@ -1363,7 +1375,7 @@ nor costs the frame's other messages.
 
 An awareness state is keyed by a y-protocols client id, which carries no identity. Session
 `PeerInfo` therefore carries `awareness_client_id`, supplied by the client in `session.hello`. An
-editor adapter joins the two: awareness client id → peer → display name and role.
+editor adapter joins the two: awareness client id → peer → display name and, in `selvage/1`, role.
 
 Nothing requires an `awareness_client_id` to be unique within a room, and the mapping is
 last-claimant-wins: a client that reuses an id after reconnecting makes the id name two peers, and
