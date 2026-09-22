@@ -2447,9 +2447,24 @@ its edits are not part of the room's:
 
 Two obligations follow from §13.2's drops, and both are about what a client sends:
 
-- **A client that dropped frames re-syncs.** The rule is §13.1's step 6, and it applies again after
-  any interval in which content was refused: a replica that has been refusing frames and one that has
+- **A client that dropped frames re-syncs.** The rule is §13.1's step 6, applied again after an
+  interval in which content was refused: a replica that has been refusing frames and one that has
   been applying them look the same from inside, and only the handshake tells the room which it is.
+  **The interval is the client's own renewal clock.** What it runs from is the last `SyncStep1` the
+  client sent — the one §13.1's step 6 sends, or a re-sync of its own — and it is closed by the next
+  one: a client that has refused a `kind = 0` frame carrying content since that moment **MUST** send
+  another `SyncStep1`, on the next renewal tick at the latest, and **MUST NOT** send more than one
+  per `awareness_renew_ms` however many such frames it refused. Two bounds are stated rather than
+  left to a client's judgement. The lower one is what keeps a peer that floods a client with refused
+  content from making it answer frame for frame, which would be an amplification a hostile peer
+  chooses; the upper one is what keeps a refusal from going un-repaired for longer than the
+  session's own clock. A client that has refused nothing since its last `SyncStep1` has nothing to
+  re-sync, and a re-sync is a frame a peer answers only because the client's key is committed, so
+  one sent before that is still refused `uncommitted_key` (§13.1's step 4). What counts as a refusal
+  here is the *envelope's* kind: `kind = 0` is readable before any signature is verified, so a
+  content frame refused `bad_signature`, `replayed_counter` or `uncommitted_key` is as much a
+  content refusal as one refused `unauthorised_content`, and a frame refused at step 1 or 2 — a
+  malformed envelope or an unknown kind — is not a content frame at all.
 - **A client publishes what it is allowed to publish, and nothing else**: not until a state commits
   its session key (§13.1), its session-key announcement alone before that, no document content at
   all on a connection whose key the state gives role `viewer` (§13.5), and nothing beyond what §7's
@@ -2470,6 +2485,14 @@ receiver on one it runs.
   peer's set with it rather than merge the two. The peer the set belongs to is the key that signed
   the frame, so a receiver attributes it by the verification it already made (§13.4) and not by a
   value in the plaintext.
+- **When the first one goes out.** A peer's first holds message waits for the state that commits
+  its own key (§13.1's step 4): before that, a holds message is a frame no peer can attribute and
+  every conforming peer refuses it `uncommitted_key`, so it would be a frame nobody applies. A
+  holder that has a document open at the moment that state is applied announces at once, and one
+  that opens a document later announces when its set changes. That first message is also what arms
+  the renewal clock below, which is why the clock is stated against the last message rather than
+  against the connection: a `MUST` to re-announce every `awareness_renew_ms` needs a moment to
+  count from, and a peer whose key no state has committed yet has not had one.
 - **What a hold is not.** It is not a cursor and it is not document content. It is one connection's
   claim on one path, the same kind of claim a `selvage/1` `doc.open` made (§1.2), and it says
   nothing about whether any peer holds a `Y.Text` for the path: a path in a hold set is a candidate
@@ -2562,6 +2585,16 @@ sends.
   room whose host may still return. A client **MAY** wait longer, and the margin beyond the window
   is the observation delay: it errs in the safe direction, because the clock starts no earlier than
   the host actually left.
+- **The two windows run in sequence, and both are owed.** A client seated with no state waits the
+  **no-state window** of §13.3, and a state whose `host` entry labels an absent seat is what ends
+  that wait — so the same client then waits the host-away window from the moment it applied that
+  state. A client may therefore hold its seat for up to two windows before ending, and that is
+  deliberate rather than double-counting: each window is the time the session's clock gives for a
+  different piece of evidence, the first for a state to arrive at all and the second for the host
+  that state names to return, and cutting either short abandons a room whose host may still come
+  back. The second window is not shortened by the first having run: a client that applied its first
+  state at the last moment of the no-state window is owed the whole of the host-away window from
+  there.
 - **The cooperative rule.** A client whose host-away clock **has** passed the host-away window
   **MUST** end its session and say why. This is a duty between conforming peers rather than a
   boundary a server enforces: in this version the room's death is armed by its **last** connection
@@ -2594,10 +2627,14 @@ last rule), and the key it announced is the thing the state names.**
   what makes it a `viewer` is that it does not and that a conforming receiver will not apply one
   (§13.5's residual).
 - **What it still sends.** Its own **SyncStep1**, once it applies a verified state that commits its
-  session key and again after any interval in which content was refused (§13.1's steps 4 and 6): a
+  session key, and again after any interval in which it refused a content frame — the same interval
+  §13.6 defines, and the same two bounds (§13.1's steps 4 and 6): a
   SyncStep1 is a state vector and a request
   rather than content, and it is how a `viewer` is sent anything at all — peers answer it with a
-  SyncStep2 and the `viewer` receives the room. Its **awareness**, renewed on the session's clock
+  SyncStep2 and the `viewer` receives the room. What a `viewer` re-syncs after is a content frame
+  *it* refused to apply; its own content being refused by its peers is the refusal §13.3 says never
+  reaches its publisher, so it is not an event this client can observe and not one it answers. Its
+  **awareness**, renewed on the session's clock
   (§8.2), so the room shows its cursor. Its **holds**, renewed on §13.7's lease, because a hold is
   not content. Nothing else: a `viewer` publishes no other frame, and in particular no content, no
   listing and no role.
@@ -2694,6 +2731,15 @@ needs a reason the vocabulary does not already name: each is a refusal one of th
 expiry (a set becomes empty, and no frame is dropped), an obligation about what a client sends, or an
 ending (`ended`).
 
+**What a client sends is two counts and not one.** A client's **publications** are the frames §13's
+rules are about: its session-key announcements, its document content, its holds messages, and the
+room states and closings a host publishes. Its **sync-handshake frames** are §7's — a `SyncStep1` or
+a `SyncStep2` — and are counted apart, because §13.1's step 6 obliges a client that applies a state
+committing its own key to send one and §13.6 obliges it to send another after a content refusal, so a
+publication count that folded the two together could not tell a republished request from a
+publication. Both are frames and both are visible to a test; which of the two a rule moved is what an
+assertion about them says.
+
 | rule | the observable | the fixture, or the mutation, that must turn a wrong implementation red |
 |---|---|---|
 | A holds message applies (§13.7) | the subject holds the paths; `applied`; `published` counts the message | a holds message sealed with a committed fixture session key, under a fixture state that commits it; the positive control |
@@ -2711,6 +2757,7 @@ ending (`ended`).
 | A client with no state ends at its window (§13.3) | `ended` within the no-state window of being seated, and not before | a fixture room whose host never publishes a state, with a compressed `awareness_expire_ms`; a client that waits for ever, or that ends inside the window, must fail |
 | A dropped announcement is recovered (§13.1) | `published` counts announcements across a window with no committing state, the key is committed by the host's state once it arrives, and a state the host already holds is re-sent for an announcement whose key it already commits; the subject applies it and stops announcing | a fixture relay that drops the subject's first announcement, with a compressed `awareness_renew_ms`, and a second leg whose relay drops the *state* that commits the key; a client that announces once and waits, or a host that answers neither within a window, must fail |
 | A key that is not the canonical encoding is refused (§13.2) | `dropped` with `bad_payload`, in a state's `peers` name and in an announcement's `key` | a state naming a key whose final character carries non-zero pad bits and one whose key carries a trailing newline, and the plaintext's own spelling of each; a lenient decoder that resolves either to a 32-byte key must fail |
+| A client that refused content re-syncs (§13.6) | a `SyncStep1` sent after the refused frame, at most one per `awareness_renew_ms` however many were refused; nothing published in answer | a content frame from a key no state commits, delivered twice inside one compressed window; a client that never re-syncs, and one that answers frame for frame, must each fail |
 | A verified closing ends; an unverified one does not (§13.10) | `ended` true for the first, false for the second and for a closing delivered to a subject holding no state | two `kind = 2` frames, one above the mark and one at it, and one delivered before any state; the mutation that drops the `issued` ordering must fail the first leg |
 | The room is gone, not retryable (§13.10) | the subject sends no second `session.hello` to the id; `published` shows the one hello | an absence scan over the transcript after `room_unknown`, as §6's scans are |
 | The invite's `viewer` parameter is not authoritative (§13.9) | a subject handed the parameter, then a state committing it as `guest`, behaves as a `guest` | a fixture state that contradicts the parameter; a client that trusts the URL must fail |
