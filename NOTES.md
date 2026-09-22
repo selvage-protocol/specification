@@ -180,13 +180,60 @@ everything in `session.hello`, makes the invite link a non-URL, or makes the cli
 when the room is hostless, become the host: keeping the room alive, or ending it by leaving. Since
 the same token already grants read access to the whole working copy, this grants nothing new
 *today*, but it stops being harmless the moment the token is shared more widely than the host's
-devices. **Unresolved.**
+devices. **Unresolved. Superseded 2026-09-22 by owner decision**: reclaiming is dropped, so the
+host role is not claimable at all — the host is whoever holds the private half of the room's host
+keypair, whose public half travels in the invite URL's fragment, and a host that returns inside the
+blip window proves it with a signature its peers verify rather than with a token the server checks.
+What survives here is only the part about identity and the link, which is `B.1`'s subject.
 
-**B.3 Read-only guests are not implemented.** The design has the host serving content and guests
-reading it. This slice has both roles editing, because the conformance gate requires concurrent
-edits from both sides. Enforcing read-only at the server would mean parsing CRDT operations, which
-contradicts payload opacity (`PROTOCOL.md` §3); it has to be host-side or not at all.
-**Unresolved, and deliberately deferred.**
+**B.3 Read-only guests: the `viewer` role, endpoint-side.** The design has the host serving content
+and guests reading it, and this slice has both roles editing, because the conformance gate requires
+concurrent edits from both sides. What is settled is **where enforcement lives**: the server never
+inspects a payload, and `PROTOCOL.md` §12 is being revised toward an encrypted shape in which the
+server will not be able to read a payload at all, so the enforcement the design wants is not a thing
+the server can perform. It is endpoint-side instead — a client denies a change that came from a
+viewer — and the role it denies by is **`viewer`**, beside `host` and `guest`. The next revision
+carries it the way it carries every other room fact, which is a change from what this item first
+recorded: **the host assigns it and signs it**, in the room state the host publishes, so no server
+seats it and `session.hello`'s `role` member, `PeerInfo.role` and `/meta`'s `roles` all go. The
+invite still carries it as a parameter, so a conforming client knows what it is and does not try to
+edit; that half is a convention between the host's client and the client that joins, and it is not
+what enforces anything.
+
+**What the wire is missing is attribution.** A relayed binary frame is byte for byte with no sender:
+the server relays and forgets (`PROTOCOL.md` §7, whose message-type table has no origin), and the
+reference transport hands its consumer the bytes and nothing else
+(`vscode_client/src/engine/transport.ts`). A receiver therefore cannot tell whose change it is
+holding, and "a client denies a viewer's changes" cannot be implemented until a frame says where it
+came from. The smallest shape that supplies it is a **per-sender signature in the frame envelope,
+over an untouched payload** — bytes this protocol writes, not bytes `y-protocols` writes, so a later
+sync algorithm is attributed the same way and the payload stays opaque. A server-written stamp is the
+cheaper shape and it is **not** this one: under the threat the encryption is being built for, a stamp
+the server writes is a value the server can lie about, and a frame's sender has to be something a
+peer verifies for itself.
+
+**Two `MUST`s a later revision would state**, recorded here rather than in the prose because nothing
+implements them yet: **a frame MUST carry a signature verifiable against a key the room's host has
+committed**; and **a client MUST NOT apply content from a sender it cannot authenticate, nor from a
+sender whose committed role is `viewer`**. They are left out of what is normative today because a
+`MUST` with no implementation and no vector behind it is a claim the corpus cannot check.
+
+**The residual, stated as it is.** Even with both, the honest sentence is "no conforming client
+applies a viewer's content", not "a viewer cannot edit": a viewer holds the room key once there is
+one, so it can produce a perfectly signed frame, and a client that does not implement the rule
+applies it. Endpoint enforcement is a denial between conforming peers, not a boundary.
+
+**The accepted cost of the next revision, in this item's own terms.** Verifying a sender costs every
+client a verification state machine and a key exchange that is not a person's, which is the one place
+the project's "a stranger can implement a client from the spec" property is genuinely strained
+(`docs/studies/e2ee-plan.md` §8). It buys what this item wanted without asking anything of the server:
+a role a peer cannot forge and a sender no relay can mislabel.
+
+**Not implemented, and what triggers it.** The role is a foundation: the value `viewer` in what the
+host signs, an invite parameter, and the signature's shape written down. It is implemented when the
+next revision lands; until then `DESIGN.md` §4.2's inversion stands in full — every holder of the
+invite token edits the session CRDT — and the page's claim gate keeps refusing "guests are read-only"
+for the reason it gives (`site/README.md`).
 
 **B.4 Selections are published with `assoc: 0`.** A selection endpoint is a yjs `RelativePosition`
 object, no index reaches the wire, and offsets are local to a client's adapter seam. Both reference
