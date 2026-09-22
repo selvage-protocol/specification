@@ -2344,8 +2344,8 @@ The state replaces what a receiver held, and it is ordered by its own `issued`.
 
 - **MUST NOT** apply content or awareness, and **MUST NOT** publish either — the session-key
   announcement is the one frame it sends (§13.1's step 4);
-- **MUST NOT** end the session for the absence of a state, **before the no-state window has
-  passed**. A room can be entered while the host is away, in which case no state arrives until one
+- **MUST NOT** end the session for the absence of a state before **the no-state window** has
+  passed. A room can be entered while the host is away, in which case no state arrives until one
   does (§6.1), and `awareness_expire_ms` is the length of that wait: the window runs from the moment
   the client is seated, on the session's own clock, and is §13.8's host-away window read from
   `room.created`/`room.joined` (or `/meta`) rather than a number of the client's own. A client seated
