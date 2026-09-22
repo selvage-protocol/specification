@@ -63,7 +63,7 @@ silent, without reading the Rust.
 | Path | What it is |
 |---|---|
 | [`PROTOCOL.md`](PROTOCOL.md) | **The specification.** What the members mean, and what a conforming peer must, should or may do. §1.1 says which sentences bind a reader and what conformance is. |
-| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1**, the canonical byte form of a session text frame. Normative for the bytes. |
+| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1**, the canonical byte form of a session text frame, and §6.1, the byte form of a `selvage/2` sealed frame. Normative for the bytes. |
 | [`schema/`](schema/) | The machine-readable model: JSON Schema 2020-12, one file per concern, plus `validate.py`. |
 | [`runner/`](runner/) | The language-neutral replay: `run_vectors.py` starts a server and replays every transcript against it, with no Rust toolchain. |
 | [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by the reference server's [`crates/harness/tests/vectors.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors.rs) and by `runner/`. |

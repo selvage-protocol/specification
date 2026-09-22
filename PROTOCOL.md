@@ -14,7 +14,7 @@ are meant to be read together:
 
 | artifact | what it fixes |
 |---|---|
-| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1**, the byte form of a session text frame. This document says what the members mean; that one says how they are written, and a frame conforms to both |
+| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1**, the byte form of a session text frame, and (§6.1) of a `selvage/2` sealed frame. This document says what the members mean; that one says how they are written, and a frame conforms to both |
 | [`schema/`](schema/) | the machine-readable model: JSON Schema 2020-12, one file per concern, with every frame of every vector checked against it |
 | [`vectors/`](vectors/) | transcripts of real bytes. They are examples, not the rule; a second implementation is held to them by [`runner/run_vectors.py`](runner/) |
 
