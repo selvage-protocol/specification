@@ -916,6 +916,10 @@ SESSION_V2_META_REFUSED = {
         **SESSION_V2_ADVERTISED,
         "capabilities": ["awareness"],
     },
+    "a body missing the `awareness` capability": {
+        **SESSION_V2_ADVERTISED,
+        "capabilities": ["y-protocols/1"],
+    },
 }
 
 SESSION_V2_PEER_CONFORMING = {

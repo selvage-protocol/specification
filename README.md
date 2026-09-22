@@ -30,7 +30,7 @@ session layer, one for the corpus counts, and `result OK`:
 ```
 schema ok      11 schemas, 39 values checked against the control-character refusal
 sealed         19 values checked against the sealed payloads of selvage/2
-session v2     24 values checked against selvage/2's session layer
+session v2     25 values checked against selvage/2's session layer
 vectors        36 files, 35022 frame checks, 8676 assertion steps
 result         OK
 ```
