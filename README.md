@@ -24,12 +24,14 @@ pip install jsonschema referencing     # or: nix develop  (the same package, pin
 python3 schema/validate.py
 ```
 
-A green run prints one line for the schemas, one for the sealed payloads, one for `selvage/2`'s
-session layer, one for the corpus counts, and `result OK`:
+A green run prints one line for the schemas, one for the sealed payloads, one for the reasons a
+refused sealed frame is reported in, one for `selvage/2`'s session layer, one for the corpus counts,
+and `result OK`:
 
 ```
 schema ok      11 schemas, 39 values checked against the control-character refusal
 sealed         19 values checked against the sealed payloads of selvage/2
+refusals       12 values checked against selvage/2's local report vocabulary
 session v2     42 values checked against selvage/2's session layer
 vectors        36 files, 35022 frame checks, 8676 assertion steps
 result         OK
@@ -104,12 +106,17 @@ in every vector against them. It prints a line for the schemas, a line for the c
 - that the error and close codes each vector asserts are the ones `EXPECTED_CODES` pins for it, so
   a substitution inside a closed vocabulary (`unknown_method` for `bad_params`, say) is a red run
   rather than a corpus that keeps every count and quietly asserts something else;
-- that `schema/sealed.json` describes the two payloads `selvage/2` carries sealed — the room state
-  and the closing — by running it against values that must validate and values that must not. No
-  vector reaches that file yet: a sealed frame is bytes rather than JSON, and the vectors for one
-  belong to the corpus layer that is not written. Until they exist this check is what keeps the
-  model from being relaxed unnoticed, which is why it is here rather than with the layer that owns
-  the vectors.
+- that `schema/sealed.json` describes what `selvage/2` carries sealed — the room state and the
+  closing — by running it against values that must validate and values that must not, and, beside
+  them, the vocabulary a receiver reports a refused sealed frame in, which `PROTOCOL.md` §13.2 binds
+  a client to produce. No vector reaches either yet: a sealed frame is bytes rather than JSON, and
+  the vectors for one belong to the corpus layer that is not written. Until they exist this check is
+  what keeps the model from being relaxed unnoticed, which is why it is here rather than with the
+  layer that owns the vectors. The report vocabulary is a closed *value* rather than a member, which
+  is the one thing a schema here can refuse: it is pinned to `CANONICAL.md` §6.1's table in both
+  directions, so a reason removed from it, a reason added with no rule behind it, and the reason a
+  reader expects and cannot have (`bad_tag`, because the signature covers the ciphertext) are each a
+  red run.
 - that `schema/session-v2.json` describes the shapes `selvage/2`'s session layer states and
   `selvage/1`'s do not — a `/meta` body of four members whose `wire_versions` name `selvage/2` or a
   later minor and whose `keepalive` carries `room_grace_ms`, a `PeerInfo` without `role`, the two

@@ -338,6 +338,7 @@ refuses the frame.
 | 6 | the signature | `bad_signature` |
 | 7 | the AEAD opens | `bad_aead` |
 | 8 | `issued`, for `kind = 1` and `2` | `stale_issued` |
+| 9 | the sender's role, for a `kind = 0` frame carrying document content: a peer committed as `viewer` may not send one | `unauthorised_content` |
 
 Those reasons are the receiver's **local report** and not wire values. Nothing about a refused
 frame is sent, no connection is closed, no code of `PROTOCOL.md` §11 is involved, and a frame that
@@ -346,6 +347,14 @@ the same bytes refused at two different steps would be two reports for one frame
 worth naming: a frame whose counter does not advance is a replay whether or not its signature
 would have verified, and `bad_aead` — reachable only by a sender that signs a ciphertext its own
 room's key cannot open — is a report about a sender's bug rather than about an attack.
+
+**Step 9 is the one reason here that is not a property of the envelope.** The frame is authentic,
+its key is committed, its counter advanced and its AEAD opened; what refuses it is the peer rule
+that a `viewer`'s edits are not the room's (`PROTOCOL.md` §13.5). It is in this table because the
+report is one vocabulary, and it is read last and only for a `kind = 0` frame whose plaintext
+carries a SyncStep2 or an Update: a viewer's SyncStep1 and its awareness are applied. The two
+last steps are each reached by one kind — 8 only by `kind = 1` and `2`, which carry the `issued`
+that orders them, and 9 only by `kind = 0`, which does not.
 
 **The kinds.** `0` carries the y-protocols stream of `PROTOCOL.md` §7 as its plaintext, whole: one
 binary frame is one envelope, and the messages inside it are that section's, exactly as they are
@@ -372,7 +381,9 @@ The **room state** has exactly three members. `PROTOCOL.md` §7.1 says what each
   peer's public key in the fragment's encoding (base64url, 32 bytes), and `role`, one of `host`,
   `guest` and `viewer`. Where one key is named under two `peer_id`s the receiver reads the role
   from the entry whose `peer_id` comes first in UTF-16 code-unit order, so that two conforming
-  receivers read one state the same way.
+  receivers read one state the same way. The same read applies to a state that names more than one
+  peer with role `host`: `PROTOCOL.md` §7.1 has a host write exactly one, and a receiver handed two
+  reads the host's connection as the one whose `peer_id` comes first in that order.
 
 The **closing** has exactly two members:
 

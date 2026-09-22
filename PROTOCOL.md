@@ -29,7 +29,7 @@ nothing in this document is softened by anything there.
 
 The Selvage Session Protocol is the *session* layer above document sync: rooms, participants,
 roles, which documents are open, presence, join and leave. It carries document sync and awareness
-payloads but does not define them: those are y-protocols (§13).
+payloads but does not define them: those are y-protocols (§14).
 
 This draft covers, and only covers:
 
@@ -59,7 +59,7 @@ appear in capitals as shown here.
 
 - a passage marked *(informative)*, which records what an implementation does and does not
   constrain a reader;
-- the items of [§13 References](#13-references) that are marked informative;
+- the items of [§14 References](#14-references) that are marked informative;
 - [`NOTES.md`](NOTES.md), which is not part of this specification.
 
 `CANONICAL.md` is normative for the bytes of a frame: member order, whitespace, string escapes,
@@ -68,18 +68,18 @@ conforms when it satisfies both.
 
 **What conforms.** A conforming **server** implements §2–§11 on the server side; a conforming
 **client** implements §4–§10 on the client side. Both implement `CANONICAL.md`, both are bound by
-§12 and §13, and both are bound by the [frames of the version they
+§12–§14, and both are bound by the [frames of the version they
 speak](#10-version-and-capability-negotiation): conformance is per wire version, and the unmarked
 text of this document is `selvage/1`'s. `selvage/2`'s is every passage that names the version as
 its own, and all of them are listed here so that nothing of that version has to be discovered:
 [`CANONICAL.md`](CANONICAL.md) §6.1; §5.1's fragment, local-refusal, handover and
-token-without-`room` paragraphs; §7.1;
+token-without-`room` paragraphs; §7.1; §13;
 and the passages of this document whose lead-in carries the version — §1.2's `host`, `guest`,
 `grace period` and `set` entries, §2's `/meta` passage, §2.1's bounded-state passage, §3's server
-passage, §4.1's fixed-member-set clause, §5's method-surface, handshake and minting passages,
-§6's vocabulary
-passage, §6.1's join passage, §9's room passage, §9.1's and §9.2's lead-ins, §10's version-gate
-passage, and §11's vocabulary passage.
+passage and its closing account of what the relay cannot do, §4.1's fixed-member-set clause, §5's
+method-surface, handshake and minting passages, §6's vocabulary
+passage, §6.1's join passage, §9's room passage, §9.1's and §9.2's lead-ins and §9.1's return
+passage, §10's version-gate passage, §11's vocabulary passage, and §12's scoping lead-in.
 
 A peer that speaks `selvage/1` is not held to any of them, and the converse holds by the same rule:
 a statement this document makes that no passage of `selvage/2` carries is `selvage/1`'s and does not
@@ -411,7 +411,33 @@ negative half of that is as much a part of the version as the positive one:
 What that leaves the server deciding is membership and the relay, and they are §9's room passage and
 §2.1's bounds. A rule that needs an authority on anything else — which paths are open, which
 documents exist, who may write to one, whether a host is still present — is a rule for peers, and
-this version's peer-side rules are not the server's to state.
+this version's peer-side rules are stated in §13.
+
+**What the relay cannot do, and what it still learns.** The four duties above are the whole of what
+this version takes from the server, and what they buy is worth stating here rather than left to be
+inferred from §12, whose claims are `selvage/1`'s:
+
+- **It cannot read a room.** A frame is sealed under a key that travels in the invite URL's fragment
+  (§5.1), and the listing, the roles, the text and the cursors are all inside frames: no character of
+  a room's text, no cursor, no file name and no role reaches the server in a form it can read.
+- **It cannot forge a frame or mis-attribute one.** Every frame is signed over its own bytes, and the
+  room state commits the key each peer signs its frames with
+  ([`CANONICAL.md`](CANONICAL.md) §6.1, §7.1). A receiver attributes a frame to the key whose
+  verification succeeded, so attribution is cryptographic rather than a value the server writes, and
+  the peer id is the server's while the *binding* of a key to it is the host's state's (§13.4).
+- **It cannot replay one.** A frame's counter under one key is strictly increasing and a receiver
+  refuses one at or below the mark it holds; a room state and a closing are ordered by their own
+  `issued` and a receiver refuses one that is not above the mark
+  ([`CANONICAL.md`](CANONICAL.md) §6.1, §13.3).
+- **It cannot decide a role, and it cannot be the host.** No frame it authors carries a role, and the
+  host is whoever holds the private half of the key the invite's fragment names — a value the server
+  never sees.
+- **It is still a relay, and a deployment is still a deployment.** It learns who is in a room, their
+  display names, which frames arrived, when, and how large they were, and roughly how many documents
+  and files a room has; it can drop a frame, delay one and destroy any room; and it may serve the
+  client code a guest runs, which is why §2 lets an implementation serve the page and a guest decides
+  what it trusts. Transport security stays the deployer's job exactly as in `selvage/1`: the protocol
+  cannot detect a downgrade and no peer can tell whether its own transport is protected (§12).
 
 ## 4. Session envelope
 
@@ -1015,7 +1041,10 @@ sealed under the frame key and signed. The host publishes the room state when a 
 the listing and the roles reach a joiner one relay hop late rather than inside its reply, and a
 joiner that arrives while the host is away gets no state until one arrives or the room is
 destroyed. Until a state verifies, the joiner knows nobody's key and **MUST NOT** apply content:
-§7.1's envelope is what makes a frame authentic, and there is no second rule beside it.
+§7.1's envelope is what makes a frame authentic, and there is no second rule beside it. It **MUST
+NOT** publish content either, until a state commits the session key it is signing with: before that
+it does not know its own role, and its frames are frames no peer can attribute. §13.1 is the order a
+client works through.
 
 ### 6.3 `doc.granted`
 
@@ -1140,13 +1169,49 @@ by the host key: the room's listing, the roles the host assigns, and the state's
 - `peers` is the roster the host seats, one entry per connected peer and the host's own included:
   the peer's public key, which is what its frames are verified against, and its role, `host`,
   `guest` or `viewer`. A peer's key is not a value the server can supply — the server does not know
-  it and could lie about it — so the host commits it and a receiver uses the one it verified.
-- `issued` is the state's edition, and a receiver applies a state only if it is above the one it
-  holds.
+  it and could lie about it — so the host commits it and a receiver uses the one it verified. The
+  host's own entry carries its connection's **session** key and not the host key: the host key
+  signs `kind = 1` and `kind = 2` and nothing else, and the host's ordinary frames are verified
+  against the key this entry commits like any other peer's ([`CANONICAL.md`](CANONICAL.md) §6.1).
+- `issued` is the state's edition, and a receiver applies a state only if its `issued` is
+  **strictly** above the one it holds: the two are compared, never the envelope's counter, because
+  the host key is minted with the room and outlives the connection any one state was published on
+  ([`CANONICAL.md`](CANONICAL.md) §6.1). What a receiver does with a state that is not above, and
+  with two publications that carry one edition, is §13.3's.
 
 Nothing else carries the listing or the roles in `selvage/2`, and a joiner therefore holds no
 committed key until a state arrives: until then it refuses every content frame, because the
-envelope's own key resolution — not a second rule beside it — is what makes content authentic.
+envelope's own key resolution — not a second rule beside it — is what makes content authentic. §13.1
+orders what a client does around that: what it may publish, where §7's sync handshake comes, and
+what it shows a person meanwhile.
+
+**Who publishes one, and when.** Only the peer holding the private half of the host key can publish
+a state: that is the whole of what being the host is in this version, and there is no claim, no seat
+and no reclaim for a peer to make (§5's minting passage, §9.1's return). The host's obligations are
+these, and they are what makes the state the room's authority:
+
+- **MUST** publish a state when it mints a room, which is also what brings the room's listing into
+existence;
+- **MUST** publish one on every change to its `listing` or to `peers`, and on every `peer.joined` it
+receives, which is how a joiner learns the listing and the roles without asking (§6.1);
+- **MUST** write an `issued` above every state it has published and, once it has verified a state at
+  or above that edition, above that one instead. A host that persists its host key **MUST** persist
+  its `issued` with it and continue the series rather than restart it: a state at or below the
+  room's edition is refused by every peer, and nothing in the protocol carries that refusal back to
+  its publisher (§13.3);
+- **MUST** name exactly one peer with role `host`, its own connection, because that entry is what
+  tells a receiver which seated peer holds the host key;
+- **MUST NOT** hold two host sessions for one room at a time. Two connections that share a host key
+  and a counter series publish one edition twice, and §13.3 states what a receiver does with that.
+
+**A peer that holds a verified state SHOULD re-send it, unchanged, when it sees a `peer.joined`.**
+The bytes it re-sends are the ones it received: only the host key signs a state, so a peer that
+re-sealed or re-signed one would hand the room a frame every other peer refuses `uncommitted_key`.
+The re-send is what lets a joiner's state arrive while the host is away, and what lets a returning
+host that has lost its `issued` learn the edition the room holds before it publishes above it
+(§9.1). A peer that re-sends a state should expect every peer already holding that edition to refuse
+it `stale_issued`, which changes nothing; the host's own obligation above supersedes this for the
+host, whose fresh state is what a joiner needs from it.
 
 **The closing** (`kind = 2`) is the host's statement that the room is over. It is signed by the
 host key and ordered by `issued`, so a relay that replays an old one changes nothing, and a peer
@@ -1155,11 +1220,11 @@ that holds a verified one treats the session as ended.
 *(informative)* No implementation speaks `selvage/2` yet. This section and
 [`CANONICAL.md`](CANONICAL.md) §6.1 exist so that a corpus, a client and a server can be written
 against frozen bytes. The session layer that version's passages state is written — §1.2's entries,
-§2's `/meta`, §2.1's bounds, §3's server, §5's handshake, §6's events, §6.1's replies, §9's room,
-§10's gate and §11's vocabulary — and what remains unstated is the peer-side half: the holds and
-their lease, the resume, the refusal of a committed `viewer`'s frames, and the client-behaviour
-rules that stand where the server no longer enforces anything. §1.1 is where the two versions'
-passages are told apart until that half is written.
+§2's `/meta`, §2.1's bounds, §3's server and its account of what the relay cannot do, §5's handshake
+and the invite's fragment, §6's events, §6.1's replies, §9's room, §9.1's return, §10's gate, §11's
+vocabulary, §12's scoping and §13 — and what remains unstated is the rest of the peer side: the
+holds and their lease, the presence clock a client runs on, and the lifecycle rules that need it.
+§1.1 is where the two versions' passages are told apart.
 
 ### Document content: line endings and the trailing newline
 
@@ -1515,6 +1580,24 @@ survives the socket. In `selvage/2` a rejoin is even plainer, because there is n
 back: the server keeps the room's id and its token, and what a rejoining peer holds it announces
 again to its peers (§9's room passage).
 
+**The host's return, in `selvage/2`.** There is no resume frame, and none is needed: the host key is
+the proof and a room state is the carrier. A host that returns re-hellos like any peer (§9), and the
+connection that holds the private half of the host key resumes by publishing a state — sealed, signed
+by that key, carrying an `issued` above the room's edition (§7.1). Every peer verifies it against the
+key the invite's fragment names, so a connection that cannot sign one is not the host; and a relay
+that replays an older one is refused `stale_issued`, which is the same `issued` rule that orders two
+states ([`CANONICAL.md`](CANONICAL.md) §6.1). Nothing in this version asks a returning host for a
+fresh value, a counter of its own or a second frame shape, and a client **MUST NOT** invent one: a
+state above the room's edition is the whole of the resume.
+
+What that costs is the host key's persistence, and the cost is the host's own: the keypair is minted
+with the room and travels nowhere but the host's machine, so **a host that means to keep hosting
+after a reload MUST persist its private half**, with its `issued` beside it (§7.1). A client that
+does not persist it ends its own hosting when it reloads — it can be seated in the room, and it can
+never publish a state a peer accepts again. A host on another device is in the same position: the key
+belongs to a room and a machine, and there is no portable host identity that is not also an
+identifier every guest can see.
+
 A dropped connection takes everything that belonged to it: the `peer_id`, the claimed role
 (`selvage/1`), this connection's document holds and its awareness state. Nothing about a client
 survives a socket, so
@@ -1599,7 +1682,7 @@ relay, the keepalive or a socket ending; the one clause among them that reads fo
 is the "seated | the socket ends" row's `host.detached`, which is `selvage/1`'s — in `selvage/2` the
 same transition arms the grace when the connection that ended was the room's last. `selvage/2`'s room
 machine is the table in §9's room passage, and the peer-side machine that version needs is not a
-server machine and is not written here (§1.1).
+server machine and is §13's (§1.1).
 
 The two machines a reader has to build, derived from the transitions above and checked against the
 corpus. Each row reads: in this state, this frame or this timer moves the machine here, and this is
@@ -1864,6 +1947,23 @@ things.
 Every deployment in `selvage/1` inherits these properties. They are not aspirations about a future
 version: they are what the wire in §2–§11 does.
 
+**This section is `selvage/1`'s, and it holds two kinds of sentence.** A duty on a *deployment* that
+no wire shape supplies — terminate TLS in front of the server, do not log request URLs, bound
+connections, peers and rooms — holds in both versions, and a `selvage/2` deployment is held to it. A
+*property of the wire* below is `selvage/1`'s, and three of them read differently in `selvage/2`:
+
+- **the token is not the whole permission.** It is the permission to **join**: no frame the server
+  can read carries a document, a cursor, a file name or a role (§3, §7.1);
+- **a leaked URL is a leaked room and its keys.** The fragment is what removes the server operator
+  and the network path from the set that can read a room (§5.1), and it does not remove the link's
+  holder: the fragment is in the link, and in the address bar, the history and whatever carried it;
+- **the host role is proven, not claimed.** The host is whoever holds the private half of the key
+  the invite's fragment names, a role is the host's signed statement, and no connection is seated as
+  anything (§1.2, §7.1).
+
+What the server of that version can and cannot do is stated where its negative duties are (§3), and
+the peer-side rules that stand where the server enforces nothing are §13.
+
 **The token is the whole permission.** A room's token is minted with the room, carried in the
 invite URL, and never echoed after `room.created`. Any peer that presents it is seated, whatever
 its display name, and there is no per-join approval (`message_type = 2`, auth, is unused, §8.3).
@@ -1927,7 +2027,186 @@ confine the path itself, and the path rules have to be settled before file acces
 peer ignores what it does not know, and nothing on the wire proves that a peer can do what it
 advertises. A capability name **MUST NOT** be used to decide whether a peer is safe to talk to.
 
-## 13. References
+## 13. Client behaviour
+
+**This section is `selvage/2`'s**, and it is that version's peer side: what a client does with the
+frames it receives, where the server no longer decides anything. A conforming `selvage/2` client
+implements it, and it is where the version's security actually sits — the server holds nothing a
+room's facts could be read from (§3), so what makes a frame mean what it says is a rule both ends of
+a connection keep. It is normative, and it fixes no bytes: every rule below is about what a client
+does with bytes §5.1, §7.1 and [`CANONICAL.md`](CANONICAL.md) §6.1 already fix, and the reasons
+it reports a refused frame with are §6.1's own vocabulary.
+
+### 13.1 The order of operations, at a join
+
+A client that has read an invite (§5.1) and settled on a version (§2, §10) works through this order,
+and the order is part of what follows:
+
+1. **Read the room, the token and the two keys, and strip the fragment.** Both values are required,
+   and their absence is a local refusal before a socket is opened (§5.1). Neither ever reaches the
+   server in any form.
+2. **Mint a session keypair in memory** for this connection and derive the frame key from the room
+   key and the room id ([`CANONICAL.md`](CANONICAL.md) §6.1). The session keypair is not persisted:
+   it belongs to the connection it was minted for.
+3. **Open the socket, send `session.hello`, and read `room.created` or `room.joined`.** Its
+   `self.peer_id` is the name this connection's session key has to be committed under.
+4. **Publish nothing** until a state that commits this connection's session key has verified. Until
+   then a client **MUST NOT** send a binary frame — not content, and not awareness — because it does
+   not yet know its own role and no peer can attribute what it sends (§6.1). The one frame it may
+   send first is a room state signed by the host key, which only the host can produce (§7.1).
+5. **Verify each room state against the host key the fragment names,** and apply the first one that
+   verifies ([`CANONICAL.md`](CANONICAL.md) §6.1). Until one does, §13.3's waiting rules hold.
+6. **Re-run the sync handshake, once.** Everything the relay handed this client before that point
+   was refused (§13.2), so a client **MUST** send a SyncStep1 (§7) after it applies its first verified
+   state and apply the replies. A client that skips this step keeps what it dropped, which is
+   divergence with nothing to observe it.
+7. **Then for the rest of the session**: verify before applying (§13.2), attribute every frame
+   (§13.4), apply only what the sender's role permits (§13.5), and re-send the state the room holds
+   when a peer is seated (§7.1).
+
+A host's order is the same with one difference: it **MUST** publish a state at mint and on every
+`peer.joined` it receives (§7.1), so its own state may precede any state it verifies. It is held to
+the rest of the list as any peer is.
+
+### 13.2 Verify before apply
+
+- **A binary frame is one sealed frame, and nothing in it is used before it verifies.**
+  [`CANONICAL.md`](CANONICAL.md) §6.1 fixes the checks and their order, and a client **MUST** read
+  the first one that refuses the frame as the reason it reports.
+- **A frame that fails is dropped.** Nothing in it is applied, no state changes, the session goes
+  on, and nothing is sent in answer. This is the one place this document permits a receiver to drop
+  a frame it received, and it is what convergence means in this version: **convergence over the
+  frames a client applied** (§7's handshake, unchanged). §4.2's rule that a request is never
+  silently dropped is about requests; a dropped relayed frame is not a session fault and no §11 code
+  is involved.
+- **Every refusal is reported locally, with the reason §6.1 names.** A client **MUST** be able to
+  say which frame it dropped and why. The relay may drop a frame too
+  ([`CANONICAL.md`](CANONICAL.md) §6.1), so without the report a client that refuses everything is
+  indistinguishable from a client on a lossy link. The report is local — a status, a log line, a
+  count — and **MUST NOT** be sent, because §11's vocabulary is for faults of the session and this
+  is not one.
+- **A client MUST NOT end the session for a refused frame.** A refusal is a statement about one
+  frame; ending on it hands any relay the power to end a session by corrupting one byte.
+
+### 13.3 The room state, as a receiver
+
+The state replaces what a receiver held, and it is ordered by its own `issued`.
+
+- **Apply it wholesale.** The listing is the room's working tree, and a shorter listing is a smaller
+  one and not a partial update: a client **MUST NOT** merge two states' listings. Applying a state
+  does not retract content — a path that leaves the listing leaves what a client *offers*, and the
+  `Y.Text` for it stays in the session document exactly as a `selvage/1` `doc.close` never deleted
+  content (§7) — so a client that still holds a document the listing no longer names is not in
+  error; it may not offer the path to anyone.
+- **A state is applied only if its `issued` is strictly above the mark the receiver holds.** One at
+  or below it is refused `stale_issued` and no part of it is applied (§7.1,
+  [`CANONICAL.md`](CANONICAL.md) §6.1).
+- **`peers` replaces the receiver's keys and roles for the whole room.** A peer the state names has
+  that key and that role from the moment the state is applied; a peer it does not name has no
+  committed key and no role, so its frames are refused `uncommitted_key` (§13.4) and nothing is
+  attributed to it. A state that drops a peer revokes what an earlier one granted, and one that adds
+  a peer grants. What a state does not do is seat anybody: the server's roster is the authority on
+  which connections are seated (§6.1, §9), so a state naming a peer that is not there does not put
+  one there.
+- **The listing's paths are held to §5's rule.** A host **MUST NOT** write a blank path or one
+  carrying a control character into a listing, and a receiver **MUST** refuse that path — not the
+  frame and not the state, whose remaining members are as authentic as they would have been. The
+  server enforced that rule in `selvage/1` and does not here, so it is re-homed at both ends, and
+  the receiver is the end that renders a name.
+- **Two publications at one edition.** Two connections of one host can publish states with the same
+  `issued` and different contents, and nothing a receiver holds says which is the later: both
+  verify, both name one edition, and `issued` is the only order this version has. What a receiver
+  does is fixed by the rule above rather than chosen between the two — the first state it accepts at
+  an edition is the one it holds, and a second at that edition is refused `stale_issued`. It keeps
+  that state, keeps applying content under it, and reports the refusal like any other. What that
+  leaves, said rather than implied: **two receivers can hold different listings at one edition**, and
+  neither the wire nor a conforming peer can tell which of the two is the host's latest. The room
+  recovers when a state above the edition arrives, which §7.1 has the host publish on its next
+  change or on the next `peer.joined`, and a client **SHOULD** report an equal-`issued` refusal
+  distinctly, as a conflict rather than as an ordinary stale state, so that the divergence is
+  visible where it exists. A client **MUST NOT** clear its listing, drop content or end the session
+  for it. §7.1's producer rules — one host session at a time, and the `issued` persisted beside the
+  host key — are what keep the case from arising, and the residual is that a host which breaks them
+  cannot be corrected by anything on the wire, because both of its publications are authentic.
+- **A refusal does not reach its publisher.** The relay sends a frame to the room's *other*
+  connections (§7.1) and a refusal is the receiver's local report (§13.2), so a host whose state no
+  peer applies is not told; it learns nothing from the wire at all. That is the reason §7.1's
+  persistence rules are obligations rather than conveniences.
+
+**Before any state has verified.** A client that is seated and holds no verified state:
+
+- **MUST NOT** apply content or awareness, and **MUST NOT** publish either (§13.1's step 4);
+- **MUST NOT** end the session for the absence of a state. A room can be entered while the host is
+  away, in which case no state arrives until one does (§6.1); when a client ends a session because
+  the host's presence has lapsed is stated with the presence rules and not here;
+- **MUST NOT** present the room as having no files. It does not hold the room's listing, and an
+  empty tree is a claim about the room it cannot make. It presents the room as **waiting for the
+  host's state** — the roster from `room.joined` is known and may be shown, and the listing and the
+  roles are not — and it **SHOULD** say so where it shows the room, so that a person does not read an
+  empty workspace as an empty room.
+
+### 13.4 Attribution, and what the server's roster is worth
+
+**A frame's sender is the key that verified, and a role is the host's statement about that key's
+peer.**
+
+- **The `key_id` is an index, not an identity** ([`CANONICAL.md`](CANONICAL.md) §6.1). A receiver
+  resolves it by verifying the frame against the keys it holds: for `kind = 0` the keys the applied
+  room state commits, and for `kind = 1` and `kind = 2` the host key the fragment names. A frame
+  whose signature verifies belongs to the peer the state names for that key; one that verifies
+  against none of them is refused `uncommitted_key`, whatever else is right about it.
+- **The role is the state's.** A sender's role is the `role` the applied state gives the `peer_id`
+  entry that holds the key that verified, and the two values a client acts on are `viewer` (§13.5)
+  and `host`. Where one key is named under two `peer_id`s, the state is read as §6.1 says, so that
+  two conforming clients read one state the same way.
+- **The host's own frames are the case worth spelling out.** A `kind = 1` or `kind = 2` frame
+  verifies against the host key, and the host's ordinary frames verify against the session key its
+  own `peers` entry commits. So it is the state's one `host` entry that tells a client **which
+  seated peer is the host's connection**; the host key is nobody's peer (§7.1).
+- **The server's roster and the state answer different questions.** The roster decides which
+  connections are **seated**: `room.joined`, `peer.joined` and `peer.left` are what a client shows
+  as participants (§6, §9). The state decides **keys and roles**: a role comes from no server frame
+  in this version, and a key comes from no server frame at all. A client **MUST NOT** read a role
+  into `peer.joined`, and **MUST NOT** show a name the state carries as a participant the roster does
+  not have.
+- **Attribution is not a value and not an order.** Nothing in a relayed frame says who sent it, and
+  the order two frames arrived in says nothing about their senders: the relay holds one queue per
+  connection and two peers' frames interleave at the server's pleasure (§2.1). A client that
+  attributes a frame by anything but the verification is the client this section is for.
+
+### 13.5 A `viewer`'s content
+
+A peer the host's state commits as `viewer` may read the room's documents, and its edits are not part
+of the room's:
+
+- **It MUST NOT send document content.** Document content is a `kind = 0` frame whose plaintext
+  carries a sync message of `sync_type` 1 or 2 — a SyncStep2 or an Update (§7's message table). The
+  two things a viewer may still send are a SyncStep1, which is a state vector and a request rather
+  than content and is how a viewer is sent anything at all, and awareness, which is presence (§8).
+- **A receiver MUST NOT apply document content from a committed `viewer`.** It refuses that frame,
+  applies none of it, keeps the session, and reports it with the reason `unauthorised_content`
+  ([`CANONICAL.md`](CANONICAL.md) §6.1). It answers a `viewer`'s SyncStep1 and applies a `viewer`'s
+  awareness by §8, because neither is content.
+- **The residual, stated rather than implied.** A `viewer` holds the room key, so it can produce a
+  perfectly signed and perfectly readable frame, and nothing in the protocol stops it sending one:
+  the guarantee is that **no conforming client applies it**, not that a viewer cannot send it. What
+  refuses a viewer's edit is another client's rule, and a client that does not implement the rule
+  applies the edit. Endpoint enforcement is a denial between conforming peers and not a boundary a
+  deployment can point at.
+
+### 13.6 What a client owes the room's convergence
+
+Two obligations follow from §13.2's drops, and both are about what a client sends:
+
+- **A client that dropped frames re-syncs.** The rule is §13.1's step 6, and it applies again after
+  any interval in which content was refused: a replica that has been refusing frames and one that has
+  been applying them look the same from inside, and only the handshake tells the room which it is.
+- **A client publishes what it is allowed to publish, and nothing else**: not until a state commits
+  its session key (§13.1), no document content at all on a connection the state commits as `viewer`
+  (§13.5), and nothing beyond what §7's messages carry. A listing, a path or a role a client invents
+  is not a peer's frame, and every conforming receiver refuses it.
+
+## 14. References
 
 **Normative.**
 

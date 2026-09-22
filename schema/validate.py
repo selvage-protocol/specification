@@ -30,6 +30,12 @@ substitution inside a closed vocabulary is both schema-green and meaning-red. Fr
 member order and prose are not pinned here; they would freeze legitimate evolution, and the live
 replay in the reference server's suite is what checks them against a running server.
 
+A schema in this directory cannot forbid a *member*: tolerance is the rule (`CANONICAL.md` §3), so
+what the `selvage/2` files close is a *value*. Three of them are run here in both directions, because
+a constraint that refuses everything fails beside one that accepts what the version does not write:
+the fault vocabulary of the version's session layer (`session-v2.json`), the two sealed payloads a
+host signs, and the reasons a receiver reports a refused sealed frame in (`sealed.json`).
+
 Run it with a JSON Schema implementation available, from the repository root:
 
     pip install jsonschema referencing
@@ -1130,19 +1136,73 @@ def check_sealed_payloads(reg: Registry) -> int:
     return checks
 
 
+def check_refusals(reg: Registry) -> int:
+    """Runs `sealed.json`'s report vocabulary against `CANONICAL.md` §6.1's table.
+
+    The reasons a receiver reports a refused sealed frame in are a closed vocabulary and nothing
+    else in this suite reads them: a reason added to the schema with no rule behind it, a rule's
+    reason dropped from it, and an implementation's invented spelling would all leave every other
+    check green. The census below is that table, and the two bad ones are the two ways a vocabulary
+    like this goes wrong in practice: a reason no conforming receiver can produce (`bad_tag`, which
+    the signature's coverage of the ciphertext makes unreachable, measured in
+    `docs/studies/peer-corpus.md` §5.4) and a misspelling of one that exists.
+    """
+    expected = [
+        "bad_envelope",
+        "unknown_kind",
+        "unknown_epoch",
+        "uncommitted_key",
+        "replayed_counter",
+        "bad_signature",
+        "bad_aead",
+        "stale_issued",
+        "unauthorised_content",
+    ]
+    checks = 0
+    try:
+        schema = json.loads((SCHEMA_DIR / "sealed.json").read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        fail("sealed.json", f"not readable as JSON: {error}")
+        return 0
+    enum = schema.get("$defs", {}).get("refusalReason", {}).get("enum")
+    if enum != expected:
+        fail(
+            "sealed.json",
+            f"the report vocabulary is {enum!r}, and `CANONICAL.md` §6.1's table is {expected!r}",
+        )
+    validator = Draft202012Validator(
+        {"$ref": f"{BASE}sealed.json#/$defs/refusalReason"}, registry=reg
+    )
+    for reason in expected:
+        checks += 1
+        if list(validator.iter_errors(reason)):
+            fail("schema", f"the report vocabulary refuses `{reason}`, a reason §6.1 names")
+    for name, value in {
+        "`bad_tag`, which the signature's coverage of the ciphertext makes unreachable": "bad_tag",
+        "a reason this version has not": "unknown_peer",
+        "a reason with a typo": "stale_issue",
+    }.items():
+        checks += 1
+        if not list(validator.iter_errors(value)):
+            fail("schema", f"the report vocabulary accepts {name}")
+    return checks
+
+
 def main() -> int:
     """Checks every schema and every claim the corpus makes, and reports what it found."""
     global CHECKS
     reg = registry()
     check_method_map()
-    refusals = check_control_refusal(reg)
+    refusals_by_the_rule = check_control_refusal(reg)
     sealed = check_sealed_payloads(reg)
+    refusals = check_refusals(reg)
     session_v2 = check_session_v2(reg)
     print(
-        f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas, {refusals} values "
+        f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas, {refusals_by_the_rule} values "
         "checked against the control-character refusal"
     )
     print(f"sealed         {sealed} values checked against the sealed payloads of selvage/2")
+    print(f"refusals       {refusals} values checked against selvage/2's local report vocabulary")
     print(f"session v2     {session_v2} values checked against selvage/2's session layer")
 
     vectors = sorted(VECTOR_DIR.glob("*.json"))
