@@ -849,6 +849,22 @@ SEALED_CLOSING_REFUSED = {
     "a room state offered as a closing": {"issued": 2, "listing": [], "peers": {}},
     "an `issued` above the JavaScript bound": {"closing": True, "issued": 9007199254740992},
 }
+SEALED_HOLDS_CONFORMING = {
+    "a hold set of one path": {"holds": ["src/main.rs"]},
+    "an empty hold set": {"holds": []},
+    "a hold set of several paths": {"holds": ["README.md", "src/main.rs"]},
+    "a hold set carrying a member this version does not define": {
+        "holds": ["README.md"],
+        "renewed": True,
+    },
+}
+SEALED_HOLDS_REFUSED = {
+    "holds that is not a list": {"holds": "src/main.rs"},
+    "a message with no `holds`": {"renewed": True},
+    "a hold carrying a control character": {"holds": ["src/main\u0000.rs"]},
+    "a hold that is blank": {"holds": [""]},
+    "a room state offered as holds": {"issued": 1, "listing": [], "peers": {}},
+}
 
 SEALED_SITES = (
     (
@@ -862,6 +878,12 @@ SEALED_SITES = (
         "sealed.json#/$defs/roomClosing",
         SEALED_CLOSING_CONFORMING,
         SEALED_CLOSING_REFUSED,
+    ),
+    (
+        "the sealed holds",
+        "sealed.json#/$defs/roomHolds",
+        SEALED_HOLDS_CONFORMING,
+        SEALED_HOLDS_REFUSED,
     ),
 )
 

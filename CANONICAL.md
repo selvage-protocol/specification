@@ -236,7 +236,7 @@ follows it, and its bytes are these, in this order.
 | field | width | meaning |
 |---|---|---|
 | `key_id` | 8 bytes | the sender's key id |
-| `kind` | `varUint` | `0` a sealed y-protocols stream, `1` the sealed room state, `2` the sealed closing |
+| `kind` | `varUint` | `0` a sealed y-protocols stream, `1` the sealed room state, `2` the sealed closing, `3` the sender's sealed holds |
 | `epoch` | `varUint` | `0`; reserved and unused in this version |
 | `counter` | `varUint` | the sender's counter under the key it signed with |
 | `nonce` | 12 bytes | fresh for this frame |
@@ -270,8 +270,8 @@ from its own link is a key every guest can forge with.
 
 Each connection also mints a **session keypair**, Ed25519 again, in memory and never persisted,
 whose public key the host's room state commits (`PROTOCOL.md` §7.1). A session key signs one
-peer's `kind = 0` frames; the host key signs `kind = 1` and `kind = 2`, and a receiver refuses
-those two from any other key.
+peer's `kind = 0` and `kind = 3` frames; the host key signs `kind = 1` and `kind = 2`, and a
+receiver refuses those two from any other key.
 
 **What is authenticated.** The AEAD is **AES-256-GCM**; the tag is the 16 bytes GCM appends to the
 ciphertext; the nonce is the envelope's 12 bytes, drawn fresh from the CSPRNG for every frame and
@@ -310,9 +310,9 @@ mis-attribution.
 counter `1`, and each later frame under that key a strictly greater one. A receiver keeps, for each
 key it holds, the highest counter it has accepted, starting at `0`, and advances that mark **only**
 for a frame whose signature verified: a frame that does not verify never moves a mark, so a relay
-cannot poison one with a forged frame and lock out the frames that follow it. A `kind = 0` frame at
-or below the mark is refused whatever else is right about it, and there is no window around the
-mark: the transport `PROTOCOL.md` §7 describes is ordered, one connection's frames arrive in the
+cannot poison one with a forged frame and lock out the frames that follow it. A `kind = 0` or `3`
+frame at or below the mark is refused whatever else is right about it, and there is no window around
+the mark: the transport `PROTOCOL.md` §7 describes is ordered, one connection's frames arrive in the
 order they were sent, so a counter that does not advance is a replay. A **gap** is not a fault —
 the relay may drop frames — and a receiver **MUST** accept a counter above the mark however far
 above it is.
@@ -333,8 +333,8 @@ refuses the frame.
 | 1 | the layout: every field present, nothing left over | `bad_envelope` |
 | 2 | `kind` is one this version defines | `unknown_kind` |
 | 3 | `epoch` is one this version defines | `unknown_epoch` |
-| 4 | the key: a `kind = 0` frame is signed by a committed session key, a `kind = 1` or `2` frame by the host key | `uncommitted_key` |
-| 5 | the mark, for `kind = 0` | `replayed_counter` |
+| 4 | the key: a `kind = 0` or `3` frame is signed by a committed session key, a `kind = 1` or `2` frame by the host key | `uncommitted_key` |
+| 5 | the mark, for `kind = 0` and `3` | `replayed_counter` |
 | 6 | the signature | `bad_signature` |
 | 7 | the AEAD opens | `bad_aead` |
 | 8 | `issued`, for `kind = 1` and `2` | `stale_issued` |
@@ -358,14 +358,14 @@ that orders them, and 9 only by `kind = 0`, which does not.
 
 **The kinds.** `0` carries the y-protocols stream of `PROTOCOL.md` §7 as its plaintext, whole: one
 binary frame is one envelope, and the messages inside it are that section's, exactly as they are
-in `selvage/1`. `1` and `2` carry one JSON object each, as the UTF-8 bytes of its canonical form:
-`1` the room state, `2` the closing. Values above `2`, and every `epoch` but `0`, are this
-version's to leave unused: a later revision defines one, and a receiver of this version refuses a
-frame that uses one rather than reading it by the nearest rule it knows.
+in `selvage/1`. `1`, `2` and `3` carry one JSON object each, as the UTF-8 bytes of its canonical
+form: `1` the room state, `2` the closing, `3` the sender's holds. Values above `3`, and every
+`epoch` but `0`, are this version's to leave unused: a later revision defines one, and a receiver
+of this version refuses a frame that uses one rather than reading it by the nearest rule it knows.
 
-**The two sealed payloads.** Both are JSON objects, read as §2 writes one, and neither is a session
-frame: neither carries `v`, and §2.5 is not theirs. §3 is: a receiver drops a member it does not
-know and does not refuse the value. A producer **MUST NOT** write a member this version does not
+**The three sealed payloads.** All three are JSON objects, read as §2 writes one, and none is a
+session frame: none carries `v`, and §2.5 is not theirs. §3 is: a receiver drops a member it does
+not know and does not refuse the value. A producer **MUST NOT** write a member this version does not
 define — the member sets below are fixed, and §2.7's order for `listing` is part of them.
 
 The **room state** has exactly three members. `PROTOCOL.md` §7.1 says what each means:
@@ -392,8 +392,22 @@ The **closing** has exactly two members:
 ```
 
 `closing` is `true`; `issued` is a count in the same form, above every state the host published.
-Both objects are canonical as written — §2's form, with §2.7's order for `listing` — and a plaintext
-is the UTF-8 bytes of one.
+
+The **holds** message has exactly one member:
+
+```json
+{"holds":["README.md","src/main.rs"]}
+```
+
+`holds` is the set of paths the sender keeps open — the same kind of value and the same kind of
+claim as a `selvage/1` `doc.open` path, and the thing `PROTOCOL.md` §13.7 leases. It is replaced
+wholesale by the next holds message under the same key, its order carries nothing (§2.7), and a path
+in it is held to `PROTOCOL.md` §5's rule for one. No member names the peer the set belongs to: the
+sender is the key that signed the frame, so a receiver attributes it by the verification it already
+made rather than by a value inside the plaintext.
+
+All three objects are canonical as written — §2's form, with §2.7's order for `listing` — and a
+plaintext is the UTF-8 bytes of one.
 
 **The envelope's own cost.** A frame costs 104 bytes over its plaintext while the ciphertext's
 length fits one varint byte — a plaintext of up to 111 bytes — and 105 from there: 8 for the key

@@ -102,6 +102,23 @@
           "$ref": "#/$defs/sealedIssued"
         }
       }
+    },
+    "roomHolds": {
+      "title": "the sealed holds",
+      "description": "The paths one connection keeps open, published sealed under the frame key with kind 3 and signed by that connection's session key (PROTOCOL.md §7.1, §13.7). It is a peer's own statement about itself, so no member here names the peer it is about: the sender is the key that signed the frame, and a receiver attributes the set by the verification it already made (`CANONICAL.md` §6.1). The set is leased rather than held by the server, which relays it and reads nothing in it.",
+      "type": "object",
+      "required": [
+        "holds"
+      ],
+      "properties": {
+        "holds": {
+          "type": "array",
+          "items": {
+            "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath"
+          },
+          "description": "The set of paths the sender holds open, replaced wholesale by the next holds message under the same key. A set, so no order is promised (`CANONICAL.md` §2.7), and each path is held to `PROTOCOL.md` §5's rule as a listing's is; a receiver refuses a blank or control-carrying path rather than the message, exactly as `PROTOCOL.md` §13.3 refuses one in a listing."
+        }
+      }
     }
   }
 }

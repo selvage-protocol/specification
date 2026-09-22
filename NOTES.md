@@ -912,3 +912,91 @@ different listings, a state below and a state at the mark, a key no state commit
 whose key is not the host key. `docs/studies/peer-corpus.md` §5.3 was written before the bytes were
 frozen and its room states carry a `key_id` per peer where `CANONICAL.md` §6.1 fixes a 32-byte `key`;
 that shape is what the frozen layout corrects.
+
+**B.35 `selvage/2`'s holds, their lease, the presence clock and the client's lifecycle.**
+`CANONICAL.md` §6.1 gained a fourth `kind` and a third sealed payload; `PROTOCOL.md` §1.2, §5.1, §7.1
+and §13.7–§13.11 complete §13; `schema/sealed.json` gained the holds payload and
+`schema/validate.py`'s `check_sealed_payloads` runs it. **Decided** (2026-09-22), after §B.34's
+authority model and before the corpus. **Nothing implements it**: no client speaks `selvage/2`, no
+vector is written against one, and every rule below was written from the design rather than observed
+on a wire.
+
+**The carrier is a fourth `kind`, and it amends the frozen bytes deliberately.** §B.34 left the
+choice between a fourth `kind` in `CANONICAL.md` §6.1 and a payload inside `kind = 0`, and this pass
+decides it: **`kind = 3` carries the sender's holds**, a JSON object `{"holds":[…]}`, sealed under
+the frame key and signed by the sender's **session key**. A fourth `kind` was taken over a payload in
+`kind = 0` for three reasons. `kind = 0` is defined as the y-protocols stream of §7 *whole*, and §7's
+message table is y-protocols' — its free values are not this protocol's to define — so a hold inside
+it would be either a message this protocol cannot add or a container that breaks the "the plaintext
+is that stream" equation, and it would muddy §13.5's rule, which reads a `kind = 0` plaintext as sync
+messages. Carrying holds in the room state (`kind = 1`) was rejected too: a hold changes far more
+often than a listing, is not the host's to author, and could not express a guest's hold in a value
+only the host signs. **Phase 1's frozen bytes gained a `kind` and nothing else about the envelope
+changed**: the field list, the widths, the AAD, the signature input, the key schedule and the two
+existing payloads are as they were.
+
+**The holds have no clock of their own; they reuse §8.2's.** A hold is announced on the awareness
+cadence (`awareness_renew_ms`) and expires after `awareness_expire_ms`, checked on the same renewal
+tick, so a set is forgotten within `awareness_expire_ms + awareness_renew_ms`. No member was added to
+`keepalive`. The reuse is honest because a hold's life has the same shape as a cursor's and §8.2's
+clock is the session's only one; the cost, recorded rather than hidden, is that a hold lapses exactly
+as a cursor does, so a throttled tab loses both. Whether a hold should outlive a cursor is the
+measurement §B.34 and `docs/studies/e2ee-plan.md` §14 still leave open.
+
+**Renewal is one explicit message on the holder's own clock, not any verified frame.** The two rules
+on record were "any verified frame from that peer renews, with an unconditional tick for a silent
+peer" and "one explicit renewal message". This pass takes the second. A peer that is seated, idle and
+holding a document open must not lose its holds, and only the holder's own unconditional timer
+guarantees that; and renewal by any frame would let a held set outlive the announcement that carried
+it, because a lease any frame renewed cannot expire a set whose holder has stopped announcing it.
+The timer is the client's own monotone clock and nothing it receives, which is §8.2's awareness rule
+applied to holds.
+
+**The presence clock is local and monotone, and it is armed by an event.** A client's "the host is
+away" clock is armed by the first moment it holds a verified state naming a `host` peer the roster
+does not seat, and disarmed when an applied state names a seated host; its threshold is the
+advertised `room_grace_ms`. It is **not** armed by silence, because a client cannot tell a host that
+is away from its own broken socket. A client that has passed the grace **MUST** end its session. The
+server's `room_grace_ms` is armed by a different event — the room's **last** connection ending — so the
+two need not agree and the client's may pass with the server's unstarted. The debt is stated rather
+than implied: a non-conforming client, or a person who leaves a tab open, keeps a hostless room
+alive, and the rule is the only thing that ends one.
+
+**The viewer is the state's, and the invite's parameter is presentation.** §13.9 states what a
+`viewer` sends — a SyncStep1, its awareness and its holds, and never content — what it applies, and
+that the invite's "you are a `viewer`" query parameter is a client convention this document does not
+define: the role is the applied state's, per §B.34's finding.
+
+**What this pass found rather than settled.**
+
+- **A `kind = 1`, `2` or `3` plaintext that is not the object its kind defines has no reason in the
+  report vocabulary.** The nine reasons are about authenticity and ordering, and an authentic but
+  malformed payload is neither. This is not new — `kind = 1` and `2` had the same hole before this
+  pass — and this pass does not close it, because either fix (a tenth reason, or widening
+  `bad_envelope`) changes a frozen table outside its subject. What a receiver does with such a
+  plaintext is therefore **unstated**; a client implementer should treat it as a sender's bug and drop
+  the frame locally. `PROTOCOL.md` §13.11 says no rule this pass writes needs a tenth reason.
+- **No lease rule produces a report.** Expiry is a set becoming empty, not a dropped frame, so the
+  lease's only observable is the subject's view of another peer's holds, which is why §13.11 makes it
+  checkable by behaviour and not by a byte vector.
+- **The `holds` array is a set and its order carries nothing**, so §1.2's `set` entry now names it and
+  `CANONICAL.md` §2.7 gains no ordering rule for it; the one array `selvage/2` orders is still the
+  listing.
+
+**The schema's gain, and the counts that did not move.** `sealed.json` gained `#/$defs/roomHolds`
+(a one-member object whose `holds` is an array of §5's paths, a member-set check the payload did not
+have before), and `check_sealed_payloads` now runs nine more values (four conforming, five refused),
+so the published run's `sealed` line moves from 19 to 28 and `README.md`'s transcript with it.
+Nothing in the corpus moved: `EXPECTED_VECTORS` is 36, `EXPECTED_FRAME_CHECKS` 35022,
+`EXPECTED_ASSERTIONS` 8676 and `EXPECTED_CODES` is untouched, because no vector was added, deleted
+or re-pointed and the transcripts are still `selvage/1`'s.
+
+**What is not here, and which step owns it.** The corpus and the vectors are **step 4b**'s
+(`docs/studies/e2ee-plan.md` §11): this pass fixes what a fixture must express and nothing more —
+`PROTOCOL.md` §13.11 lists the shapes, and they add to §B.34's list a holds message (and its replay,
+and one from an uncommitted key), a set that changes between announcements, holds from a `viewer`
+and a `guest` under one state, a room whose `keepalive` compresses the awareness window, and a host
+peer's `peer.left` with no state above it naming a seated host. `docs/studies/peer-corpus.md` §5.3
+predates the frozen layout and its room states carry a `key_id` per peer where §6.1 fixes a 32-byte
+`key`: a fixture for this layer follows §6.1. Every implementation is later still, and the wire
+version does not move.
