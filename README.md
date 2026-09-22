@@ -47,11 +47,12 @@ the run checks.
 `vectors/*.json`, `runner/run_vectors.py`, and everything this file said before the peer layer
 existed. The **peer** layer holds a client to the rules a server cannot enforce — verify before
 apply, a counter mark, a signature, a lease, a role — and it is `vectors/peer/*.json` with two
-runners: `runner/run_peer.py`, which replays its frame vectors with no client at all, and a
-subject protocol for the decision vectors, which need one. `schema/validate.py` checks both
-layers and needs no key for either. The peer layer's decision half is not runnable yet — no
-client speaks `selvage/2`, and no relay does — and the runner reports those vectors as **not
-attempted** rather than passing them.
+runners: `runner/run_peer.py`, which replays its frame vectors with no client at all, and the same
+runner driving its decision vectors against a **subject** — a client, named by a command.
+`schema/validate.py` checks both layers and needs no key for either. The runner is the relay for
+the decision layer: it seals each vector's recipes and hands the bytes over, so the only thing
+that layer still needs is a subject, and without one it reports those vectors as **not attempted**
+rather than passing them.
 
 `cryptography` is there for the peer layer's frame code alone: AES-256-GCM, HKDF-SHA256 and
 Ed25519. `python3 schema/validate.py` itself still needs only `jsonschema` and `referencing`, and
@@ -254,6 +255,7 @@ python3 runner/run_peer.py --vector 102         # one of them
 python3 runner/run_peer.py --list-mutations     # the guard each mutation removes
 python3 runner/run_peer.py --mutation no-verify # with one guard taken out
 python3 runner/run_peer.py --mutation-census    # what each vector must go red under
+python3 runner/run_peer.py --subject "my-client --drive"   # and the decision vectors, with a client
 ```
 
 **A vector carries a recipe, and the bytes are derived.** `seal` says what is sealed — the fixture
@@ -265,14 +267,27 @@ difference. The one place a vector carries bytes that are not derivable is a del
 corruption, and the corruption is a step of its own — `{"op": "corrupt", "frame": "edit",
 "as": "tampered", "at": 40, "xor": 1}` — so it is re-derived too.
 
-**The decision layer is not runnable, and the runner says so.** A `"kind": "decision"` vector is
-about what a real client did with a frame it received — what it applied, what it dropped and why,
-what it published, whether it ended — so it needs a subject (a client, named by a command:
-`--subject "my-client --drive"`) and a relay that speaks `selvage/2` to seat it in a room.
-Neither exists. Every such vector is reported **not attempted** with the reason, the summary
-counts `not attempted` separately from `passed`, and `runner/subject.py` holds the protocol the
-next phase will drive it through, tested against a scripted subject rather than against a vector.
-Run `python3 runner/run_vectors.py --layer all` to see the same split from the wire layer's side.
+**The decision layer runs a client, and the runner says which client.** A `"kind": "decision"`
+vector is about what a real client did with a frame it received — what it applied, what it dropped
+and why, what it published, whether it ended — so it needs a subject, which is a client named by a
+command: `--subject "my-client --drive"`. The runner plays the relay: `start` seats the subject
+with the invite, the session's clock, the roster and the session keypair the vector's `key` names,
+`deliver` hands over one sealed frame, and `expectSubject` reads the report. With no `--subject`
+every such vector is reported **not attempted**, the summary counts `not attempted` separately
+from `passed`, and `runner/subject.py` holds the protocol a client implements. Run
+`python3 runner/run_vectors.py --layer all` to see the same split from the wire layer's side.
+
+```
+python3 runner/run_peer.py --subject "./target/debug/my-client --drive"
+python3 runner/run_peer.py --subject … --mutation-census   # what each client vector must go red under
+```
+
+**One member of the subject protocol is a test seam and not production surface.** A decision
+vector's delivered state commits a *fixture* key's public half, and nothing in the protocol lets a
+host hand a peer a chosen key, so `join` carries `session_key` — a 32-byte Ed25519 seed the runner
+resolves out of the vector's `key`. `PROTOCOL.md` §13.1 mints that keypair in memory per connection;
+a client has no member that fixes one, and the client this repository's own tests drive says so in
+`selvage_client::peer::PeerOptions`.
 
 The red line to expect is a vector that pins behaviour the runner does not have; the failure
 names the file, the step and the reason the receiver gave instead.
@@ -302,7 +317,7 @@ transcripts, and every `expect` in it is the server speaking. The peer corpus ho
 client to the rules of `selvage/2`, and it does it twice over: its frame vectors hold any
 *receiver* to `CANONICAL.md` §6.1 — the envelope, the key schedule, the counter mark, the ten
 reasons — with no client at all, and its decision vectors hold a real client to what it does
-with a frame it has received, which is the half that is not runnable yet. What no vector here
+with a frame it has received, which is what a subject is for. What no vector here
 can show is that two clients **agree**: a vector can hold a client to a rule it states, and it
 cannot show that two implementations reach the same state. That stays the interop test's job
 (`vscode_client/test/interop.test.ts` against

@@ -23,10 +23,14 @@ that cannot say *why* it dropped a frame cannot be held to `PROTOCOL.md` §13.2.
 subject is named by a command rather than a language, which is the seam a stranger's client
 comes through.
 
-**Nothing here is run against a vector in this phase**, and the runner says so rather than
-pretending otherwise: a decision vector needs a relay that speaks `selvage/2` to seat the peer
-in a room, and no server does yet. What is here is the protocol, the deadline handling and the
-report's shape, driven against a scripted subject by `runner/test_runner.py`.
+**The runner plays the relay.** A decision vector's `start` seats the subject without a socket:
+`join` carries the invite (which names the room and whose fragment carries both keys), the
+seat the roster shows it under, the roster itself, the session's `keepalive` clock, and — the
+one seam — the session keypair the vector wants it to use. Every frame after that is
+`deliver`, one sealed frame's bytes, and the subject's answer is a decision about it. The
+relay the earlier text said was missing is therefore this runner: it reads the vector's
+recipes, seals them and hands them over, and it is the same code that replays a frame vector
+so the two layers seal one way.
 """
 
 from __future__ import annotations
@@ -94,6 +98,30 @@ class Report:
     **dropped** with the reason §6.1 names, how many frames it **published**, whether it
     **ended** its session, and what it holds each peer to. `frames` counts every binary frame
     the subject was handed, in order, which is what a `dropped` entry's index is into.
+
+    The members that carry a decision are:
+
+    - `published` counts the frames this client **published** under `PROTOCOL.md` §13's rules —
+      its session-key announcements, its document content, its holds messages, and the room
+      states and closings a host publishes. §7's sync handshake is counted apart, in
+      `handshake`: §13.1's step 6 obliges a client that applies a state committing its own key
+      to send a SyncStep1, so a count that folded the two together could not tell a
+      republished request from a publication, and vector 151 asserts `published` where a
+      conforming client's handshake has already been sent.
+    - `handshake` counts the §7 frames the client sent — a SyncStep1 or a SyncStep2 — which are
+      requests about convergence rather than §13's publications.
+    - `applied` is one `{frame, kind}` entry per binary frame the subject **applied**, in the
+      order it applied them, where `frame` is the index of the `deliver` that handed it over.
+    - `dropped` is one `{frame, reason}` entry per frame it **refused**, with the reason
+      `CANONICAL.md` §6.1 names. A frame that verified and applied nothing — a closing
+      delivered to a client holding no state (§13.10) — is in neither list: it was not refused
+      and it changed nothing.
+    - `holds` maps a key to the paths **that key** holds: it is the receiver's view of its
+      peers, not of itself, which is `documents`. The key is any spelling the client has for
+      it — the state's canonical public-key spelling, or the key id in hex — and the runner
+      resolves a fixture key's name, spelling and id to the one name a vector writes.
+    - `listing` is the paths of the last state the client applied, with the paths §5 refuses
+      dropped as §13.3 drops them.
     """
 
     text: dict[str, str] = field(default_factory=dict)
@@ -101,9 +129,11 @@ class Report:
     applied: list[dict] = field(default_factory=list)
     dropped: list[Dropped] = field(default_factory=list)
     published: int = 0
+    handshake: int = 0
     ended: bool = False
     peers: list[dict] = field(default_factory=list)
     holds: dict[str, list[str]] = field(default_factory=dict)
+    listing: list[str] = field(default_factory=list)
     frames: int = 0
     mutation: str | None = None
 
@@ -134,6 +164,12 @@ class Report:
         published = value["published"]
         if not isinstance(published, int) or isinstance(published, bool) or published < 0:
             raise SubjectError(f"`published` is a count, not {published!r}")
+        handshake = value.get("handshake", 0)
+        if not isinstance(handshake, int) or isinstance(handshake, bool) or handshake < 0:
+            raise SubjectError(f"`handshake` is a count, not {handshake!r}")
+        listing = value.get("listing", [])
+        if not isinstance(listing, list) or any(not isinstance(p, str) for p in listing):
+            raise SubjectError("`listing` is a list of paths")
         if not isinstance(value["ended"], bool):
             raise SubjectError(f"`ended` is a boolean, not {value['ended']!r}")
         duration = value.get("frames", 0)
@@ -153,9 +189,11 @@ class Report:
             applied=list(applied),
             dropped=[Dropped.from_json(entry) for entry in value["dropped"]],
             published=published,
+            handshake=handshake,
             ended=value["ended"],
             peers=list(value.get("peers", [])),
             holds={k: list(v) for k, v in holds.items()},
+            listing=list(listing),
             frames=duration,
             mutation=mutation,
         )
@@ -276,11 +314,46 @@ class Subject:
 
     # -- the commands of the protocol ------------------------------------------
 
-    def join(self, invite: str, path: str | None = None) -> Report:
+    def join(self, invite: str, path: str | None = None, **options: object) -> Report:
+        """Seat the subject: the invite, and everything the runner plays the relay with.
+
+        The invite is the vector's template with `$room`, `$token`, `$room_key` and
+        `$host_key` substituted. `offline` says the caller will hand the frames over with
+        `deliver` instead of a socket, which is what a decision vector is: the runner is the
+        relay, so no invite in this layer addresses a server at all.
+
+        `key` names a **fixture entry** — `"guest-1"` — and the runner resolves it to that
+        keypair's 32-byte seed and sends it as `session_key`. It is a **test seam and not
+        production surface**: `PROTOCOL.md` §13.1 mints the session keypair in memory for the
+        connection and never persists it, and a production client has no member that fixes
+        one. It exists because a decision vector's delivered state commits a *fixture* key's
+        public half, and no protocol lets a host hand a peer a chosen key — so without a way
+        to fix the keypair there is no vector that could assert what a client does once a
+        state commits it. A client that ignores the member mints its own key and fails those
+        vectors, which is the correct outcome for a client a caller has not told to be a
+        subject.
+
+        `roster` is the seats the server shows as present, `seat` is this connection's own,
+        and `keepalive` is the session's clock (`awareness_renew_ms`, `awareness_expire_ms`,
+        `ping_interval_ms`, `room_grace_ms`); all three arrive on `room.created`/
+        `room.joined` in a real session and there is no frame here to carry them.
+        """
         command: dict = {"cmd": "join", "invite": invite}
         if path is not None:
             command["path"] = path
+        command.update({name: value for name, value in options.items() if value is not None})
         return self._report(self.request(command))
+
+    def deliver(self, frame: bytes) -> Report:
+        """One sealed frame's bytes, as the relay would hand them over.
+
+        The frame is a *decision input* and not a message: the subject reads it the way
+        `CANONICAL.md` §6.1 says and reports what it did, so the bytes are the vector's and
+        not the runner's.
+        """
+        return self._report(
+            self.request({"cmd": "deliver", "frame": frame.hex()})
+        )
 
     def insert(self, path: str, index: int, text: str) -> Report:
         return self._report(
