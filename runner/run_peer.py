@@ -360,8 +360,8 @@ def decision_reason(vector: dict, has_subject: bool) -> str:
     """
     missing = []
     if not has_subject:
-        missing.append("no subject (`--subject \"my-client --drive\"`)")
-    missing.append("no server speaks `selvage/2` to seat a peer in a room")
+        missing.append('a subject (`--subject "my-client --drive"`)')
+    missing.append("a server that speaks `selvage/2` to seat a peer in a room")
     return "a decision vector needs " + " and ".join(missing)
 
 

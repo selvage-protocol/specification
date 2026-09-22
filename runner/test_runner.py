@@ -939,6 +939,34 @@ class TestMutationCensus(unittest.TestCase):
 FIXTURE = sealed.Fixture(VECTOR_DIR / "fixture" / "keys.json")
 
 
+class TestDecisionReason(unittest.TestCase):
+    """Why a decision vector was not attempted, in both cases and in English.
+
+    The reason is the whole of what separates `not attempted` from `passed`, so it is the one
+    piece of the layer report a reader has to be able to trust: it names what is missing, and
+    it has to read as a sentence when the subject is the thing that is missing and when the
+    server is.
+    """
+
+    def reason(self, has_subject: bool) -> str:
+        return run_peer.decision_reason({}, has_subject)
+
+    def test_with_no_subject_it_names_both_things(self) -> None:
+        self.assertEqual(
+            self.reason(False),
+            'a decision vector needs a subject (`--subject "my-client --drive"`) and '
+            "a server that speaks `selvage/2` to seat a peer in a room",
+        )
+
+    def test_with_a_subject_it_names_the_one_thing_left(self) -> None:
+        reason = self.reason(True)
+        self.assertNotIn("--subject", reason)
+        self.assertEqual(
+            reason,
+            "a decision vector needs a server that speaks `selvage/2` to seat a peer in a room",
+        )
+
+
 class TestLayerReport(unittest.TestCase):
     """A tool that can run one layer says what it could not run."""
 
