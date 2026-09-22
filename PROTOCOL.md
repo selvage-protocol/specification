@@ -69,15 +69,26 @@ conforms when it satisfies both.
 **What conforms.** A conforming **server** implements §2–§11 on the server side; a conforming
 **client** implements §4–§10 on the client side. Both implement `CANONICAL.md`, both are bound by
 §12 and §13, and both are bound by the [frames of the version they
-speak](#10-version-and-capability-negotiation): conformance is per wire version, and this document
-is `selvage/1`. The exception is `selvage/2`'s, and every passage of that version is named here so
-that nothing of it has to be discovered: [`CANONICAL.md`](CANONICAL.md) §6.1; §5.1's fragment,
-local-refusal and handover paragraphs; §7.1; and the passages of this document whose lead-in
-carries the version — §1.2's `host`, `guest` and `grace period` entries, §2's `/meta` passage,
-§4.1's fixed-member-set clause, §5's handshake and minting passages, §6.1's join passage, and
-§10's version-gate passage. A peer that speaks `selvage/1` is not held to any of them, and what is
-written of `selvage/2` is those passages: nothing else of the version is settled until the
-revision's server step.
+speak](#10-version-and-capability-negotiation): conformance is per wire version, and the unmarked
+text of this document is `selvage/1`'s. `selvage/2`'s is every passage that names the version as
+its own, and all of them are listed here so that nothing of that version has to be discovered:
+[`CANONICAL.md`](CANONICAL.md) §6.1; §5.1's fragment, local-refusal, handover and
+token-without-`room` paragraphs; §7.1;
+and the passages of this document whose lead-in carries the version — §1.2's `host`, `guest`,
+`grace period` and `set` entries, §2's `/meta` passage, §2.1's bounded-state passage, §3's server
+passage, §4.1's fixed-member-set clause, §5's handshake and minting passages, §6's vocabulary
+passage, §6.1's join passage, §9's room passage, §9.1's and §9.2's lead-ins, §10's version-gate
+passage, and §11's vocabulary passage.
+
+A peer that speaks `selvage/1` is not held to any of them, and the converse holds by the same rule:
+a statement this document makes that no passage of `selvage/2` carries is `selvage/1`'s and does not
+bind a `selvage/2` peer. The two versions' lifecycles are where that matters most, because
+`selvage/2`'s server does not know who a room's host is: §9's host claim, its one-host-connection
+rule and its `host.detached`/`host.attached` pair, §9.1's reclaim, §9.2's two state machines, §11's
+`host_present` code and close **4004**, the peer-cap carve-out and the two room-state rows of §2.1,
+and §1.2's `hold`, open-document-set and grant entries are all rules about state that version's
+server holds and this one does not. Those passages stay where they are and are read as that
+version's, which is what lets both versions be stated in one document.
 
 Two rules follow, and they are what makes the keywords worth reading:
 
@@ -123,19 +134,23 @@ These words carry obligations, and the protocol uses them precisely.
 - **grace period**: the interval after a host's connection ends during which the room still
   exists and can be reclaimed. `host.detached` announces it, with its length in `grace_ms` (§9).
   **In `selvage/2` it is the interval after the room's *last* connection ends**, and its length is
-  the `room_grace_ms` a client reads from `/meta` (§2) rather than a number carried per room. What
-  arms and expires that timer in this version is not settled here — §9 is `selvage/1`'s, and §1.1
-  is where that version's passages are listed.
+  the `room_grace_ms` a client reads from `/meta` (§2) rather than a number carried per room. §9's
+  room passage is where that version's timer, and what cancels it, are stated.
 - **hold**: one connection's claim on one path, made by `doc.open` and released by `doc.close` or
-  by the connection ending. A hold belongs to a connection.
+  by the connection ending. A hold belongs to a connection. **In `selvage/2`** a hold is a peer's
+  own statement inside a sealed frame rather than a value the server keeps: the server relays it,
+  reads nothing in it, holds none and releases none, and a hold's life is a peer-side rule.
 - **the room's open-document set**: the paths the room has open, `documents`, in first-opened
   order. It belongs to the room and **outlives every peer that opened a path**; a path leaves it
-  only when the last hold on it is released (§5).
+  only when the last hold on it is released (§5). **In `selvage/2`** there is no such set: no frame
+  carries one, no reply lists one, and the server has nothing to say which documents are open.
 - **the room's grant**: the files the room's host has published as its working tree, `paths`,
   written ascending by its publisher in UTF-16 code units (§5). It is the same kind of value and
   the same kind of claim as a path in the open-document set: a list of names, no content,
   unvalidated by the server (§5, §12). It belongs to the room as the open-document set does, and
-  is replaced wholesale by every `doc.grant`.
+  is replaced wholesale by every `doc.grant`. **In `selvage/2`** it is the `listing` of the host's
+  sealed room state — the same kind of value, replaced wholesale by every state — and it reaches a
+  peer inside a frame the server cannot read (§7.1).
 - **the session document**: the single `Y.Doc` a room's peers converge on, one `Y.Text` per open
   path keyed by the path (§7). The server never holds it.
 - **text frame**, **envelope**, **binary frame**, **message**: a *text frame* is one JSON
@@ -145,7 +160,9 @@ These words carry obligations, and the protocol uses them precisely.
   in `GET /meta` and again in the handshake reply (§10).
 - **set**: an array whose order the protocol does not promise: `peers`, `capabilities`,
   `wire_versions`, `roles` (§2, §6.2, §10, `CANONICAL.md` §2.7). `documents` and a grant's
-  `paths` are the only arrays this protocol orders (§5, §6.3).
+  `paths` are the only arrays this protocol orders (§5, §6.3). **In `selvage/2`** the sets are
+  `peers`, `capabilities` and `wire_versions`, and the one array the version orders is the
+  `listing` inside the sealed room state ([`CANONICAL.md`](CANONICAL.md) §6.1).
 - **blank**: empty after removing leading and trailing Unicode whitespace. A `doc.open` or
   `doc.close` path and a `display_name`, wherever either appears, are held to this one rule;
   the schema patterns built on `\S` are a necessary-only approximation of it, as `maxLength`
@@ -297,12 +314,31 @@ its policy, not a peer's contract. Six consequences do bind a peer.
   limit. The per-connection bounds are the frame, message and envelope bounds below — past the
   first two the connection ends the way a dropped socket ends, and past the envelope bound it is
   refused on the frame's own vocabulary — and a room's stored state is its peers, its open-document
-  set and its grant: a request that would exceed a bound the server sets is refused with
+  set and its grant in `selvage/1`, and its membership and its connections in `selvage/2` (below): a
+  request that would exceed a bound the server sets is refused with
   `bad_params` or an `x.` capacity code (§10.1, §11), leaving the room as it was. Which of the two
   shapes a capacity refusal takes follows §11 rather than the code: before seating every fault is a
   refusal, `session.error` and then the matching close — close 4000 for a code with no close of its
   own, which is every `x.` code — while on a seated connection the fault is an error response for
   the request that caused it and the connection stays open.
+
+**The bounds in `selvage/2`.** A server of that version bounds the same things and one fewer. Every
+per-connection bound above is unchanged — the frame, message, envelope, queue, hello-timeout and
+inbound-budget rows, and the head bound that runs before admission — and so is what they bound: a
+connection's bytes in, a connection's frames out, and a room's membership. What this version loses
+is a bound on something it does not hold. Two of the rows below bound a room's stored state with the
+open-document set and the grant, and this server keeps neither, so there is no `doc.open` to refuse
+past a cap and no `doc.grant` to bound; the peer-cap row's carve-out for a connection reclaiming a
+hostless room goes with the reclaim. A `selvage/2` server **MUST** still refuse deterministically
+past a finite configured bound on the bytes one connection may send and on the room's membership,
+and what is left of the last consequence above is that **a room's stored state in this version is
+its token, its membership and its connections** — the room and peer caps are what bound it in the
+reference server. A document's sync traffic carries no cap of its own here, because no document
+crosses the session layer: the largest payload a peer can move is one sealed frame, and the frame
+and message bounds are what it meets. A capacity fault is announced by §11's split and not by the
+code: a request on a seated connection is answered with an error response and the connection stays
+open, while a fault before seating is the refusal `session.error` and then close **4000**, which is
+the generic close every `x.` code uses.
 
 The reference server's numbers, for a reader who needs to know what to expect in practice
 *(informative)*:
@@ -349,6 +385,32 @@ peer to peer through the relay, not against the server.
 travels in the invite URL's fragment and signed with a key the fragment carries or the room's state
 commits. The paragraph above is unchanged by it and gains no carve-out — the server relays the
 envelope byte for byte, does not open it, does not verify it, and writes no member into it.
+
+**What the server of that version is, in full.** A room's `id` and its `token`, the `keepalive` it
+advertises, and the connections in the room with their `peer_id`, `display_name` and
+`awareness_client_id` — membership and the relay, and nothing a room's contents could be read from.
+Everything else a room has — its listing and its roles, which documents are open, what is in them,
+where anyone's cursor is — is the peers' state, sealed under a key the server does not hold. The
+negative half of that is as much a part of the version as the positive one:
+
+- **A relayed frame is the bytes the sender handed the server.** The relay **MUST** deliver them
+  unchanged to the room's other connections, and the server has no reason to drop one: it cannot
+  read a frame, so it cannot refuse one for what it says (§7.1).
+- **A frame the server authors carries membership, a room's existence, or a fault, and nothing
+  else.** It **MUST NOT** carry a path, a role, a document name, or any character of a room's text,
+  and no member of the session layer names one.
+- **The server holds no CRDT, no document and no room state.** There is nothing for it to publish,
+  echo or replay, which is why a joiner is brought up to date by its peers rather than by the
+  server (§7, §9).
+- **The server decides nothing about roles.** It **MUST NOT** seat a connection as anything, refuse
+  one for a role, or carry a role in a frame it authors; who a room's host is, and who may edit,
+  are facts the peers verify rather than values the server asserts (§1.2, [`CANONICAL.md`](CANONICAL.md)
+  §6.1).
+
+What that leaves the server deciding is membership and the relay, and they are §9's room passage and
+§2.1's bounds. A rule that needs an authority on anything else — which paths are open, which
+documents exist, who may write to one, whether a host is still present — is a rule for peers, and
+this version's peer-side rules are not the server's to state.
 
 ## 4. Session envelope
 
@@ -545,7 +607,11 @@ is not the room's already gets. Which of the two cases a URL is depends on `room
   invite link (`room` lost to a chat client, a proxy, or a copy-paste, `token` surviving)
   therefore opens a *new, empty room* whose host is whoever sent it, and nothing on the wire says
   so. That is the accepted cost of the rule; [`NOTES.md`](NOTES.md) §B.17 records why the
-  alternative was rejected.
+  alternative was rejected. **In `selvage/2`** the same URL has the same effect — a room is minted
+  and the connection is seated in it — and the one part of the sentence that reads differently is
+  what it is seated *as*: that version's server seats nobody as a host and records a peer like any
+  other, and the connection that minted the room is its host by holding the private half of the host
+  keypair whose public half the fragment the sender built carries (§5's minting passage).
 
 **A URL carrying a room and its token is an invite, and it has two forms.** The first is the
 connection URL above, exactly as it stands: `ws://host:port/session?room=<room_id>&token=<tok>`.
@@ -849,6 +915,27 @@ All event `params` are flat objects.
 `reason` in `room.gone` and `message` in `session.error` are human-readable and not stable; a
 peer **MUST NOT** depend on either.
 
+**The events in `selvage/2`.** A server of that version authors seven frames and no more, which is
+what a server of membership and a relay needs: `room.created` and `room.joined` (§6.1),
+`peer.joined`, `peer.left`, `peer.renamed`, `room.gone` and `session.error`. `peer.left`, `peer.renamed`,
+`room.gone` and `session.error` are the shapes above unchanged — a peer id, a peer id and a name, a
+room's id and a reason, a code and a message — and two of the seven are read differently:
+
+- **`peer.joined` carries the version's `PeerInfo`**: `peer_id` and `display_name`, with
+  `awareness_client_id` optional and no `role` (§6.1). It has one meaning here — a connection was
+  seated — so the `selvage/1` reading in which `peer.joined` may mean "the host is back" does not
+  apply: no reclaim exists in this version.
+- **`room.gone` has no recipient in this version.** A room is destroyed only when the grace after
+  its last connection has run out (§9's room passage), and at that moment no connection is seated to
+  be told, so the destruction is silent and a room's id being gone is learned as `room_unknown` by
+  the next connection that names it. The event stays in the vocabulary and a `selvage/2` server
+  produces none.
+
+None of the seven carries a path, a role, a document name or any character of a room's text (§3),
+and the five events the version does not have — `doc.opened`, `doc.closed`, `doc.granted`,
+`host.detached`, `host.attached` — are `selvage/1`'s, each carrying state or an announcement this
+version's server does not hold (§1.1).
+
 ### 6.1 / 6.2 `room.created` and `room.joined`
 
 ```json
@@ -1055,9 +1142,12 @@ that holds a verified one treats the session as ended.
 
 *(informative)* No implementation speaks `selvage/2` yet. This section and
 [`CANONICAL.md`](CANONICAL.md) §6.1 exist so that a corpus, a client and a server can be written
-against frozen bytes; the session layer they will run on — §5's method surface, §6's events, the
-roles off the server, the open-document set and the leases — is the revision that moves the wire
-version, and until it lands those sections are `selvage/1`'s.
+against frozen bytes. The session layer that version's passages state is written — §1.2's entries,
+§2's `/meta`, §2.1's bounds, §3's server, §5's handshake, §6's events, §6.1's replies, §9's room,
+§10's gate and §11's vocabulary — and what remains unstated is the peer-side half: the holds and
+their lease, the resume, the refusal of a committed `viewer`'s frames, and the client-behaviour
+rules that stand where the server no longer enforces anything. §1.1 is where the two versions'
+passages are told apart until that half is written.
 
 ### Document content: line endings and the trailing newline
 
@@ -1297,6 +1387,14 @@ while no other seated peer still claims that id.
 
 ## 9. Rooms and the lifecycle
 
+**Two lifecycles are stated in this section.** The one below is `selvage/1`'s, and the passage at
+the end of the section is `selvage/2`'s. What belongs to the first version is everything that needs
+the server to know who the host is — the minting connection *being* the host, one host connection at
+a time, `host_present`, the `host.detached`/`host.attached` pair, the reclaim, and a room destroyed
+when its grace runs out with no host. The token, the `peer.left` a connection's end produces and the
+keepalive hold in both versions as written, with the one sentence of them that reads differently
+carrying both readings at it.
+
 - A room is minted by a connection that arrives without `room` in its URL; that connection is the
   **host**. Guests join with the room id and token. A connection that mints a room is its host
   whatever it claims in `session.hello`: minting *is* hosting, so a claimed `"guest"` role on a
@@ -1331,22 +1429,89 @@ while no other seated peer still claims that id.
   with a Pong (every mainstream WebSocket library does this for you). Protocol-level pings are not
   session messages and are never relayed. A connection that leaves its pings unanswered for a
   stated number of intervals **MAY** be closed as an ordinary drop (the room is told `peer.left`,
-  the grace arms when the peer was the host, and no session close code is sent), because a host
+  the grace arms when the peer was the host in `selvage/1` and when it was the room's last connection
+  in `selvage/2`, and no session close code is sent), because a host
   that has silently stopped answering would otherwise hold a room open forever: the reference
   waits two intervals, and its number is policy (§2.1). The same `keepalive` object carries the
   awareness window that clients run on (§8.2): the server's numbers are the session's, and a
   client that overrides them is choosing to disagree, not negotiating.
 
+**The room in `selvage/2`.** This version's server knows a room's `id`, its `token`, the `keepalive`
+it advertises, and which connections are in it with their `peer_id`, `display_name` and
+`awareness_client_id` (§3), and it knows nothing else about it. The lifecycle that falls out of that
+is short.
+
+- **A room is minted by a connection whose URL names no room** (§5.1). It is seated by the mint like
+  any other connection, and the token minted with the room is the permission to join it. The server
+  records a peer and nothing about a host: the connection that minted the room holds the private
+  half of the host keypair whose public half the invite's fragment carries, and that is the whole of
+  what makes it the host (§5's minting passage).
+- **Membership is the whole of what the server keeps.** Each seated connection is assigned a
+  `peer_id`, which is opaque, unique in the room, and does not survive its connection, and no member
+  of the roster carries a role (§6.1). A join is a `session.hello` answered with `room.created` or
+  `room.joined`, and the peers already seated are told `peer.joined`; a connection that ends is
+  announced as `peer.left`; a rename is `peer.renamed` (§6).
+- **The server relays and authors nothing about a room but that** — §3's server passage is the whole
+  of it, and §2.1's is what bounds it.
+- **A room lives while it has connections and for `room_grace_ms` after its last one ends.** The
+  timer arms when the room's **last** connection ends rather than when a host's does; a connection
+  seated inside the window cancels it and the room goes on with the same id and the same token,
+  which is what makes a blip survivable; and when the window passes with no connection seated the
+  room is destroyed. The deadline can only be reached with no connection seated, so the destruction
+  has no recipient and no frame announces it: `room.gone` is not sent, the id is gone for good, and
+  a room's being gone is learned as `room_unknown` by the next connection that names it (§6, §11).
+- **Nothing of a room survives it but that window.** A connection that rejoins inside the grace
+  inherits the room's id and a token that still matches and nothing else: this server keeps no set,
+  no listing, no hold and no state of any kind to hand back, and what a rejoining peer holds it
+  announces again to its peers (§9.1).
+- **The server reaps nothing else, and cannot.** A room whose peers stay connected is not reaped by
+  anything the server knows, however long ago whoever hosted it left: the server cannot tell a room
+  its host has abandoned from a room in use, which is the price of not knowing who the host is (§12).
+  A client that ends its session once the host's presence has been out for the grace is following its
+  own rule rather than the server's word.
+- **What the server refuses at the door is §11's passage for this version**, and `host_present` is
+  not in it: a server that does not know who the host is has nothing to refuse on, and close **4004**
+  goes with the code.
+- **The keepalive is unchanged**: a WebSocket Ping every `ping_interval_ms`, a peer that stops
+  answering closable as an ordinary drop, and no ping relayed to a room (§2.1).
+
+The room machine this gives a reader is four states and one table, and it is shorter than
+§9.2's because the server holds nothing a row could carry:
+
+| in state | the frame, or the clock | to | what goes out |
+|---|---|---|---|
+| absent | a connection whose URL names no room | live | `room.created` to the minting connection, carrying `token` |
+| live | a connection joins with the right token | live | `room.joined` to the joiner, `peer.joined` to the peers already there |
+| live | a connection ends and others remain | live | `peer.left` to the room |
+| live | the room's **last** connection ends | grace | `peer.left` to the room it has just emptied; the grace timer arms |
+| grace | a connection is seated with the right token | live | `room.joined` to the joiner, `peer.joined` to the room; the timer is cancelled |
+| grace | the deadline passes with no connection seated | destroyed | — (no connection is seated to be told) |
+| destroyed | any later join naming the room | destroyed | `session.error{room_unknown}`, close 4001 |
+
+Seating and reaping are serialised under the room lock as in `selvage/1`, so a hello that arrives at
+or after the destruction is refused `room_unknown` and never seated into a room that is gone. The
+listing, the roles and the open paths are absent from every row because this server never held them:
+a room's contents are the peers' state and no server state machine's business.
+
 ### 9.1 Reconnecting
 
-A dropped connection takes everything that belonged to it: the `peer_id`, the claimed role, this
-connection's document holds and its awareness state. Nothing about a client survives a socket, so
+**Two rules of this subsection are `selvage/1`'s, and each says so where it occurs**: the reclaim
+by a connection claiming `role: "host"`, and inheriting a room's documents at join — the open-document
+set and the reply's `documents` list are that version's (§1.1). The rest holds in both versions: a
+reconnect is a `session.hello` on a new socket, it is a new peer, and nothing about a client
+survives the socket. In `selvage/2` a rejoin is even plainer, because there is no state to hand
+back: the server keeps the room's id and its token, and what a rejoining peer holds it announces
+again to its peers (§9's room passage).
+
+A dropped connection takes everything that belonged to it: the `peer_id`, the claimed role
+(`selvage/1`), this connection's document holds and its awareness state. Nothing about a client
+survives a socket, so
 a reconnecting client is a new peer that has to say who it is again. What it must know and do:
 
 - **Reconnect is `session.hello` again**, on a new socket, with the room and token the invite URL
   carries. There is no resume, no session id and no server-side state to hand back.
-- **The host reclaims; a guest rejoins.** Within `grace_ms` of the host's disconnect, a connection
-  claiming `role: "host"` **with the token** is seated, and the others are told `host.attached`
+- **The host reclaims; a guest rejoins (`selvage/1`).** Within `grace_ms` of the host's
+  disconnect, a connection claiming `role: "host"` **with the token** is seated, and the others are told `host.attached`
   and then `peer.joined`: a reclaiming host is a new peer as well as the new host, so a peer that
   treats every `peer.joined` as "a guest arrived" is wrong. Reclaiming is the same path an
   ordinary join takes, and it is only the same path if the reconnecting host kept the token: only
@@ -1357,8 +1522,10 @@ a reconnecting client is a new peer that has to say who it is again. What it mus
   room's membership rather than as evidence that its content has arrived (§6.1).
 - **What is lost is local.** The client's own `open_documents` set, its selection and its
   awareness state are gone with the socket and belong to the *new* connection from the moment it
-  is seated: it **SHOULD** re-`doc.open` the documents it still holds open (which is what puts them
-  back in the room's set when nobody else had them), and republish awareness.
+  is seated: it **SHOULD** re-`doc.open` the documents it still holds open, which is what puts them
+  back in the room's set when nobody else had them, and republish awareness. Both are peer rules in
+  `selvage/2` rather than methods: there is no set for a hold to be added to, and a peer's holds are
+  its own announcements.
 - **The server replays nothing.** It holds no CRDT (§3), so it has no document to hand back and no
   history to replay: a reconnecting client gets the room's content from its peers through the
   ordinary SyncStep1/SyncStep2 exchange, exactly as a first-time joiner does (§7). Whether the
@@ -1371,15 +1538,18 @@ a reconnecting client is a new peer that has to say who it is again. What it mus
   tombstone), and a client whose first republish is dropped looks, to every peer, like a
   participant with no cursor at all (§8.4).
 - **A refusal means stop; a drop means try again.** `room_unknown`, `token_invalid`,
-  `host_present` and `unsupported_version` refuse for a reason a retry cannot change (a room that
-  is gone is gone for good, and the host did not come back inside the grace period), so a client
+  `host_present` and `unsupported_version` refuse for a reason a retry cannot change — a room that
+  is gone is gone for good, and in `selvage/1` the host did not come back inside the grace period;
+  `host_present` is that version's code and a `selvage/2` server never sends it (§11) — so a client
   **MUST** stop and say why rather than reconnect into the same refusal. A fault in the reserved
   `x.` namespace (capacity, in this slice (§2.1, §10.1, §11)) is a stop as well: a handshake
   refused with an `x.*` code **MUST NOT** be re-helloed automatically, and a seated request
   refused with one **MUST NOT** be re-issued automatically; the attempt ends, or the request
   fails, and anything further needs its user's action. A room destroyed under a
   *seated* connection is not a refusal a client could have avoided: it learns of it as the
-  `room.gone` event and close 4003 (§6, §11), which is an ending and not a retry. Every other loss
+  `room.gone` event and close 4003 (§6, §11), which is an ending and not a retry. That case is
+  `selvage/1`'s — a `selvage/2` destruction has no connection seated to be told (§9) — and it is the
+  one place the two versions differ in what a client can be refused with. Every other loss
   of the socket is **recoverable**, and a client **SHOULD** re-hello with a bounded backoff rather
   than in a tight loop.
 - **What `selvage/1` asks for is the shape of the policy, not its numbers.** A retry **MUST** be
@@ -1387,9 +1557,11 @@ a reconnecting client is a new peer that has to say who it is again. What it mus
   retried. A client that has never had a session has nothing to recover, and a failure before the
   first connection is reported to whoever asked for one rather than retried behind its back. (The
   reference client's backoff parameters are [`NOTES.md`](NOTES.md) §A.2.) A client that knows the
-  room's grace (`room_grace_ms` from `/meta` (§2), or the `grace_ms` a `host.detached` carried
-  (§9)) **SHOULD** keep retrying at least until that window has passed, because the room survives
-  its host's absence for exactly that long and a retry that gives up inside it abandons a room
+  room's grace (`room_grace_ms` from `/meta` (§2), or in `selvage/1` the `grace_ms` a
+  `host.detached` carried (§9)) **SHOULD** keep retrying at least until that window has passed,
+  because the room survives its host's absence for exactly that long in `selvage/1` and its last
+  connection's end for exactly that long in `selvage/2`, and a retry that gives up inside the window
+  abandons a room
   that was still joinable. The grace is policy, like the retry's own numbers; what the wire fixes
   is that both exist and that a client uses the one it was told.
 - **A client has to be able to tell its user which of the two happened, and the wire vocabulary
@@ -1400,9 +1572,22 @@ a reconnecting client is a new peer that has to say who it is again. What it mus
   and one that gave up produces the same disconnection an orderly close produces. **Known gap** on
   the wire, and the fix there is an event, not a change to any existing frame.
 - **Nothing survives the room.** After `room.gone` there is no room to rejoin, on any URL, with any
-  token (§9).
+  token (§9), and in `selvage/2`, where no frame announces it, the same fact is the `room_unknown` a
+  join naming it is refused with.
 
 ### 9.2 The state machines
+
+**This subsection is `selvage/1`'s**, and it is the two machines of a server that holds a room's
+documents and knows its host. The rows that need that state are that version's: the `doc.open`,
+`doc.close` and `doc.grant` rows of the connection machine, its "a host claim while a host is
+seated" and "the room is destroyed under it" rows, and — in the room machine — the host-departure,
+reclaim and hostless-join rows together with its last one. Every other row of the connection machine
+holds in both versions, because each of them is about a text frame's shape, the version gate, the
+relay, the keepalive or a socket ending; the one clause among them that reads for one version only
+is the "seated | the socket ends" row's `host.detached`, which is `selvage/1`'s — in `selvage/2` the
+same transition arms the grace when the connection that ended was the room's last. `selvage/2`'s room
+machine is the table in §9's room passage, and the peer-side machine that version needs is not a
+server machine and is not written here (§1.1).
 
 The two machines a reader has to build, derived from the transitions above and checked against the
 corpus. Each row reads: in this state, this frame or this timer moves the machine here, and this is
@@ -1591,9 +1776,9 @@ same vocabulary is used in both, and the state a connection is in decides what a
 | `room_unknown` | no such room (never minted, or destroyed) | refusal: `session.error`, then close **4001** | — |
 | `token_invalid` | room present, token absent or wrong | refusal: `session.error`, then close **4002** | — |
 | `room_gone` | the room was destroyed under a seated connection. The frame that announces it is the `room.gone` **event** (§6), and a later join is `room_unknown` | — | — |
-| `host_present` | a host is already connected | refusal: `session.error`, then close **4004** | — |
+| `host_present` | a host is already connected (`selvage/1`: a `selvage/2` server does not know who the host is, and never sends this) | refusal: `session.error`, then close **4004** | — |
 | `already_seated` | `session.hello` sent twice | — | error response; the connection stays open |
-| `doc_not_open` | reserved; not produced by this slice | — | — |
+| `doc_not_open` | reserved; not produced by this slice, and there is no `doc.*` method in `selvage/2` for it to be about | — | — |
 
 The **close** vocabulary is separate, and `selvage/1`'s part of it lives in the private-use
 range: 4000 `protocol_error`, 4001 `room_unknown`, 4002 `token_invalid`, 4003 `room_gone`, 4004
@@ -1603,6 +1788,25 @@ outside it carries no session meaning and a client **MUST NOT** read one into it
 capacity fault that is not about the session protocol is IANA's to name — the reference server
 closes **1013** (try again later) at its connection cap and when a connection has spent its
 inbound budget (§2.1, §12) — and 1013 is not in the private-use range at all.
+
+**The vocabulary in `selvage/2`.** A server of that version carries nine of the eleven codes above,
+and the two it does not are the ones whose fault its shape cannot produce. `host_present` is a
+refusal a server makes when a host is already connected, and this one does not know who the host is;
+`doc_not_open` is reserved for a `doc.*` method this version does not have, which is why no version
+produces it. What is left is `unknown_method`, `bad_message`, `bad_params`, `hello_required`,
+`unsupported_version`, `room_unknown`, `token_invalid`, `room_gone` and `already_seated`, plus any
+`x.` code an implementation defines for itself (§10.1), and the closes are 4000, 4001, 4002, 4003
+and 4005.
+
+Everything else this section states holds in both versions exactly as written — the fault order, the
+refusal/error-response split, the truncation of a close reason, and that a code with no matching
+close does not end the connection. The split is what `room_unknown` and `token_invalid` are: a
+`selvage/2` server refuses a join naming a room that is gone or a token that does not match, before
+seating, and it has no reason to refuse anything a peer sends afterwards except a malformed request
+— a frame it cannot read is a binary frame it relays rather than a fault (§3), and the bounds of
+§2.1 are the other thing it can refuse past. What the version needs a reader to carry away is that
+`room_unknown` is the ending: a room is gone for good, and the id is the whole of what a later
+connection can be told about it (§9).
 
 **A fault before seating is announced as a refusal**: a `session.error` event and then a close
 with the matching code, so a client that does not read close frames still learns why. **A fault on

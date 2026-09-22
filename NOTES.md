@@ -701,8 +701,10 @@ What the passages settle:
 
 **What is not here, and which step owns it.** The three `doc.*` methods with the open-document set
 and the grant, the host machinery, the roles and the full-set echo are deleted from `selvage/1`
-rather than restated in `selvage/2`'s terms, and that is the revision's server step
-(`docs/studies/e2ee-plan.md` §11 step 3). The holds and the lease that replace the set, the resume
+rather than restated in `selvage/2`'s terms. That step has two halves and §B.33 is the first of
+them, the specification's; the second, deleting version 1's text, schema members and vectors and
+re-baselining the corpus, is **step 8** of the same plan (`docs/studies/e2ee-plan.md` §11) and lands
+after the release wave. The holds and the lease that replace the set, the resume
 and what a returning host signs, the rule that refuses a committed `viewer`'s content, the
 client-behaviour section, and §12's replaced wording are steps 4 and 4b of the same plan
 (`docs/studies/e2ee-plan.md` §8, §11). None of them is shaped here, not even the lease's clock,
@@ -720,3 +722,90 @@ fail `schema/session.json`. What holds a server to the member set of its version
 exact member comparison in the replay; the model's part is that the version's own shape validates
 at all, which is what `schema/session-v2.json` and `schema/validate.py`'s `check_session_v2` add
 for the frames §2, §5 and §6.1 describe.
+
+**B.33 `selvage/2`'s server, and the `selvage/1` passages that stay.** `PROTOCOL.md` §1.1, §1.2,
+§2.1, §3, §6, §9, §9.1, §9.2 and §11 now state the server of `selvage/2` as what it is, and
+`schema/session-v2.json` with `schema/validate.py`'s `check_session_v2` gained that version's
+`peer.joined` and the fault vocabulary it answers with. **Decided** (2026-09-22), after §B.32 wrote
+the version's session layer and before the corpus moves to it. **Nothing implements it**: no server
+and no client speaks `selvage/2`, the wire version stays `selvage/1` for every implementation here,
+and no vector is written against a version-2 frame.
+
+What that server is, positively:
+
+- **Rooms and membership.** A room is minted by a connection whose URL names no room (§5.1); its
+  `id` and its `token` are the server's, the token is the permission to join, and each seated
+  connection gets a `peer_id` that is opaque, per-room and does not survive the connection. Seating
+  is a `session.hello` answered with `room.created` or `room.joined`, the peers already seated are
+  told `peer.joined`, an ending connection is `peer.left`, and a rename is `peer.renamed`. No
+  record the server sends carries a role.
+- **The relay.** A binary frame is relayed to the room's other connections byte for byte and to
+  nobody else; the server does not open, verify, transform or drop one, and it writes no member
+  into one.
+- **The room's life.** It lives while it has connections and for `room_grace_ms` after its **last**
+  one ends. The timer arms when the last connection ends rather than when a host's does; a
+  connection seated inside the window cancels it and the room goes on with the same id and the same
+  token; at the deadline, with no connection seated, the room is destroyed and the id is gone for
+  good. A room whose peers stay connected is not reaped by anything the server knows, whatever has
+  happened to whoever hosted it.
+- **The bounds that survive.** Every per-connection bound in §2.1 survives — the frame, message and
+  envelope bounds, the outbound queue, the hello timeout, the ping bound, the head bound and the
+  inbound budget — and so do the room and peer caps. The two rows that bound a room's stored state
+  with its open-document set and its grant do not: this server holds neither. A room's stored state
+  is its token, its membership and its connections.
+- **The refusals that survive.** `unknown_method`, `bad_message`, `bad_params`, `hello_required`,
+  `unsupported_version`, `room_unknown`, `token_invalid`, `room_gone` and `already_seated`, plus an
+  implementation's own `x.` codes; the closes are 4000–4003 and 4005. `host_present` and close
+  **4004** go, because a server that does not know who the host is has nothing to refuse on, and
+  the reserved `doc_not_open` goes because this version has no `doc.*` method for it to be about.
+- **The keepalive.** Unchanged: a WebSocket Ping every `ping_interval_ms`, a peer that stops
+  answering closable as an ordinary drop, and no ping relayed to a room.
+
+**What this pass found rather than settled.**
+
+- **`room.gone` has no recipient in `selvage/2`.** The plan and the corpus study both keep the
+  event, with its cause changed from "the host did not return" to "the last connection ended
+  `grace_ms` ago" (`docs/studies/relay-only-spec.md` §2.4, `docs/studies/e2ee-plan.md` §6.1). Those
+  two cannot both hold: a room is destroyed only when the grace after its last connection has run
+  out, so at the deadline no connection is seated and there is nobody to tell. The event stays in
+  the vocabulary — it names the ending, and the close 4003 that goes with it — and a `selvage/2`
+  server produces none; a room's being gone is learned as `room_unknown` by the next connection that
+  names it, which is also the observable a new harness test gets. The plan's own sentence "a room
+  with nobody in it survives the window and then is destroyed (`room.gone`, close 4003)" is the one
+  it contradicts.
+- **§9.1 is not `selvage/1`'s whole.** Two of its rules are that version's — the reclaim by a
+  connection claiming `role: "host"`, and inheriting a room's documents from `room.joined` — and
+  the rest is the reconnect policy neither version owns alone. So it is scoped sentence by
+  sentence rather than treated as a section one version has and the other does not, and the grace it
+  names is read for each version: `host.detached`'s `grace_ms` is `selvage/1`'s number, and
+  `room_grace_ms` in `/meta` is `selvage/2`'s.
+- **What a schema can and cannot check here, measured.** §B.32's finding stands: no schema in this
+  directory forbids a *member*, so the version's central negative duty — a server-authored frame
+  carries no path, a role, a document name or a character of a room's text — is prose plus the
+  corpus's exact member comparison and cannot be a schema. What a schema *can* close is a *value*,
+  and a fault code is a closed vocabulary in both versions (§11), so
+  `session-v2.json#/$defs/errorObject` refuses `host_present` and `doc_not_open` while
+  `errors.json#/$defs/errorObject` still accepts both. Both directions are checked in
+  `check_session_v2`, and each was shown red on its own: adding `host_present` back to the
+  version's enum fails two checks, and making `peer.joined`'s `peer` optional fails one.
+- **The schema's gain, and the counts that did not move.** `session-v2.json` gained
+  `#/$defs/peerJoined` (the one of this version's seven server-authored events whose params differ
+  from `selvage/1`'s), `#/$defs/errorCode` and `#/$defs/errorObject` (the nine codes, and the fault
+  shape `session.error` and a response both carry here). `check_session_v2` now runs 42 values
+  against the file, against 25 before, and the published run's line moves with it. Nothing in the
+  corpus moved: `EXPECTED_VECTORS` is 36, `EXPECTED_FRAME_CHECKS` 35022, `EXPECTED_ASSERTIONS`
+  8676, and `EXPECTED_CODES` is untouched, because no vector was added, deleted or re-pointed and
+  the transcripts are still `selvage/1`'s.
+
+**What is not here, and which step owns it.** The removal of `selvage/1` — its text, its schema
+members, its vectors and `check_vector`'s version pin — is **step 8** of
+`docs/studies/e2ee-plan.md` §11 and not this step: those vectors pin the live behaviour of the
+reference server and of the released clients, and nothing may go red while the specification runs
+ahead of the implementations, so version 1's passages stay where they are and are read as that
+version's (§1.1). Step 8 lands after the release wave, when no published client speaks `selvage/1`
+any more, and it is where the corpus is re-baselined onto version 2 and version 1's sections,
+schema members, vectors and glossary entries are deleted rather than scoped. The peer-side rules
+the version needs — the holds and their lease, the resume, the refusal of a committed `viewer`'s
+frames, and the client-behaviour section that stands where the server no longer enforces anything —
+are steps 4 and 4b, and none of them is shaped here; neither is §12's replaced wording, which is
+step 7.
