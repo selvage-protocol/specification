@@ -876,11 +876,12 @@ and awareness (§9.1): a reconnecting client is a new peer and its name is whate
 Four obligations on the request side, none of which changes the wire:
 
 - **Every request is answered, and the wait has to be bounded.** `doc.open`, `doc.close`,
-  `doc.grant` and `session.rename` are answered with a result or an error (`session.hello` and
-  `session.rename` in `selvage/2`), and nothing obliges a
+  `doc.grant` and `session.rename` are answered with a result or an error, and nothing obliges a
   server to answer promptly. A client **SHOULD** bound the wait, and the bound cannot be a
   protocol number: it has to be at least a round trip on the connection in use, and less than
-  "for ever". (The two reference clients differ here; [`NOTES.md`](NOTES.md) §A.2.)
+  "for ever". (The two reference clients differ here; [`NOTES.md`](NOTES.md) §A.2.) In `selvage/2`
+  `session.rename` is the only request answered this way: that version's `session.hello` is
+  answered with `room.created` or `room.joined`, an event and not a response (§5, §6.1).
 - **A socket that drops fails every request in flight.** When the connection ends, whether the
   client asked for it or not, each outstanding request **MUST** be failed locally: no answer can
   arrive on a socket that is gone, and a caller left holding a request that never completes cannot
@@ -889,8 +890,9 @@ Four obligations on the request side, none of which changes the wire:
   `selvage/1` it does not matter: a hold is a set, so a second `doc.open` for a path already held
   changes nothing, a grant is a snapshot, so a second `doc.grant` that repeats a listing changes
   nothing, and an applied rename reaches the mover as the `peer.renamed` every peer receives
-  (§6). In `selvage/2` the only request that can be outstanding beside the handshake is a rename,
-  and it is the same: its effect reaches the mover as the `peer.renamed` every peer receives.
+  (§6). In `selvage/2` the only request that can be outstanding is a rename — the handshake is
+  answered with an event (§5) — and it is the same: its effect reaches the mover as the
+  `peer.renamed` every peer receives.
 - **A request id is not reused on a connection.** The id is the only correlation the wire has, and
   a client that reuses one cannot tell a late answer from a current one. A new connection may
   count from the beginning again, because it is a new connection: nothing survives it (§9.1).
