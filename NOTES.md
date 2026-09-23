@@ -1379,9 +1379,9 @@ a path at 4096 bytes is kept and one at 4097 is dropped. Two frame vectors pin t
 111's frame with a SyncStep1 in front of the Update, refused `unauthorised_content` and applied
 to nothing, and it goes red under `no-roles`; **119** carries a 4096-byte path and a 4097-byte
 one in a listing and a hold set, keeps the first and drops the second, and goes red under the new
-`keep-long-path`. `EXPECTED_PEER_VECTORS` is 25 — 19 frame and 6 decision — `EXPECTED_PEER_CHECKS`
-210, `EXPECTED_PEER_ASSERTIONS` 74, and the absence scan reads 50 sealed frames and 100 needle
-checks. No rule moves; the corpus grew.
+`keep-long-path`. `EXPECTED_PEER_VECTORS` is 27 — 19 frame and 8 decision — `EXPECTED_PEER_CHECKS`
+222, `EXPECTED_PEER_ASSERTIONS` 74, and the absence scan reads 27 vectors of this version, 50
+sealed frames and 100 needle checks. No rule moves; the corpus grew.
 
 **B.39 `/meta`'s version list, for a server that implements both versions.** `PROTOCOL.md` §2
 said a `selvage/2` server **MUST NOT** name a version below `selvage/2` in `wire_versions`. That
@@ -1509,3 +1509,65 @@ by a *key*, which a client has only as the state's spelling of it or as an id, w
 write the fixture's name for one: the runner resolves a fixture key's name, its canonical spelling
 and its id in hex to the one name, and a key a report does not mention at all holds nothing, so
 §13.7's expiry is `[]` either way.
+
+**B.41 The two rules a link is decided about, each now a decision vector.** `PROTOCOL.md` §5.1,
+§2, §10 and §13.11, `runner/subject.py`, `runner/run_peer.py`, `runner/test_runner.py`,
+`schema/validate.py`, `vectors/peer/157` and `vectors/peer/158`. **Added** (2026-09-23).
+
+Both rules are decided before a socket is opened, so neither is a frame and neither has a reason of
+§6.1's or a code of §11's: a client answers the `join` itself, in its own words, and seats nothing
+behind the answer. The step that asserts one is `expectRefusal`, whose `names` are the strings a
+client's words must carry — §13.11 states them, and no sentence of the client's is pinned, because
+§2 and §5.1 leave the sentence to the client. The two things a client reads before a socket reach it
+as members of the `start` that hands it the link: `meta`, the body `GET /meta` answered, of which
+`wire_versions` is the only member read, and `pin`, the version a client's own setting pins it to or
+nothing.
+
+**Where a guard is removed is part of the guard.** `runner/subject.py`'s `LINK_MUTATIONS` names
+`accept-partial-fragment` and `fall-back-to-version-1`, and the runner removes those with a `mutate`
+**before** the `join` and every other guard after it: a subject asked for a link guard once it is
+seated could not have refused the link anyway. The six session guards are unmoved, and a subject
+that cannot remove a guard still refuses the command, which is a failure of the harness rather than
+a red run the census counts.
+
+**What the two vectors pin.** `157` carries three legs: `k` without `h`, refused by name of `h`; `h`
+without `k`, refused by name of `k`; and the whole fragment, which must join. `158` carries the
+version gate: a link that would speak `selvage/2` against a `/meta` naming no version at major 2,
+refused by name of the version it would need, and the `selvage/1` link a client pinned to `selvage/1`
+joins. Each goes red under the one guard it declares (`accept-partial-fragment`,
+`fall-back-to-version-1`) and stays green under the other's, and each is red at a leg that must join
+against a subject that refuses every link. `runner/test_runner.py` drives both against a stub client,
+which is the only subject in this repository.
+
+**Counts.** `EXPECTED_PEER_VECTORS` 25 → 27 (19 frame, 8 decision), `EXPECTED_PEER_CHECKS` 210 →
+222, `EXPECTED_PEER_ASSERTIONS` 74 unmoved — a decision vector's assertion steps are counted in its
+own run's summary and not in the corpus-wide pin — the absence scan's vectors of this version 25 →
+27, and the subject's mutation table 6 → 8. The wire layer, the schema layer and the fixture are
+untouched.
+
+**Which client holds which rule, as the two implementations stand.** `reference_server`'s
+`selvage-subject` refuses a partial fragment by name of the missing key, so `157` passes against it
+unchanged. It reads no `/meta` and has no pin, so `158` is red against it: the rule lives in that
+repository's own client (`crates/client/src/relay.rs`'s `refuse_a_version_this_client_cannot_speak`,
+called by both the join and the mint, with no pin anywhere in that client) and the offline subject,
+which drives a session and not a connection, does not reach it. The editor clients refuse a partial
+fragment as well — `fragmentKeyRefusal` in the adapter and `parseInvite` in the engine both name the
+missing key — and decide the version against `/meta` with the pin included (`hostVersion`), on the
+path that mints a room; a link whose fragment names no key is joined by them as a `selvage/1` join
+rather than refused, which is B.42.
+
+**B.42 A link whose fragment names neither of §5.1's two keys, for a client that can speak
+`selvage/2`.** §5.1 has two readings of one link and no vector pins it. Its refusal passage binds the
+client that would speak `selvage/2` on that join, and says in the same breath that a `selvage/1` link
+carries no fragment and that the client which cannot speak `selvage/2` or is pinned to `selvage/1`
+joins the room it names — so a link with no fragment is a version-1 link for *that* client, and the
+passage does not say what an unpinned client that **can** speak the encrypted wire does with it,
+while its first sentence ("an invite whose fragment is absent") reads as a refusal for any of them.
+§2's "their absence is §5.1's local refusal rather than a version to join as" reads as a refusal
+too, and the reference implementation's own client refuses it (`crates/client/src/peer.rs`'s
+`PeerInvite::parse`: `the invite carries no fragment, so neither its room key nor its host key is
+here`) — of every link its version-2 relay is handed, and not of this case alone. Both readings are
+consistent with §10. Which one the version means decides whether a guest handed a link a chat client
+truncated the `#` off is refused or seated in the clear, so it is a decision and not a wording.
+`vectors/peer/157` is about a fragment that names one of the two keys and its third leg is the whole
+fragment, so neither leg reaches this case. **Unresolved.**

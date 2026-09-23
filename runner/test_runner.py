@@ -724,6 +724,7 @@ class TestStepVocabulary(unittest.TestCase):
     def test_the_runner_and_the_validator_know_the_same_peer_ops(self) -> None:
         validate = validate_module()
         self.assertEqual(set(run_peer.FRAME_OPS), set(validate.PEER_FRAME_OPS))
+        self.assertEqual(set(run_peer.DECISION_OPS), set(validate.PEER_DECISION_OPS))
         self.assertEqual(set(run_peer.KINDS), set(validate.PEER_OPS))
 
     def test_every_declared_mutation_is_implemented_and_every_guard_is_declared(self) -> None:
@@ -735,6 +736,74 @@ class TestStepVocabulary(unittest.TestCase):
         # The positive control declares none, which is the other half of the pin.
         self.assertEqual(frames - {None}, set(sealed.MUTATIONS))
         self.assertEqual(decisions, set(subject.SUBJECT_MUTATIONS))
+
+
+class TestTheTwoLinkRules(unittest.TestCase):
+    """The two rules a link is decided about **before a socket**, driven against a stub client.
+
+    `PROTOCOL.md` §13.11 says these two are the decision layer's own subject, and no client in
+    this repository drives them, so what is checked here is the **vector**: each passes against a
+    subject that holds the rule, goes red under the one mutation it declares it catches, stays
+    green under the *other* link guard — a guard with a vector of its own and not this one's —
+    and fails a subject that refuses every link. That is the property the census asserts of a
+    declared mutation, and it is the one a runner with no client cannot show.
+    """
+
+    def link(self, vector_id: str, behaviour: str = "link-rules",
+             mutation: str | None = None) -> "run_peer.Outcome":
+        for vector in run_peer.load_vectors():
+            if vector.get("id") == vector_id:
+                break
+        else:
+            self.fail(f"no peer vector has the id {vector_id!r}")
+        return run_peer.attempt(
+            vector,
+            {},
+            frozenset(),
+            run_peer.Driver(
+                command=" ".join(STUB_SUBJECT + [behaviour]), mutation=mutation
+            ),
+        )
+
+    def test_the_partial_fragment_vector_holds_and_catches_its_guard_alone(self) -> None:
+        clean = self.link("157")
+        self.assertIsNone(clean.failure)
+        self.assertEqual(clean.assertions, 3, "two refusals and the leg that must join")
+        red = self.link("157", mutation="accept-partial-fragment")
+        self.assertIn("(`expectRefusal`)", red.failure or "", red.failure)
+        other = self.link("157", mutation="fall-back-to-version-1")
+        self.assertIsNone(other.failure, other.failure)
+
+    def test_the_version_vector_holds_and_catches_its_guard_alone(self) -> None:
+        clean = self.link("158")
+        self.assertIsNone(clean.failure)
+        self.assertEqual(clean.assertions, 2, "the refusal and the pinned control")
+        red = self.link("158", mutation="fall-back-to-version-1")
+        self.assertIn("(`expectRefusal`)", red.failure or "", red.failure)
+        other = self.link("158", mutation="accept-partial-fragment")
+        self.assertIsNone(other.failure, other.failure)
+
+    def test_a_subject_that_refuses_every_link_fails_the_control_leg(self) -> None:
+        # Both vectors carry the leg that must not be refused — 157's complete fragment and
+        # 158's pin to `selvage/1` — and a subject whose refusals are worded well enough to
+        # answer the refusal legs is caught by them and not by anything else.
+        for vector_id in ("157", "158"):
+            outcome = self.link(vector_id, behaviour="link-rules-refuse-all")
+            self.assertIn("(`expectSubject`)", outcome.failure or "", outcome.failure)
+
+    def test_the_mutation_each_vector_declares_is_the_one_the_census_removes(self) -> None:
+        # The name in the vector is the name the stub removes, and the census sends the first as
+        # the second: a vector whose `catches` named nothing the subject knows cannot be red, so
+        # this is what makes the two cases above evidence rather than a coincidence.
+        for vector_id, declared in (("157", "accept-partial-fragment"),
+                                    ("158", "fall-back-to-version-1")):
+            for vector in run_peer.load_vectors():
+                if vector.get("id") == vector_id:
+                    self.assertEqual(vector.get("catches"), declared)
+                    self.assertIn(declared, subject.SUBJECT_MUTATIONS)
+                    break
+            else:
+                self.fail(f"no peer vector has the id {vector_id!r}")
 
 
 #: The members `sendBinary` and `expectBinary` accept beside their bytes. `apply` is here and
@@ -1025,6 +1094,7 @@ def run_stub_subject(behaviour: str) -> int:
     applied: list[dict] = []
     handed = 0
     mutated: str | None = None
+    link_state: dict = {"seated": False, "frames": 0, "mutation": None}
     for line in sys.stdin.buffer:
         try:
             command = json.loads(line)
@@ -1041,6 +1111,8 @@ def run_stub_subject(behaviour: str) -> int:
             continue
         if name == "quit":
             reply: object = {"ok": True}
+        elif behaviour in ("link-rules", "link-rules-refuse-all"):
+            reply = link_reply(behaviour, command, link_state)
         elif behaviour == "no-mutate" and name == "mutate":
             # A subject that implements no mutations: it must be a census failure, not a red run.
             reply = {"ok": False, "error": "I have no guards to remove"}
@@ -1059,6 +1131,104 @@ def run_stub_subject(behaviour: str) -> int:
         sys.stdout.write(json.dumps(reply, ensure_ascii=False) + "\n")
         sys.stdout.flush()
     return 0
+
+
+def link_reply(behaviour: str, command: dict, state: dict) -> dict:
+    """What the link-rule stub answers one command with.
+
+    It is a client for the two decisions a link carries **before a socket**, which is the layer
+    the rest of the corpus has no subject for: `PROTOCOL.md` §5.1 refuses a fragment that names
+    one of its two keys and not the other, naming the missing one, and §2/§10 refuse a server
+    whose `/meta` names no version at major 2 rather than fall back to one that is seated.
+
+    `state["mutation"]` is the guard this run removed, and it arrives before the `join`: a guard
+    on the link has to be gone before the link is read. Each of the two names makes this the
+    wrong implementation the census is about.
+    `link-rules-refuse-all` is the other way of passing a corpus of refusals: it refuses every
+    link with words that answer the first leg of a refusal vector, and the control leg beside it
+    is what catches that.
+    """
+    name = command.get("cmd")
+    if name == "quit":
+        return {"ok": True}
+    if name == "mutate":
+        state["mutation"] = command.get("name")
+        return {"ok": True, "report": link_report(state)}
+    if name == "join":
+        refusal = link_refusal(behaviour, command, state["mutation"])
+        state["seated"] = refusal is None
+        state["frames"] = 0
+        if refusal is not None:
+            return {"ok": False, "error": refusal}
+        return {"ok": True, "report": link_report(state)}
+    if name == "deliver":
+        state["frames"] += 1
+    return {"ok": True, "report": link_report(state)}
+
+
+def link_refusal(behaviour: str, command: dict, mutation: str | None) -> str | None:
+    """The words this stub refuses a link with, or `None` when it joins it."""
+    invite = command.get("invite") if isinstance(command.get("invite"), str) else ""
+    base = invite.split("?", 1)[0].split("#", 1)[0]
+    fall_back = (
+        f"{base} advertises selvage/1: this client needs selvage/2 and does not fall back "
+        "to an earlier version"
+    )
+    if behaviour == "link-rules-refuse-all":
+        # A superset of both refusal vectors' own words on purpose: this double passes every
+        # refusal leg and can only be caught by the control leg beside it, which is the leg that
+        # exists to say "refusing everything is not answering".
+        return (
+            "the invite carries no room key (`k`) and no host key (`h`): this client needs "
+            "selvage/2 and refuses this link"
+        )
+    fragment = invite.split("#", 1)[1] if "#" in invite else ""
+    names = {pair.split("=", 1)[0] for pair in fragment.split("&") if pair}
+    if mutation != "accept-partial-fragment":
+        if "k" in names and "h" not in names:
+            return "the invite carries no host key (`h`)"
+        if "h" in names and "k" not in names:
+            return "the invite carries no room key (`k`)"
+    meta = command.get("meta") if isinstance(command.get("meta"), dict) else {}
+    versions = meta.get("wire_versions") if isinstance(meta.get("wire_versions"), list) else []
+    offered = [one for one in versions if isinstance(one, str)]
+    if (
+        command.get("pin") is None
+        and offered
+        and not any(major_2(one) for one in offered)
+        and mutation != "fall-back-to-version-1"
+    ):
+        return fall_back
+    return None
+
+
+def major_2(version: str) -> bool:
+    """True for a version spelling at major 2, read the way `PROTOCOL.md` §10's grammar reads it.
+
+    The minor binds only while the major is 0, so what a `/meta` body has to name for the
+    encrypted wire is any spelling whose major is 2 (`selvage/2`, `selvage/2.1`).
+    """
+    parts = version.split("/", 1)
+    return len(parts) == 2 and parts[1].split(".", 1)[0] == "2"
+
+
+def link_report(state: dict) -> dict:
+    """A seated subject's report, or the empty one a client with no session holds."""
+    empty = {
+        "text": {},
+        "documents": [],
+        "applied": [],
+        "dropped": [],
+        "published": 0,
+        "handshake": 0,
+        "ended": False,
+        "holds": {},
+        "listing": [],
+        "frames": 0,
+    }
+    if not state["seated"]:
+        return empty
+    return {**empty, "frames": state["frames"], "mutation": state["mutation"]}
 
 
 def stub_report(
