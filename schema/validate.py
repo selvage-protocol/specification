@@ -87,7 +87,7 @@ SCHEMA_DIR = pathlib.Path(__file__).resolve().parent
 VECTOR_DIR = pathlib.Path(
     os.environ.get("SELVAGE_VECTORS", SCHEMA_DIR.parent / "vectors")
 )
-BASE = "https://selvageprotocol.com/schema/1/"
+BASE = "https://dontblameme.dev/schema/1/"
 
 # What the corpus is expected to hold. Adding a vector, or an assertion inside one, is a
 # deliberate edit, and these numbers are what makes the opposite edit — a silent deletion — a red

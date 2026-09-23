@@ -1,12 +1,12 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://selvageprotocol.com/schema/1/events.json",
+  "$id": "https://dontblameme.dev/schema/1/events.json",
   "title": "Selvage Session Protocol — every event of `selvage/1`",
   "description": "The twelve events a server sends, with the params of each. Valid against PROTOCOL.md \u00a76. Event `params` are flat objects; an event name a receiver does not know is ignored, like an unknown member.",
   "$defs": {
     "peerList": {
       "type": "array",
-      "items": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peer" },
+      "items": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peer" },
       "description": "The peers already in the room, excluding `self`. No order is promised, so a receiver must not depend on one."
     },
     "anyEventName": {
@@ -19,14 +19,14 @@
       "type": "object",
       "required": ["room_id", "token", "self", "peers", "documents", "capabilities", "keepalive"],
       "properties": {
-        "capabilities": { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityList" },
-        "documents": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentList" },
-        "keepalive": { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/keepalive" },
+        "capabilities": { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/capabilityList" },
+        "documents": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentList" },
+        "keepalive": { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/keepalive" },
         "peers": { "$ref": "#/$defs/peerList" },
-        "room_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/roomId" },
-        "self": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peer" },
+        "room_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/roomId" },
+        "self": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peer" },
         "token": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/token",
+          "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/token",
           "description": "Present only here: the token is echoed exactly once, to the connection that minted the room, and a host that may reclaim must keep it (\u00a79.1)."
         }
       }
@@ -37,12 +37,12 @@
       "required": ["room_id", "self", "peers", "documents", "capabilities", "keepalive"],
       "not": { "required": ["token"] },
       "properties": {
-        "capabilities": { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityList" },
-        "documents": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentList" },
-        "keepalive": { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/keepalive" },
+        "capabilities": { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/capabilityList" },
+        "documents": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentList" },
+        "keepalive": { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/keepalive" },
         "peers": { "$ref": "#/$defs/peerList" },
-        "room_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/roomId" },
-        "self": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peer" }
+        "room_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/roomId" },
+        "self": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peer" }
       }
     },
     "peerJoined": {
@@ -51,7 +51,7 @@
       "type": "object",
       "required": ["peer"],
       "properties": {
-        "peer": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peer" }
+        "peer": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peer" }
       }
     },
     "peerLeft": {
@@ -60,7 +60,7 @@
       "type": "object",
       "required": ["peer_id"],
       "properties": {
-        "peer_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId" }
+        "peer_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peerId" }
       }
     },
     "peerRenamed": {
@@ -69,8 +69,8 @@
       "type": "object",
       "required": ["peer_id", "display_name"],
       "properties": {
-        "peer_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId" },
-        "display_name": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/displayName" }
+        "peer_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peerId" },
+        "display_name": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/displayName" }
       }
     },
     "docOpened": {
@@ -79,9 +79,9 @@
       "type": "object",
       "required": ["peer_id", "path", "documents"],
       "properties": {
-        "documents": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentList" },
-        "path": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath" },
-        "peer_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId" }
+        "documents": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentList" },
+        "path": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentPath" },
+        "peer_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peerId" }
       }
     },
     "docClosed": {
@@ -90,9 +90,9 @@
       "type": "object",
       "required": ["peer_id", "path", "documents"],
       "properties": {
-        "documents": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentList" },
-        "path": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath" },
-        "peer_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId" }
+        "documents": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentList" },
+        "path": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentPath" },
+        "peer_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peerId" }
       }
     },
     "docGranted": {
@@ -101,7 +101,7 @@
       "type": "object",
       "required": ["paths"],
       "properties": {
-        "paths": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentList" }
+        "paths": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentList" }
       }
     },
     "hostDetached": {
@@ -123,7 +123,7 @@
       "type": "object",
       "required": ["peer"],
       "properties": {
-        "peer": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peer" }
+        "peer": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peer" }
       }
     },
     "roomGone": {
@@ -133,7 +133,7 @@
       "required": ["room_id", "reason"],
       "properties": {
         "reason": { "type": "string", "minLength": 1 },
-        "room_id": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/roomId" }
+        "room_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/roomId" }
       }
     },
     "sessionError": {
@@ -144,8 +144,8 @@
       "properties": {
         "code": {
           "anyOf": [
-            { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/errorCode" },
-            { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/extensionCode" }
+            { "$ref": "https://dontblameme.dev/schema/1/errors.json#/$defs/errorCode" },
+            { "$ref": "https://dontblameme.dev/schema/1/errors.json#/$defs/extensionCode" }
           ]
         },
         "message": { "type": "string", "minLength": 1 }

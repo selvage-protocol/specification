@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://selvageprotocol.com/schema/1/awareness.json",
+  "$id": "https://dontblameme.dev/schema/1/awareness.json",
   "title": "Selvage Session Protocol — the awareness state and its anchors",
   "description": "The state carried inside a `message_type = 1` frame, which y-protocols leaves opaque: `{ path, selection }`, and each selection endpoint a yjs `RelativePosition` anchor. Valid against PROTOCOL.md §8.1. A binary frame is relayed unchanged and is not canonicalised (CANONICAL.md §6), so nothing here says how a state is written, only what a receiver may read.",
   "$defs": {
@@ -47,7 +47,7 @@
           "description": "A root type name, which for Selvage is the document path. `tname` with no `item` denotes an end of that text, chosen by `assoc`: the end when `assoc >= 0`, the start when it is negative."
         },
         "type": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath",
+          "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentPath",
           "description": "A nested type name. `selvage/1` produces none, so a scope resolving anywhere other than the `Y.Text` for `path` fails to resolve."
         }
       }
@@ -76,7 +76,7 @@
       ],
       "properties": {
         "path": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/documentPath",
+          "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentPath",
           "description": "The document the state is about. It normally names a path in the room's open-document set; a state naming another path is still relayed and may still be displayed, because the set is shared and is not the sender's to guarantee (§8.1)."
         },
         "selection": {

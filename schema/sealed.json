@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://selvageprotocol.com/schema/1/sealed.json",
+  "$id": "https://dontblameme.dev/schema/1/sealed.json",
   "title": "Selvage Session Protocol — the sealed payloads that are JSON, and the vocabulary a refused frame is reported in",
   "description": "`selvage/2`'s binary frame is an envelope of bytes, not a JSON frame, and its layout is CANONICAL.md §6.1's; what the envelope carries sealed is either opaque y-protocols bytes or one of these four objects. Valid against PROTOCOL.md §7.1: the room state the host publishes, the closing that ends the room, the holds a connection announces and the session-key announcement a connection makes about itself. None is a session frame — none carries `v` — and each is canonical when it follows CANONICAL.md §2, `listing` in the order §2.7 gives it, with §3's tolerance for a member the receiver does not know. Every object here tolerates a member it does not know, as every schema in this directory does. `refusalReason` is the thing this file fixes that is not a payload: the local report a receiver answers a refused frame with, which no frame carries and which `PROTOCOL.md` §13.2 binds a client to produce.",
   "$defs": {
@@ -60,7 +60,7 @@
       ],
       "properties": {
         "peer_id": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId",
+          "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peerId",
           "description": "The seat the host believes this key's holder is seated under. It is what a client reads to answer a question about presence — whether the state's `host` entry is seated (PROTOCOL.md §13.8), whether a key's holder has left (§13.7) — and it decides no attribution and no role (§13.4). A host commits every announcement it accepts and labels the entry with the seat it believes holds the key or with any seat the roster names, because a missing label would leave the peer's whole session uncommitted while a wrong one costs only the presence questions (§7.1)."
         },
         "role": {
