@@ -258,10 +258,11 @@ put in, because it seats nobody as anything (§1.2). A `selvage/2` server advert
   version it would need. A `/meta` that could not be read is not that answer: the client attempts
   `selvage/2` and the handshake decides, and a server that seats only `selvage/1` answers
   `unsupported_version` — loudly, and not as a downgrade. `selvage/1` is what a client mints when
-  it cannot speak `selvage/2`, or when it is pinned there (a setting, a link, a deployment): a
+  it cannot speak `selvage/2`, or when it is pinned there (a setting, a deployment): a
   deliberate choice to host a room the server can read, which is what the pin is for. A **join**
-  is not this choice: it speaks the version its invite names — the fragment's two keys, or their
-  absence (§5.1) — whatever the list says. A pin to a version the server does not seat is a
+  is not this choice: it speaks the version its invite names — §5.1's two keys are what make an
+  invite a `selvage/2` one, and their absence is §5.1's local refusal rather than a version to join
+  as — **whatever the list says.** A pin to a version the server does not seat is a
   refusal (§10) and never a fall back to a version it does. Acceptance is unchanged — the same
   grammar and the [compatibility rule](#10-version-and-capability-negotiation) — so a server that
   accepts `selvage/2` accepts any `selvage/2.x`.
@@ -280,11 +281,14 @@ the version's only one (§8.2). `room_grace_ms`, in `/meta` alone, is the server
 where a `selvage/2` client reads the room's grace: in that version the number is how long a room
 survives its last connection ending (§1.2).
 
-**What a `selvage/1`-only client sees.** It sees a server it cannot talk to, and it sees it without
-a socket: `wire_versions` names no version it can speak, so it refuses locally with
-`unsupported_version`, which is the rule above and not a new one. Nothing else in the body is a
-signal to it, because the members it reads — `wire_versions`, and `capabilities` and `keepalive`
-for a better default — are the ones that stay: `roles` leaving and `capabilities` shrinking are
+**What a `selvage/1`-only client sees against a server of `selvage/2` alone.** It sees a server it
+cannot talk to, and it sees it without a socket: `wire_versions` names no version it can speak, so it
+refuses locally with `unsupported_version`, which is the rule above and not a new one. A server that
+seats both names `selvage/1` too, and that client does what the list tells it: it connects and
+speaks `selvage/1`, minting or joining a room of that version and never one of `selvage/2` (§9).
+Nothing else in the body is a signal to it, because the members it reads — `wire_versions`, and
+`capabilities` and `keepalive` for a better default — are the ones that stay: `roles` leaving and
+`capabilities` shrinking are
 both invisible to a client that reads `wire_versions` and connects. §10 says the same from the
 server's side.
 
@@ -743,8 +747,11 @@ The fragment is **never sent**, by construction: it is not part of a request lin
 protocol defines puts it in a frame. A `selvage/2` client **MUST** strip it before it builds the
 socket URL, **MUST NOT** log it, and **MUST NOT** send it to the server in any form. It **MUST**
 refuse an invite whose fragment is absent, whose `k` or `h` is missing, or whose `k` or `h` is not a
-32-byte value — **locally, and before it opens a socket**. Without both values it can neither read
-a frame nor verify one, so there is no fallback and no plaintext mode: the honest refusal says the
+32-byte value — **locally, and before it opens a socket**. This is the client that would speak
+`selvage/2` on this join, and not one that cannot speak it or is pinned to `selvage/1` (§2): a
+`selvage/1` link carries no fragment, and that client joins the room it names, reading no key, as
+that version's peer. Without both values it can neither read a frame nor verify one, so there is no
+fallback and no plaintext mode: the honest refusal says the
 key is missing and asks for the whole link, `#` and all. What this document fixes is that the
 refusal happens; the sentence is the client's.
 
@@ -1078,6 +1085,10 @@ members that carried the server's state gone and nothing put in their place:
 - `capabilities` and `keepalive` are the same two members and are read the same way; §2 says what
   they hold in this version, and `peers` and `capabilities` are still sets whose order means
   nothing.
+- **Which of the two reply shapes a server sends follows the room's version**, and a connection is
+  seated only in a room of the version it spoke (§9): a room pinned to `selvage/1` is answered in
+  the shape above and a `selvage/2` room in this one, and no reply mixes the two. A server that
+  seats only one version answers every room it has in that version's shape.
 
 **What a `selvage/2` peer learns at join.** `room.joined` is the whole of it: the room's id, the
 joiner's own peer record, the roster of peers already seated, and the session's advertisement. It
@@ -1690,6 +1701,17 @@ is short.
   records a peer and nothing about a host: the connection that minted the room holds the private
   half of the host keypair whose public half the invite's fragment carries, and that is the whole of
   what makes it the host (§5's minting passage).
+- **A room is pinned to the version its minting connection spoke, and keeps it.** The version is a
+  member of the frame that minted the room and not of its URL (§5.1), so a `selvage/2` connection
+  mints a `selvage/2` room and a `selvage/1` connection a `selvage/1` one. A `session.hello` whose
+  `v` is a version the server seats but not the room's is refused
+  `session.error{unsupported_version}`, then close **4005**, on a connection that is never seated,
+  and neither the room nor its membership is changed. The version is judged before the room's token
+  — §11's order judges `v` before the method and its params — so a wrong-version hello for a room
+  that exists is not `token_invalid`, and a connection speaking the other version is refused
+  whatever else it got wrong. This is the mechanism §10's "no downgrade path" is about, and on a
+  server that seats both versions it is the only thing that keeps a `selvage/1` peer and a
+  `selvage/2` peer out of one room.
 - **Membership is the whole of what the server keeps.** Each seated connection is assigned a
   `peer_id`, which is opaque, unique in the room, and does not survive its connection, and no member
   of the roster carries a role (§6.1). A join is a `session.hello` answered with `room.created` or
@@ -1727,6 +1749,7 @@ The room machine this gives a reader is four states and one table, and it is sho
 | in state | the frame, or the clock | to | what goes out |
 |---|---|---|---|
 | absent | a connection whose URL names no room | live | `room.created` to the minting connection, carrying `token` |
+| live or grace | a connection joins speaking the other wire version | unchanged | `session.error{unsupported_version}`, close 4005; the room and its membership are untouched |
 | live | a connection joins with the right token | live | `room.joined` to the joiner, `peer.joined` to the peers already there |
 | live | a connection ends and others remain | live | `peer.left` to the room |
 | live | the room's **last** connection ends | grace | `peer.left` to the room it has just emptied; the grace timer arms |
@@ -1736,6 +1759,8 @@ The room machine this gives a reader is four states and one table, and it is sho
 
 Seating and reaping are serialised under the room lock as in `selvage/1`, so a hello that arrives at
 or after the destruction is refused `room_unknown` and never seated into a room that is gone. The
+version row is judged after the room is found and before its token, which is why a wrong-version
+hello to a room that exists is `unsupported_version` and not `token_invalid` (§9, §11). The
 listing, the roles and the open paths are absent from every row because this server never held them:
 a room's contents are the peers' state and no server state machine's business.
 
@@ -1906,6 +1931,7 @@ is never judged by a fault later in that order than one it also carries.
 | in state | frame, or the clock | to | what goes out |
 |---|---|---|---|
 | absent | a connection whose URL names no room | hosted | `room.created` to the minting connection, carrying `token` |
+| hosted or hostless | a connection joins speaking the other wire version | unchanged | `session.error{unsupported_version}`, close 4005; the room and its membership are untouched |
 | hosted | a connection joins with the right token | hosted | `room.joined` to the joiner, `peer.joined` to the peers already there |
 | hosted | the host's connection ends | hostless | `peer.left`, then `host.detached` with `grace_ms`, to the remaining peers |
 | hosted | a guest's connection ends | hosted | `peer.left` |
@@ -1919,6 +1945,12 @@ the room, at `destroyed`. A hold is released by the connection holding it, by `d
 the connection ending, and the path outlives both (§1.2, §5). A room is still joinable throughout
 its grace period whether or not any peer is left in it: only the deadline removes it, and
 `vectors/011` closes the host and joins a guest before that deadline.
+
+The version row is the room's pin (§9's room passage): a room is minted at the version its minting
+connection spoke, so a join speaking the other one is refused `unsupported_version` with close
+**4005** and seats nothing. It holds in both versions — it is the version gate and not the state
+this table's other rows need — and on a server that seats one version it can never fire, because the
+handshake refuses the other version first.
 
 ## 10. Version and capability negotiation
 
@@ -1971,7 +2003,9 @@ makes a peer honour it (§12).
 the same compatibility rule, and the gate carries all of the weight this time because **there is no
 downgrade path**: a `selvage/2` peer and a `selvage/1` peer cannot share a room, since a
 `selvage/1` peer can neither read a sealed frame nor produce one, and a capability would be a
-silent downgrade a compromised server could take.
+silent downgrade a compromised server could take. The room is what keeps them apart: it is pinned to
+the version its minting connection spoke, and a connection speaking the other one is refused at the
+join (§9's room passage).
 
 - **A `selvage/2` server against a `selvage/1` client.** Two stops, and the first is the client's.
   A client that reads a reachable `/meta` finds no version it can speak and refuses locally with
