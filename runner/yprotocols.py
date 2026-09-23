@@ -101,6 +101,43 @@ def decode_message(frame: bytes) -> SyncMessage | AwarenessMessage:
     raise DecodeError(f"unknown message type {message_type}")
 
 
+def carries_content(frame: bytes) -> bool:
+    """Whether a `kind = 0` stream carries document content, anywhere in it.
+
+    `PROTOCOL.md` §13.5: content is a sync message of sub-type 1 (SyncStep2) or 2 (Update),
+    and a SyncStep1 is a state vector and a request rather than content. The whole stream,
+    not its first message: a frame whose first message is a SyncStep1 and whose second is an
+    Update carries its content behind the request (`CANONICAL.md` §6.1's step 10). The walk
+    stops where the stream stops making sense, and what it has already seen is what the
+    frame carries — the same read the receiver that would apply the frame makes.
+    """
+    i = 0
+    content = False
+    while i < len(frame):
+        try:
+            message_type, i = read_varuint(frame, i)
+            if message_type == 0:
+                subtype, i = read_varuint(frame, i)
+                content = content or subtype in (1, 2)
+                _, i = read_varbytes(frame, i)
+            elif message_type == 1:
+                _, i = read_varbytes(frame, i)
+            elif message_type == 2:
+                # `yrs` reads Auth as a status varint, and a reason only when the status is
+                # `PERMISSION_DENIED`; a length-prefixed read loses alignment and can miss an
+                # Update behind it.
+                status, i = read_varuint(frame, i)
+                if status == 0:
+                    _, i = read_varbytes(frame, i)
+            elif message_type == 3:
+                pass
+            else:
+                _, i = read_varbytes(frame, i)
+        except DecodeError:
+            break
+    return content
+
+
 @dataclass
 class Item:
     client: int

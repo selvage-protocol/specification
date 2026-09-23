@@ -34,8 +34,8 @@ sealed         48 values checked against the sealed payloads of selvage/2
 refusals       13 values checked against selvage/2's local report vocabulary
 session v2     42 values checked against selvage/2's session layer
 vectors        36 files, 35022 frame checks, 8676 assertion steps
-peer vectors   23 files, 17 frame, 6 decision, 194 checks, 66 assertion steps
-absence        8 selvage/2 shapes, 23 vectors of this version, 8636 selvage/1 frames (8742 carrying a deleted member, 197 a deleted event), 46 sealed frames, 92 needle checks
+peer vectors   25 files, 19 frame, 6 decision, 210 checks, 74 assertion steps
+absence        8 selvage/2 shapes, 25 vectors of this version, 8636 selvage/1 frames (8742 carrying a deleted member, 197 a deleted event), 50 sealed frames, 100 needle checks
 result         OK
 ```
 

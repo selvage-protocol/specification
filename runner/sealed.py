@@ -110,6 +110,7 @@ MUTATIONS = {
     "no-issued": "step 9: a state or a closing at or below the mark is applied",
     "no-roles": "step 10: a committed viewer's document content is applied",
     "refuse-bad-path": "step 8: a listing's or a holds' path that PROTOCOL.md §5 refuses refuses the frame, where §13.3 and §13.7 have the receiver drop it",
+    "keep-long-path": "step 8: a path over §13.3's 4096-byte bound is kept where the receiver must drop it",
     "merge-peers": "an applied state merges into the keys the receiver holds instead of replacing them",
 }
 
@@ -513,7 +514,7 @@ def _read_state(payload: object, lenient_key: bool = False, strict_path: bool = 
     listing = payload.get("listing")
     if not isinstance(listing, list) or any(not isinstance(p, str) for p in listing):
         return None
-    if strict_path and any(not usable_path(path) for path in listing):
+    if strict_path and any(refused_by_shape(path) for path in listing):
         return None
     peers = payload.get("peers")
     if not isinstance(peers, dict):
@@ -546,7 +547,7 @@ def _read_holds(payload: object, strict_path: bool = False) -> dict | None:
     holds = payload.get("holds")
     if not isinstance(holds, list) or any(not isinstance(p, str) for p in holds):
         return None
-    if strict_path and any(not usable_path(path) for path in holds):
+    if strict_path and any(refused_by_shape(path) for path in holds):
         return None
     return payload
 
@@ -569,8 +570,27 @@ def carries_control(path: str) -> bool:
     return any(unicodedata.category(character) in CONTROL_CATEGORIES for character in path)
 
 
+#: §13.3's and §13.7's bound on one path, in the bytes a listing carries it as.
+MAX_PATH_BYTES = 4096
+
+
+def refused_by_shape(path: str) -> bool:
+    """`PROTOCOL.md` §5's rule alone: blank, or carrying a control character."""
+    return not path or carries_control(path)
+
+
 def usable_path(path: str) -> bool:
-    return bool(path) and not carries_control(path)
+    """`PROTOCOL.md` §13.3 and §13.7's drop rule: §5's shape and §13.3's 4096-byte bound.
+
+    A lone surrogate is a path JSON can carry and UTF-8 cannot encode; it is not a path a
+    receiver can carry either, so it is dropped rather than raising.
+    """
+    if refused_by_shape(path):
+        return False
+    try:
+        return len(path.encode("utf-8")) <= MAX_PATH_BYTES
+    except UnicodeEncodeError:
+        return False
 
 
 # --- the verdict ----------------------------------------------------------------
@@ -817,7 +837,7 @@ class Reader:
             if payload["issued"] <= self.issued and "no-issued" not in mutations:
                 return self._refuse(envelope, kind, "stale_issued")
 
-        if kind == 0 and self._is_content(message):
+        if kind == 0 and yprotocols.carries_content(plaintext):
             if self.role_of_key(key) == "viewer" and "no-roles" not in mutations:
                 return self._refuse(envelope, kind, "unauthorised_content")
 
@@ -830,14 +850,11 @@ class Reader:
             return False
         return envelope.counter <= self.marks.get(hex_id, 0)
 
-    @staticmethod
-    def _is_content(message: object) -> bool:
-        """Document content is a `kind = 0` plaintext carrying a SyncStep2 or an Update.
-
-        `PROTOCOL.md` §13.5: a SyncStep1 is a state vector and a request rather than content,
-        and a viewer may send one.
-        """
-        return isinstance(message, yprotocols.SyncMessage) and message.subtype in (1, 2)
+    def _kept_path(self, path: str) -> bool:
+        """§13.3's and §13.7's drop rule, with `keep-long-path` removing the bound."""
+        if "keep-long-path" in self.mutations:
+            return not refused_by_shape(path)
+        return usable_path(path)
 
     def _refuse(self, envelope: Envelope | None, kind: int | None, reason: str) -> Verdict:
         verdict = Verdict(
@@ -890,13 +907,13 @@ class Reader:
                 self.announced = {
                     name: key for name, key in self.announced.items() if name in peers
                 }
-            self.listing = [p for p in payload["listing"] if usable_path(p)]
+            self.listing = [p for p in payload["listing"] if self._kept_path(p)]
             self.issued = payload["issued"]
         elif kind == 2 and isinstance(payload, dict):
             self.issued = payload["issued"]
             self.ended = True
         elif kind == 3 and isinstance(payload, dict):
-            self.holds[sender] = [p for p in payload["holds"] if usable_path(p)]
+            self.holds[sender] = [p for p in payload["holds"] if self._kept_path(p)]
         return verdict
 
 

@@ -95,7 +95,7 @@ BASE = "https://selvageprotocol.com/schema/1/"
 # the corpus. The two layers are counted apart on purpose: they are committed and replayed by
 # different tools, and one number would let one layer's loss be paid by the other's gain.
 EXPECTED_WIRE_VECTORS = 36
-EXPECTED_PEER_VECTORS = 23
+EXPECTED_PEER_VECTORS = 25
 EXPECTED_FRAME_CHECKS = 35022
 EXPECTED_ASSERTIONS = 8676
 # The peer layer's own counts. `PEER_CHECKS` is one per peer step plus one per recipe, and
@@ -103,8 +103,8 @@ EXPECTED_ASSERTIONS = 8676
 # `runner/run_peer.py` runs without a client; a decision vector's `expectSubject` steps are checked
 # here and are not in this number, because they are asserted against a *subject* — a client named by
 # `--subject` — and are counted in that run's own summary rather than in a corpus-wide pin.
-EXPECTED_PEER_CHECKS = 194
-EXPECTED_PEER_ASSERTIONS = 66
+EXPECTED_PEER_CHECKS = 210
+EXPECTED_PEER_ASSERTIONS = 74
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
 # closed vocabulary is schema-valid and count-identical, so this census is what makes one a
@@ -190,6 +190,8 @@ EXPECTED_REFUSALS = {
     "115": ["unknown_kind"],
     "116": ["unknown_epoch"],
     "117": [],
+    "118": ["unauthorised_content"],
+    "119": [],
     "151": ["unauthorised_content"],
     "152": ["stale_issued"],
     "153": [],
@@ -215,6 +217,8 @@ EXPECTED_MUTATIONS = {
     "115": "lenient-kind",
     "116": "lenient-epoch",
     "117": "refuse-bad-path",
+    "118": "no-roles",
+    "119": "keep-long-path",
     "151": "ignore-roles",
     "152": "ignore-issued",
     "153": "announce-once",
@@ -333,6 +337,7 @@ PEER_FRAME_MUTATIONS = frozenset(
         "no-issued",
         "no-roles",
         "refuse-bad-path",
+        "keep-long-path",
         "merge-peers",
     }
 )
