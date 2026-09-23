@@ -758,9 +758,9 @@ refuse an invite whose fragment is absent, whose `k` or `h` is missing, or whose
 `selvage/2` on this join, and not one that cannot speak it or is pinned to `selvage/1` (§2): a
 `selvage/1` link carries no fragment, and that client joins the room it names, reading no key, as
 that version's peer. Without both values it can neither read a frame nor verify one, so there is no
-fallback and no plaintext mode: the honest refusal says the
-key is missing and asks for the whole link, `#` and all. What this document fixes is that the
-refusal happens; the sentence is the client's.
+fallback and no plaintext mode: the honest refusal says the key is missing and asks for the whole
+link, `#` and all. What this document fixes is that the refusal happens; the sentence is the
+client's.
 
 In `selvage/1` the fragment carries nothing and no `selvage/1` frame is sealed: a link that carries
 `k` and `h` joins the same room in the clear, and neither value is read.
