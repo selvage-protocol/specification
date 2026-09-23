@@ -167,5 +167,24 @@ class TestAwareness(unittest.TestCase):
         self.assertEqual(checked, 2, "vector 010 describes two frames")
 
 
+class TestCarriesContent(unittest.TestCase):
+    """The whole-stream content scan, over the message types `yrs` defines."""
+
+    def test_a_leading_request_does_not_hide_the_update_behind_it(self) -> None:
+        # SyncStep1 (type 0, sub-type 0, one-byte empty state vector), then an update.
+        self.assertTrue(yprotocols.carries_content(bytes([0, 0, 1, 0, 0, 2, 0])))
+
+    def test_a_lone_request_is_not_content(self) -> None:
+        self.assertFalse(yprotocols.carries_content(bytes([0, 0, 1, 0])))
+
+    def test_an_auth_message_does_not_hide_the_update_behind_it(self) -> None:
+        # Auth is a status varint (granted, `02 01`), not a length-prefixed buffer: a walk
+        # that reads it as one loses alignment and misses the update.
+        self.assertTrue(yprotocols.carries_content(bytes([2, 1, 0, 2, 0])))
+
+    def test_a_truncated_message_returns_what_it_saw(self) -> None:
+        self.assertTrue(yprotocols.carries_content(bytes([0, 2, 0, 0, 0])))
+        self.assertFalse(yprotocols.carries_content(bytes([0, 0])))
+
 if __name__ == "__main__":
     unittest.main()

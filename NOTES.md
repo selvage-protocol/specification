@@ -1367,6 +1367,22 @@ study's own largest uncertainty, and unchanged by writing it down. (5) **The lea
 no-state window are asserted by polls with deadlines in the decision vectors, and no poll has
 ever run**: `within_ms` is a member a runner has to implement and nothing has implemented it.
 
+**Revised 2026-09-23: the frame layer's two blind spots, each now a vector.** A review of the
+vendored engine found two defects the corpus could not catch. Its first-message-only content
+check — read the same way by this runner's `yprotocols.decode_message` and by
+`reference_server`'s `crates/client/src/sealed.rs` — let a `viewer`'s `Update` behind a leading
+`SyncStep1` pass `CANONICAL.md` §6.1's step 10 and have its content applied; the check now walks
+the whole stream, message for message, with the decoder the applier uses. And a path over
+§13.3's **4096-byte** bound was kept by the Rust client's `usable_path`, where the engine already
+dropped it; the bound is applied at the receiver in `runner/sealed.py` and `sealed.rs` alike, so
+a path at 4096 bytes is kept and one at 4097 is dropped. Two frame vectors pin them: **118** is
+111's frame with a SyncStep1 in front of the Update, refused `unauthorised_content` and applied
+to nothing, and it goes red under `no-roles`; **119** carries a 4096-byte path and a 4097-byte
+one in a listing and a hold set, keeps the first and drops the second, and goes red under the new
+`keep-long-path`. `EXPECTED_PEER_VECTORS` is 25 — 19 frame and 6 decision — `EXPECTED_PEER_CHECKS`
+210, `EXPECTED_PEER_ASSERTIONS` 74, and the absence scan reads 50 sealed frames and 100 needle
+checks. No rule moves; the corpus grew.
+
 **B.39 `/meta`'s version list, for a server that implements both versions.** `PROTOCOL.md` §2
 said a `selvage/2` server **MUST NOT** name a version below `selvage/2` in `wire_versions`. That
 is true of a server that implements only `selvage/2`, and it forbids the one shape the release

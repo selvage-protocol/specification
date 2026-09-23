@@ -843,6 +843,22 @@ class TestAbsenceRule(unittest.TestCase):
         self.assertGreater(sum(validate.EXPECTED_V1_NEEDLES.values()), 0)
 
 
+class TestUsablePath(unittest.TestCase):
+    """`sealed.usable_path`'s two rules and the encoding failure a lone surrogate makes."""
+
+    def test_a_path_over_the_bound_is_unusable(self) -> None:
+        self.assertTrue(sealed.usable_path("b" * sealed.MAX_PATH_BYTES))
+        self.assertFalse(sealed.usable_path("a" * (sealed.MAX_PATH_BYTES + 1)))
+
+    def test_a_blank_or_control_carrying_path_is_unusable(self) -> None:
+        self.assertFalse(sealed.usable_path(""))
+        self.assertFalse(sealed.usable_path("a\tb"))
+
+    def test_a_lone_surrogate_is_unusable_rather_than_raising(self) -> None:
+        # JSON can carry a lone surrogate and UTF-8 cannot encode it: §13.3 drops the path.
+        self.assertFalse(sealed.usable_path("\ud800"))
+
+
 class TestMutationCensus(unittest.TestCase):
     """The census on a corpus built here, so its verdicts are known.
 
