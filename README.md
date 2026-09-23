@@ -144,7 +144,7 @@ in every vector against them. It prints a line for the schemas, a line for the c
   `selvage/1`'s do not — a `/meta` body of four members whose `wire_versions` name `selvage/2` or a
   later minor and whose `keepalive` carries `room_grace_ms`, a `PeerInfo` without `role`, the two
   replies to `session.hello` without `documents`, the `peer.joined` whose params that peer record
-  is, and the fault vocabulary of a server that does not know who the host is — the same way and for
+  is, and the fault vocabulary of a server that seats nobody as the host — the same way and for
   the same reason: `/meta` carries no `v`, the transcripts are `selvage/1`'s until the corpus is
   re-baselined, and nothing else in this suite reaches a frame of that version. It pins the
   tolerance as well as the shape: a body, a peer record, an event or a reply carrying a member the
