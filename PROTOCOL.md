@@ -5,8 +5,7 @@ the running implementation before it was written down, in the sessions in
 [`crates/harness/tests/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests),
 and nothing here is ratified. The one passage that is not `selvage/1`'s is §7.1, which fixes
 `selvage/2`'s sealed frame and the two keys that go with it ([`CANONICAL.md`](CANONICAL.md) §6.1):
-no implementation speaks `selvage/2` yet, so that section is written from the design rather than
-from a session, and it says so itself.
+that section is written from the design rather than from a session, and it says so itself.
 
 This document is normative, and §1.1 says which sentences bind a reader and what a conforming
 implementation is. Three sibling artifacts fix the other halves of the same thing, and all four
@@ -252,11 +251,20 @@ put in, because it seats nobody as anything (§1.2). A `selvage/2` server advert
   `selvage/2` **MUST NOT** name a version below it: that server cannot seat a `selvage/1` peer
   (§10), so a list offering one would be a downgrade a compromised server could take a client
   down, which is the one failure a confidentiality feature cannot have. A server that implements
-  both versions advertises both, which is what it accepts and not that downgrade: §10 forbids a
-  client that can speak `selvage/2` to take an earlier version however the list reads, so the
-  list can never be the thing that moves it down. Acceptance is unchanged — the same grammar and
-  the [compatibility rule](#10-version-and-capability-negotiation) — so a server that accepts
-  `selvage/2` accepts any `selvage/2.x`.
+  both versions advertises both, which is what it accepts and not that downgrade: an unpinned
+  client that can speak `selvage/2` **MUST** mint `selvage/2`, and a reachable `wire_versions`
+  that holds no version at major 2 it can speak is a refusal (§10) — local, before a socket is
+  opened, and never a fall back to `selvage/1` — the client's to word, naming the server and the
+  version it would need. A `/meta` that could not be read is not that answer: the client attempts
+  `selvage/2` and the handshake decides, and a server that seats only `selvage/1` answers
+  `unsupported_version` — loudly, and not as a downgrade. `selvage/1` is what a client mints when
+  it cannot speak `selvage/2`, or when it is pinned there (a setting, a link, a deployment): a
+  deliberate choice to host a room the server can read, which is what the pin is for. A **join**
+  is not this choice: it speaks the version its invite names — the fragment's two keys, or their
+  absence (§5.1) — whatever the list says. A pin to a version the server does not seat is a
+  refusal (§10) and never a fall back to a version it does. Acceptance is unchanged — the same
+  grammar and the [compatibility rule](#10-version-and-capability-negotiation) — so a server that
+  accepts `selvage/2` accepts any `selvage/2.x`.
 - **`capabilities`, which carries the two names this version defines for a server, `y-protocols/1`
   and `awareness`.** An implementation **MAY** advertise names of its own beyond them, as §10
   allows, and the two names `selvage/1` adds are absent here because they are that version's server
@@ -1352,8 +1360,8 @@ frame key and signed by that connection's session key: a set of paths, replaced 
 holds message under the same key, and no member of it names the peer it is about. §13.7 states who
 publishes one, what renews it and what expires it.
 
-*(informative)* No implementation speaks `selvage/2` yet. This section and
-[`CANONICAL.md`](CANONICAL.md) §6.1 exist so that a corpus, a client and a server can be written
+*(informative)* This section and [`CANONICAL.md`](CANONICAL.md) §6.1 are written from the design
+rather than observed on a wire, and exist so that a corpus, a client and a server can be written
 against frozen bytes. The session layer that version's passages state is written — §1.2's entries,
 §2's `/meta`, §2.1's bounds, §3's server and its account of what the relay cannot do, §5's handshake
 and the invite's fragment, §6's events, §6.1's replies, §7.1's four sealed values, §8's awareness
@@ -1983,11 +1991,12 @@ so a server learns a client's version when it sends its first text frame and not
 `/meta` is the only check that precedes a socket: it is the client's, and it is a refusal with no
 wire on it at all. There is no pre-hello negotiation to look for and no version in the connection
 URL (§5.1).
-- **A client that can speak `selvage/2` MUST NOT fall back.** It **MUST NOT** connect to a server
-whose reachable `/meta` does not name `selvage/2`, whatever else the body says, and a
-`session.hello` answered with `unsupported_version` **MUST NOT** be re-helloed as an earlier
-version. That is the whole of the no-downgrade rule, and it is a client rule because the server is
-the party it defends against; §9.1's rule that a refusal is terminal already names
+- **A client whose version is `selvage/2` MUST NOT fall back.** It **MUST NOT** connect to a server
+whose reachable `/meta` names no version at major 2 it can speak, whatever else the body says,
+and a `session.hello` answered with `unsupported_version` **MUST NOT** be re-helloed as an earlier
+version. That is the whole of the no-downgrade rule — that version is the one §2 gives a minting
+client, the one an invite names, or the one the client pinned — and it is a client rule because
+the server is the party it defends against; §9.1's rule that a refusal is terminal already names
 `unsupported_version`, and this is the version that needs it.
 
 Once a connection is seated the version is checked on every later request exactly as above,

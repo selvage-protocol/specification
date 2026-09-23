@@ -227,8 +227,8 @@ messages, which is a property of `y-protocols`, not of SJ-C.
 the bare y-protocols stream §6 describes, and a `selvage/2` one is an envelope whose plaintext is
 that same stream. It fixes the envelope's bytes, the two values the invite URL's fragment carries,
 and the order a receiver reads the bytes in. `PROTOCOL.md` §7.1 says what the envelope carries and
-§5.1 says where the two values sit in a link. No implementation speaks `selvage/2` yet, so every
-rule here is written from the design rather than observed on a wire.
+§5.1 says where the two values sit in a link. Every rule here is written from the design rather
+than observed on a wire.
 
 **The envelope.** A `selvage/2` binary frame is exactly one envelope: nothing precedes it, nothing
 follows it, and its bytes are these, in this order.
