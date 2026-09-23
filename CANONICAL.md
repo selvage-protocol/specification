@@ -323,9 +323,13 @@ mis-attribution.
 counter `1`, and each later frame under that key a strictly greater one. A receiver keeps, for each
 key it holds — every key its applied state commits and every key it has accepted an announcement
 from — the highest counter it has **not refused**, starting at `0`: a frame it refuses never
-moves a mark, whatever step refused it, so a relay cannot poison one with a forged frame and lock
-out the frames that follow it, and the same bytes are refused for the same reason however often they
-arrive. A `kind = 0`, `3` or `4` frame at or below the mark is refused whatever else is right about
+moves a mark, whatever step refused it, and neither does a frame a peer rule *ignores*. An ignored
+frame is one that is neither applied nor refused — a closing that arrives while the receiver holds
+no verified state (`PROTOCOL.md` §13.10) — and it leaves both marks where they were, so the state
+below it is still applied when it arrives. What the rule buys is that a relay cannot poison a mark
+with a forged frame and lock out the frames that follow it, and that the same bytes are refused for
+the same reason however often they arrive. A `kind = 0`, `3` or `4` frame at or below the mark is
+refused whatever else is right about
 it, and there is no window around the mark: the transport `PROTOCOL.md` §7 describes is ordered, one
 connection's frames arrive in the order they were sent, so a counter that does not advance is a
 replay. A **gap** is not a fault — the relay may drop frames — and a receiver **MUST** accept a
@@ -344,9 +348,11 @@ refused `uncommitted_key` whatever mark stands against it. `PROTOCOL.md` §13.3 
 may do when a peer announces keys without bound.
 
 The two kinds the host signs are ordered by the `issued` member of their own plaintext instead, and
-their counter is not read for that purpose: a room state and a closing come from the host key,
-which is minted with the room and outlives the connection any one of them was published on, so it
-is `issued` and not a per-key counter that says which of two states is the later. A receiver keeps
+their counter is not read: the mark above guards `kind = 0`, `3` and `4` frames, and a receiver
+checks nothing about the counter of a room state or a closing beyond its being one of the bytes the
+signature covers. A room state and a closing come from the host key, which is minted with the room
+and outlives the connection any one of them was published on, so it is `issued` and not a per-key
+counter that says which of two states is the later. A receiver keeps
 the highest `issued` it has accepted from the host, also starting at `0`, and refuses a room state
 or a closing that is not above it. The host **MUST** write the `issued` `1` on the first state it
 publishes — the mark starts at `0`, so a host whose series began there would have every state it

@@ -132,10 +132,13 @@ in every vector against them. It prints a line for the schemas, a line for the c
   re-homes is one of the values that **must** validate: a listing whose path carries a control
   character and a holds message whose set does, because `PROTOCOL.md` §13.3 and §13.7 have a receiver
   drop such a path rather than refuse the frame or the state, and a model that refused it would put
-  two conforming receivers at odds about one state. No vector reaches either yet: a sealed frame is bytes rather than JSON, and
-  the vectors for one belong to the corpus layer that is not written. Until they exist this check is
-  what keeps the model from being relaxed unnoticed, which is why it is here rather than with the
-  layer that owns the vectors. The report vocabulary is a closed *value* rather than a member, which
+  two conforming receivers at odds about one state. The peer corpus reaches both now: `vectors/peer/117`
+  seals a state whose `listing` carries a control-carrying path and a holds message whose set does,
+  so this check is the model's own half of a rule the corpus pins in bytes rather than the only half.
+  A sealed frame is bytes rather than JSON, so a vector cannot hand these values to the schema check
+  directly; what keeps it here is that the rule re-homed from the server to the peers is pinned in
+  the model and in the corpus at once, and one of the two going slack is a red run in the other.
+  The report vocabulary is a closed *value* rather than a member, which
   is the one thing a schema here can refuse: it is pinned to `CANONICAL.md` §6.1's table in both
   directions, so a reason removed from it, a reason added with no rule behind it, and the reason a
   reader expects and cannot have (`bad_tag`, because the signature covers the ciphertext) are each a
@@ -144,7 +147,7 @@ in every vector against them. It prints a line for the schemas, a line for the c
   `selvage/1`'s do not — a `/meta` body of four members whose `wire_versions` name `selvage/2` or a
   later minor and whose `keepalive` carries `room_grace_ms`, a `PeerInfo` without `role`, the two
   replies to `session.hello` without `documents`, the `peer.joined` whose params that peer record
-  is, and the fault vocabulary of a server that does not know who the host is — the same way and for
+  is, and the fault vocabulary of a server that seats nobody as the host — the same way and for
   the same reason: `/meta` carries no `v`, the transcripts are `selvage/1`'s until the corpus is
   re-baselined, and nothing else in this suite reaches a frame of that version. It pins the
   tolerance as well as the shape: a body, a peer record, an event or a reply carrying a member the
@@ -225,9 +228,12 @@ summary        36 files, 35022 frame checks, 36 vectors passed, 0 failed
 The red line to expect is a vector that pins behaviour newer than the server you point it at; the
 summary names the file and the frame it disagreed about.
 
-It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS`: the grace
-period is per-vector (`vectors/012` waits out 400 ms, `vectors/011` four seconds), and a runner
-that spawns the server has no other way to set it. `SELVAGE_VECTORS=DIR` reads the transcripts
+It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS` and
+`--serve-version-1-only`: the grace period is per-vector (`vectors/012` waits out 400 ms,
+`vectors/011` four seconds), and a runner that spawns the server has no other way to set it, while
+every vector in this corpus is bound to `selvage/1` and two of them — `001`'s `/meta` and `005`'s
+refused `selvage/2` hello — are claims about a server that seats that version alone, so the runner
+starts the server that way. `SELVAGE_VECTORS=DIR` reads the transcripts
 from another directory, the same escape `schema/validate.py` honours, and the replay holds the
 same pin on the file count before it starts. `--schema-only` is exactly
 `python3 schema/validate.py` and starts no server.
