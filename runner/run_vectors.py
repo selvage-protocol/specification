@@ -7,6 +7,12 @@ opens WebSocket connections, sends exactly the bytes a step names, and compares 
 comes back. Nothing here reads Rust; the only thing it needs from the reference
 implementation is a running server, whose path it takes from `SELVAGE_SELVAGED`.
 
+**The corpus is `selvage/1`'s**, and the server this runner spawns is started with
+`--serve-version-1-only` for that reason: two of the thirty-six vectors are claims about a
+server that seats that version alone (001's `/meta`, 005's refused `selvage/2` hello), and a
+server that seats both answers them differently. `replay` refuses any vector bound to another
+version, so the flag is right for every vector this file can run.
+
 Run it from this directory:
 
     export SELVAGE_SELVAGED=/path/to/reference_server/target/debug/selvaged
@@ -604,12 +610,18 @@ class Server:
         self.host_port: str | None = None
 
     def start(self) -> None:
+        # The corpus is the version-1 one — `replay` refuses any vector that is not — so the
+        # server is told to seat `selvage/1` alone: vector 001's `/meta` advertises one
+        # version and vector 005 has a `selvage/2` hello refused, and both are claims about
+        # that server rather than about the default, which seats both. The Rust harness says
+        # the same thing at its own spawn site (`tests/vectors/runner.rs`).
         command = [
             self.binary,
             "--listen",
             "127.0.0.1:0",
             "--room-grace-ms",
             str(self.grace_ms),
+            "--serve-version-1-only",
         ]
         self.process = subprocess.Popen(
             command,
@@ -626,8 +638,9 @@ class Server:
             self.stop()
             raise ServerError(
                 f"`{self.binary}` did not print a listening address; it needs the\n"
-                "`--room-grace-ms` option (the vectors set the grace period per\n"
-                "transcript), so rebuild `crates/selvaged` from the reference server\n"
+                "`--room-grace-ms` and `--serve-version-1-only` options (the vectors\n"
+                "set the grace period per transcript, and the corpus is `selvage/1`'s\n"
+                "alone), so rebuild `crates/selvaged` from the reference server\n"
                 f"and point ${SERVER_ENV} at the new binary. It said: {line.strip()!r}"
             )
         self.host_port = match.group(1)

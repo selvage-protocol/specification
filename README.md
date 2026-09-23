@@ -225,9 +225,12 @@ summary        36 files, 35022 frame checks, 36 vectors passed, 0 failed
 The red line to expect is a vector that pins behaviour newer than the server you point it at; the
 summary names the file and the frame it disagreed about.
 
-It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS`: the grace
-period is per-vector (`vectors/012` waits out 400 ms, `vectors/011` four seconds), and a runner
-that spawns the server has no other way to set it. `SELVAGE_VECTORS=DIR` reads the transcripts
+It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS` and
+`--serve-version-1-only`: the grace period is per-vector (`vectors/012` waits out 400 ms,
+`vectors/011` four seconds), and a runner that spawns the server has no other way to set it, while
+every vector in this corpus is bound to `selvage/1` and two of them — `001`'s `/meta` and `005`'s
+refused `selvage/2` hello — are claims about a server that seats that version alone, so the runner
+starts the server that way. `SELVAGE_VECTORS=DIR` reads the transcripts
 from another directory, the same escape `schema/validate.py` honours, and the replay holds the
 same pin on the file count before it starts. `--schema-only` is exactly
 `python3 schema/validate.py` and starts no server.
