@@ -132,10 +132,13 @@ in every vector against them. It prints a line for the schemas, a line for the c
   re-homes is one of the values that **must** validate: a listing whose path carries a control
   character and a holds message whose set does, because `PROTOCOL.md` §13.3 and §13.7 have a receiver
   drop such a path rather than refuse the frame or the state, and a model that refused it would put
-  two conforming receivers at odds about one state. No vector reaches either yet: a sealed frame is bytes rather than JSON, and
-  the vectors for one belong to the corpus layer that is not written. Until they exist this check is
-  what keeps the model from being relaxed unnoticed, which is why it is here rather than with the
-  layer that owns the vectors. The report vocabulary is a closed *value* rather than a member, which
+  two conforming receivers at odds about one state. The peer corpus reaches both now: `vectors/peer/117`
+  seals a state whose `listing` carries a control-carrying path and a holds message whose set does,
+  so this check is the model's own half of a rule the corpus pins in bytes rather than the only half.
+  A sealed frame is bytes rather than JSON, so a vector cannot hand these values to the schema check
+  directly; what keeps it here is that the rule re-homed from the server to the peers is pinned in
+  the model and in the corpus at once, and one of the two going slack is a red run in the other.
+  The report vocabulary is a closed *value* rather than a member, which
   is the one thing a schema here can refuse: it is pinned to `CANONICAL.md` §6.1's table in both
   directions, so a reason removed from it, a reason added with no rule behind it, and the reason a
   reader expects and cannot have (`bad_tag`, because the signature covers the ciphertext) are each a

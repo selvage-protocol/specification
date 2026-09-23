@@ -72,7 +72,9 @@ speak](#10-version-and-capability-negotiation): conformance is per wire version,
 text of this document is `selvage/1`'s. `selvage/2`'s is every passage that names the version as
 its own, and all of them are listed here so that nothing of that version has to be discovered:
 [`CANONICAL.md`](CANONICAL.md) §6.1; §5.1's fragment, local-refusal, handover and
-token-without-`room` paragraphs; §7.1; §8's awareness passage; §13;
+token-without-`room` paragraphs; the sentences that name the version inside a passage that is
+otherwise `selvage/1`'s — §5's two request paragraphs, §7's SyncStep1 bullet and §8.3's third step;
+§7.1; §8's awareness passage; §13;
 and the passages of this document whose lead-in carries the version — §1.2's `host`, `guest`,
 `grace period` and `set` entries, §2's `/meta` passage, §2.1's bounded-state passage, §3's server
 passage and its closing account of what the relay cannot do, §4.1's fixed-member-set clause, §5's
@@ -2314,7 +2316,11 @@ and the order is part of what follows:
 
 A host's order is the same with one difference: it **MUST** publish a state at mint, on every
 `peer.joined` it receives and on every session-key announcement it accepts (§7.1), so its own state
-may precede any state it verifies. It is held to the rest of the list as any peer is.
+may precede any state it verifies. It is held to the rest of the list as any peer is, with the one
+transposition the mint forces: a minting client has no room id until the reply names one, so **its
+step 2 follows its step 3** — it opens the socket, reads `room_id` from `room.created`, and derives
+the frame key from the room key and that id before it publishes anything. A joining client has the
+room id from the invite's query at step 1 and derives it where the list puts it.
 
 ### 13.2 Verify before apply
 
@@ -2808,9 +2814,9 @@ assertion about them says.
 | A key no state commits is refused | `dropped` with `uncommitted_key` | a holds message signed by a key the fixture state does not name |
 | A `viewer`'s holds apply (§13.9) | `applied`; no content is sent | a state committing the sender as `viewer`, then its holds message; the mutation that removes the role rule must leave this leg green |
 | A lease expires a silent peer (§13.7) | after a bounded wait, the subject's view of that peer's holds is empty; no frame dropped | a fixture room whose `keepalive` compresses the window, a peer that announces once and is then silent, and a poll on the predicate with a deadline; the mutation that removes the lease must fail it |
-| Renewal is unconditional (§13.7) | the subject, idle and receiving nothing, keeps `published`-counting holds messages across a window | the mutation that renews only on a local edit: the idle subject publishes no renewal, and the peer's lease expires it |
+| Renewal is unconditional (§13.7) | the subject, idle and receiving nothing, keeps `published`-counting holds messages across a window | a decision vector over a subject holding a document open on a compressed `awareness_renew_ms`; the mutation that renews only on a local edit is **not** one `runner/run_peer.py --list-mutations` declares, so no vector catches it yet |
 | The host-away clock leaves at its window (§13.8) | `ended` within the host-away window of the state naming an absent host, and not before | a transcript with `peer.left` for the seat the state's `host` entry labels and no state above it whose `host` entry labels a seated seat, and a compressed `awareness_expire_ms`; a client that ends on silence, or before the window, or never, must fail |
-| A session key is announced and committed (§7.1, §13.1) | `published` counts the announcement; the state the subject publishes next carries that key | a fixture announcement signed by the key it names, under a fixture state that does not commit it; the mutation that announces a key other than the signer's must be refused `bad_signature` |
+| A session key is announced and committed (§7.1, §13.1) | `published` counts the announcement; the state the subject publishes next carries that key | a fixture announcement signed by the key it names, under a fixture state that does not commit it; a frame that announces one key and carries a signature from another must be refused `bad_signature`, and no vector pins one yet |
 | A plaintext that is not an object of its kind's members and types is refused (§13.2) | `dropped` with `bad_payload`; nothing applied | a `kind = 1` frame whose plaintext is a bare string and one whose `issued` is a string, sealed and signed with fixture keys; the mutation that removes the step must not drop the frame |
 | A path §5 refuses is dropped and not refused (§13.3, §13.7) | the path is absent from what the subject offers and from the holds it keeps for that peer; the state or the message was applied and nothing was dropped | a fixture state whose `listing` carries a control-carrying path and a holds message whose set does, and a path over the 4096-byte bound; the mutation that refuses the state instead must fail this leg |
 | Every accepted announcement is committed (§7.1) | the state the subject publishes next carries the announced key; `published` counts it, and counts no more than one announcement-driven state per `awareness_renew_ms` when several are accepted inside one | a fixture announcement whose key no seat in the roster can be placed, and a second and third accepted inside the same compressed window; a host that withholds the commitment for want of a label must fail, and so must one that publishes a state per announcement |
@@ -2827,10 +2833,18 @@ assertion about them says.
 a wrong key, a replay and a bad signature are refused with the reason the vocabulary names, that a
 `viewer`'s content is refused `unauthorised_content` and its holds are not, and that a closing above
 the mark ends while one at or below it does not. These are envelope facts, and a byte-exact vector
-against the fixture keys pins them, and the corpus's design already fixes six such vectors for the
-frame layer; a seventh and an eighth for the holds carrier, and two more for the session-key
-announcement and for a plaintext that is not its kind's object, belong to the layer that is not
-written.
+against the fixture keys pins them: the corpus holds nineteen of them for the frame layer — among
+them `vectors/peer/114` for the holds carrier and its replay, `105` and `108` for the session-key
+announcement, `110` for a plaintext that is not its kind's object, and `117` and `119` for a path §5
+refuses — and six decision vectors beside them, each red under the one mutation it declares
+(`runner/run_peer.py --mutation-census`).
+
+**Two rules no vector reaches, and both are about a link.** §5.1's local refusal of an invite that
+carries no fragment or no key, and §10's no-fallback rule for a client that can speak `selvage/2`,
+are decided before a socket is opened: nothing is sent, so no byte-exact vector can pin either one,
+and none does. They are the decision layer's own subject, though, because that layer hands its
+subject the link it starts from: each is a decision vector that reports the refusal and shows that
+no connection was opened, and neither has one yet.
 
 **What no vector can pin, and it is the lease's own limit.** A vector is byte-exact evidence and a
 clock is not. No vector can tell a client that renews on its own timer from one that renews on
