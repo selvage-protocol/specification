@@ -1,11 +1,11 @@
 # Selvage Session Protocol: wire specification
 
-**Status: DRAFT.** Wire version `selvage/1`. Every requirement below was observed on the wire of
+**Status: DRAFT.** Wire version `selvage/2`. Every requirement below was observed on the wire of
 the running implementation before it was written down, in the sessions in
 [`crates/harness/tests/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests),
-and nothing here is ratified. The one passage that is not `selvage/1`'s is §7.1, which fixes
-`selvage/2`'s sealed frame and the two keys that go with it ([`CANONICAL.md`](CANONICAL.md) §6.1):
-that section is written from the design rather than from a session, and it says so itself.
+and nothing here is ratified. One passage is written from the design rather than from a session and
+says so itself: §7.1, which fixes the sealed frame and the two keys that go with it
+([`CANONICAL.md`](CANONICAL.md) §6.1).
 
 This document is normative, and §1.1 says which sentences bind a reader and what a conforming
 implementation is. Three sibling artifacts fix the other halves of the same thing, and all four
@@ -13,7 +13,7 @@ are meant to be read together:
 
 | artifact | what it fixes |
 |---|---|
-| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1**, the byte form of a session text frame, and (§6.1) of a `selvage/2` sealed frame. This document says what the members mean; that one says how they are written, and a frame conforms to both |
+| [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1**, the byte form of a session text frame, and (§6.1) of a sealed frame. This document says what the members mean; that one says how they are written, and a frame conforms to both |
 | [`schema/`](schema/) | the machine-readable model: JSON Schema 2020-12, one file per concern, with every frame of every vector checked against it |
 | [`vectors/`](vectors/) | transcripts of real bytes. They are examples, not the rule; a second implementation is held to them by [`runner/run_vectors.py`](runner/) |
 
@@ -66,31 +66,9 @@ number form and array order. This document is normative for what those members m
 conforms when it satisfies both.
 
 **What conforms.** A conforming **server** implements §2–§11 on the server side; a conforming
-**client** implements §4–§10 on the client side. Both implement `CANONICAL.md`, both are bound by
-§12–§14, and both are bound by the [frames of the version they
-speak](#10-version-and-capability-negotiation): conformance is per wire version, and the unmarked
-text of this document is `selvage/1`'s. `selvage/2`'s is every passage that names the version as
-its own, and all of them are listed here so that nothing of that version has to be discovered:
-[`CANONICAL.md`](CANONICAL.md) §6.1; §5.1's fragment, local-refusal, handover and
-token-without-`room` paragraphs; the sentences that name the version inside a passage that is
-otherwise `selvage/1`'s — §5's two request paragraphs, §7's SyncStep1 bullet and §8.3's third step;
-§7.1; §8's awareness passage; §13;
-and the passages of this document whose lead-in carries the version — §1.2's `host`, `guest`,
-`grace period` and `set` entries, §2's `/meta` passage, §2.1's bounded-state passage, §3's server
-passage and its closing account of what the relay cannot do, §4.1's fixed-member-set clause, §5's
-method-surface, handshake and minting passages, §6's vocabulary
-passage, §6.1's join passage, §9's room passage, §9.1's and §9.2's lead-ins and §9.1's return
-passage, §10's version-gate passage, §11's vocabulary passage, and §12's scoping lead-in.
-
-A peer that speaks `selvage/1` is not held to any of them, and the converse holds by the same rule:
-a statement this document makes that no passage of `selvage/2` carries is `selvage/1`'s and does not
-bind a `selvage/2` peer. The two versions' lifecycles are where that matters most, because
-`selvage/2`'s server holds no host as state: §9's host claim, its one-host-connection
-rule and its `host.detached`/`host.attached` pair, §9.1's reclaim, §9.2's two state machines, §11's
-`host_present` code and close **4004**, the peer-cap carve-out and the two room-state rows of §2.1,
-and §1.2's `hold`, open-document-set and grant entries are all rules about state that version's
-server holds and this one does not. Those passages stay where they are and are read as that
-version's, which is what lets both versions be stated in one document.
+**client** implements §4–§10 on the client side. Both implement `CANONICAL.md` and both are bound by
+§12–§14. The protocol has **one wire version**, `selvage/2` (§10), so there is one conformance and
+not one per version: every sentence of this document binds a peer that speaks it.
 
 Two rules follow, and they are what makes the keywords worth reading:
 
@@ -102,8 +80,8 @@ Two rules follow, and they are what makes the keywords worth reading:
   do to be interoperable at all. Where a rule is about a private seam, the observable consequence
   is stated with it.
 
-A frame is cited in this document by its **wire name** (`session.hello`, `doc.open`,
-`peer.joined`), which is the one name it has on the wire and the one name a peer will cite back.
+A frame is cited in this document by its **wire name** (`session.hello`, `peer.joined`), which is
+the one name it has on the wire and the one name a peer will cite back.
 [§5's method table](#5-methods) and [§6's event table](#6-events) are the index of them.
 
 ### 1.2 Terminology
@@ -184,43 +162,35 @@ These words carry obligations, and the protocol uses them precisely.
 
   ```json
   {
-    "server": "selvaged/0.1.0",
-    "wire_versions": ["selvage/1"],
-    "capabilities": ["y-protocols/1", "awareness", "open-document-set", "host-reclaim"],
+    "server": "selvaged/0.4.0",
+    "wire_versions": ["selvage/2"],
+    "capabilities": ["y-protocols/1", "awareness"],
     "keepalive": {
       "ping_interval_ms": 30000,
       "awareness_renew_ms": 15000,
       "awareness_expire_ms": 30000,
       "room_grace_ms": 30000
-    },
-    "roles": ["host", "guest"]
+    }
   }
   ```
 
   | member | type | meaning |
   |---|---|---|
-  | `server` | string | free-form identification, e.g. `selvaged/0.1.0`. For diagnostics only, and not stable; a peer **MUST NOT** depend on it |
-  | `wire_versions` | array of string | the wire versions this server accepts (§10). A client that can speak none of them **MUST NOT** open the socket |
+  | `server` | string | free-form identification, e.g. `selvaged/0.4.0`. For diagnostics only, and not stable; a peer **MUST NOT** depend on it |
+  | `wire_versions` | array of string | the wire versions this server accepts, which is `["selvage/2"]`: the protocol has one version, and the member stays a list because a later version needs a place to say so (§10) |
   | `capabilities` | array of string | what the server believes it has; the same list the handshake reply advertises (§10) |
-  | `keepalive` | object | the session's clocks (`ping_interval_ms`, `awareness_renew_ms`, `awareness_expire_ms`), which are the ones the handshake reply carries too (§8.2), and, in `/meta` alone, `room_grace_ms`, the server's default grace period (§9) |
-  | `roles` | array of string | the roles this server seats (§9) |
+  | `keepalive` | object | the session's clocks (`ping_interval_ms`, `awareness_renew_ms`, `awareness_expire_ms`), which are the ones the handshake reply carries too (§8.2), and, in `/meta` alone, `room_grace_ms`, the server's default grace period: how long a room survives its last connection ending (§9) |
 
-  Unknown members are ignored, like an unknown member anywhere else. What a client needs is
-  `wire_versions`; the rest it reads for a better default before the handshake answers. The three
-  arrays are sets: like `peers` (§6.2), their order is not significant and a client **MUST NOT**
-  depend on it (`CANONICAL.md` §2.7).
+  Unknown members are ignored, like an unknown member anywhere else. A client **MAY** read the body
+  for a better default before the handshake answers. The two arrays are sets: like `peers` (§6.2),
+  their order is not significant and a client **MUST NOT** depend on it (`CANONICAL.md` §2.7).
 
-  A client **SHOULD** read `/meta` before connecting when it can, to fail fast on an incompatible
-  server. Reading it has three outcomes, and they are not the same outcome:
+  There are two outcomes, and they are not the same outcome:
 
-  - **Reachable and compatible**: `wire_versions` holds a version the client can speak: connect.
-    The advertised `keepalive` **MAY** be adopted at once, without waiting for the handshake,
-    since the three clocks are the ones the handshake reply carries too (§8.2, §10); `/meta`
-    carries `room_grace_ms` in addition, so that a client can size its reconnect retry to the
-    grace before it has a session to be detached from (§9.1).
-  - **Reachable and incompatible**: no version in the list: **do not connect**. The client
-    refuses locally, with the reason the server would have given (`unsupported_version`, §11),
-    before a socket is opened at all.
+  - **Reachable**: the body above arrived. The advertised `keepalive` **MAY** be adopted at once,
+    without waiting for the handshake, since the three clocks are the ones the handshake reply
+    carries too (§8.2); `/meta` carries `room_grace_ms` in addition, so that a client can size its
+    reconnect retry to the grace before it has a session to be detached from (§9.1).
   - **Unreachable**: connection refused, a timeout, a body that is not the object above:
     **connect anyway**. `/meta` is a convenience, and the handshake decides; a client that treats
     an unreachable `/meta` as a refusal cannot reach a server behind a proxy that does not forward
@@ -237,62 +207,28 @@ These words carry obligations, and the protocol uses them precisely.
   Other paths return `404`. An implementation **MAY** serve a static page there instead — the
   reference server does, from `--serve-page`, on the same origin as `/session` and `/meta` — which
   is what lets an invite link, whose origin is the server (§5.1), open in a browser. That page is
-  outside `selvage/1`: §1 covers no HTTP surface but `GET /meta`, and the protocol gives a room
+  outside this protocol: §1 covers no HTTP surface but `GET /meta`, and the protocol gives a room
   exactly one wire endpoint.
 
 - **Frame types.** Text frames carry the JSON session envelope (§4–§6). Binary frames carry
   y-protocols payloads (§7, §8). The server routes binary frames by room membership and never
   decodes them (§3).
 
-**`/meta` in `selvage/2`.** The body is not version-tagged and is read the same way in both
-versions, so what moves is its content and not its shape. No member leaves it but `roles`, which
-`selvage/1` uses to say which roles its server seats and which a `selvage/2` server has nothing to
-put in, because it seats nobody as anything (§1.2). A `selvage/2` server advertises:
+**What a server of this protocol advertises.** Three members of the body are the server's own
+statement about itself, and each has one job:
 
-- **`wire_versions`, naming every version the server accepts.** A server that implements only
-  `selvage/2` **MUST NOT** name a version below it: that server cannot seat a `selvage/1` peer
-  (§10), so a list offering one would be a downgrade a compromised server could take a client
-  down, which is the one failure a confidentiality feature cannot have. A server that implements
-  both versions advertises both, which is what it accepts and not that downgrade: an unpinned
-  client that can speak `selvage/2` **MUST** mint `selvage/2`, and a reachable `wire_versions`
-  that holds no version at major 2 it can speak is a refusal (§10) — local, before a socket is
-  opened, and never a fall back to `selvage/1` — the client's to word, naming the server and the
-  version it would need. A `/meta` that could not be read is not that answer: the client attempts
-  `selvage/2` and the handshake decides, and a server that seats only `selvage/1` answers
-  `unsupported_version` — loudly, and not as a downgrade. `selvage/1` is what a client mints when
-  it cannot speak `selvage/2`, or when it is pinned there (a setting, a deployment): a
-  deliberate choice to host a room the server can read, which is what the pin is for. A **join**
-  is not this choice: it speaks the version its invite names — §5.1's two keys are what make an
-  invite a `selvage/2` one, and their absence is §5.1's local refusal rather than a version to join
-  as — **whatever the list says.** A pin to a version the server does not seat is a
-  refusal (§10) and never a fall back to a version it does. Acceptance is unchanged — the same
-  grammar and the [compatibility rule](#10-version-and-capability-negotiation) — so a server that
-  accepts `selvage/2` accepts any `selvage/2.x`.
-- **`capabilities`, which carries the two names this version defines for a server, `y-protocols/1`
-  and `awareness`.** An implementation **MAY** advertise names of its own beyond them, as §10
-  allows, and the two names `selvage/1` adds are absent here because they are that version's server
-  machinery: `open-document-set` is a set this server does not keep, and `host-reclaim` is a
-  reclaim it does not have. Nothing is gated by a capability in either version — a peer **MUST
-  NOT** infer a failure from one it does not recognise — so the list says
-  which frame shapes a peer may expect and not what it may send (§10).
-- **`keepalive`, unchanged in shape and in membership.** `ping_interval_ms` is the server's: how
-often it pings, and those pings are not session messages. `awareness_renew_ms` and
-`awareness_expire_ms` are the session's: the server advertises them so that every peer renews and
-expires on one clock, a client **MUST NOT** substitute its own, and in `selvage/2` that clock is
-the version's only one (§8.2). `room_grace_ms`, in `/meta` alone, is the server's too, and it is
-where a `selvage/2` client reads the room's grace: in that version the number is how long a room
-survives its last connection ending (§1.2).
-
-**What a `selvage/1`-only client sees against a server of `selvage/2` alone.** It sees a server it
-cannot talk to, and it sees it without a socket: `wire_versions` names no version it can speak, so it
-refuses locally with `unsupported_version`, which is the rule above and not a new one. A server that
-seats both names `selvage/1` too, and that client does what the list tells it: it connects and
-speaks `selvage/1`, minting or joining a room of that version and never one of `selvage/2` (§9).
-Nothing else in the body is a signal to it, because the members it reads — `wire_versions`, and
-`capabilities` and `keepalive` for a better default — are the ones that stay: `roles` leaving and
-`capabilities` shrinking are
-both invisible to a client that reads `wire_versions` and connects. §10 says the same from the
-server's side.
+- **`wire_versions`.** A list with the one version in it (`§10`). The member is a list rather than
+  a string, and a future version is what would give it a second entry.
+- **`capabilities`, the two names this protocol defines for a server, `y-protocols/1` and
+  `awareness`.** An implementation **MAY** advertise names of its own beyond them, as §10 allows.
+  Nothing is gated by a capability: a peer **MUST NOT** infer a failure from one it does not
+  recognise, so the list says which frame shapes a peer may expect and not what it may send.
+- **`keepalive`.** `ping_interval_ms` is the server's: how often it pings, and those pings are not
+  session messages. `awareness_renew_ms` and `awareness_expire_ms` are the session's: the server
+  advertises them so that every peer renews and expires on one clock, and a client **MUST NOT**
+  substitute its own (§8.2). `room_grace_ms`, in `/meta` alone, is the server's too, and it is
+  where a client reads the room's grace: it is how long a room survives its last connection ending
+  (§9).
 
 ### 2.1 Limits
 
@@ -751,28 +687,22 @@ most once**, as `room` and `token` do, and a parameter the receiver does not kno
 unknown query parameter is.
 
 The fragment is **never sent**, by construction: it is not part of a request line, and nothing this
-protocol defines puts it in a frame. A `selvage/2` client **MUST** strip it before it builds the
-socket URL, **MUST NOT** log it, and **MUST NOT** send it to the server in any form. It **MUST**
-refuse an invite whose fragment is absent, whose `k` or `h` is missing, or whose `k` or `h` is not a
-32-byte value — **locally, and before it opens a socket**. This is the client that would speak
-`selvage/2` on this join, and not one that cannot speak it or is pinned to `selvage/1` (§2): a
-`selvage/1` link carries no fragment, and that client joins the room it names, reading no key, as
-that version's peer. Without both values it can neither read a frame nor verify one, so there is no
-fallback and no plaintext mode: the honest refusal says the key is missing and asks for the whole
-link, `#` and all. What this document fixes is that the refusal happens and which of the two keys it
-is about — a refusal names the missing key, in this document's own spelling of the name the fragment
-gives it, `k` or `h`; the sentence is the client's.
-
-In `selvage/1` the fragment carries nothing and no `selvage/1` frame is sealed: a link that carries
-`k` and `h` joins the same room in the clear, and neither value is read.
+protocol defines puts it in a frame. A client **MUST** strip it before it builds the socket URL,
+**MUST NOT** log it, and **MUST NOT** send it to the server in any form. It **MUST** refuse an
+invite whose fragment is absent, whose `k` or `h` is missing, or whose `k` or `h` is not a 32-byte
+value — **locally, and before it opens a socket**. Without both values it can neither read a frame
+nor verify one, so there is no fallback: the honest refusal says the key is missing and asks for the
+whole link, `#` and all. What this document fixes is that the refusal happens and which of the two
+keys it is about — a refusal names the missing key, in this document's own spelling of the name the
+fragment gives it, `k` or `h`; the sentence is the client's.
 
 **That refusal is local, and has no wire form.** It happens before a socket is opened, so there is
 no frame to refuse on and no code to carry it: it is not a `session.error`, it is paired with no
 close code, and §11's vocabulary is not involved, because the fault never reaches the server. What
-the version fixes is that the refusal happens and what it is about; the words are the clients',
+this document fixes is that the refusal happens and what it is about; the words are the clients',
 and the clients keep one set of them between them rather than one per editor.
 
-**The handover, in `selvage/2`.** A client **MAY** also accept the two values with no fragment at
+**The handover.** A client **MAY** also accept the two values with no fragment at
 all: an invite a guest already holds, beside the room key and the host's public key said
 separately, in the fragment's own names and encoding. A client that accepts them joins exactly as
 one handed the link does, and owes the same local refusal when either value is absent, missing, or
@@ -2010,28 +1940,11 @@ handshake refuses the other version first.
 
 ## 10. Version and capability negotiation
 
-- The wire version is `selvage/1` and appears in every text frame as `v`. It **MUST NOT** be
-  omitted: a frame with no `v` is not a session envelope at all, and is answered with
-  `bad_message` like any other frame the receiver cannot read. An incompatible value is refused at
-  the handshake with `unsupported_version` (close code 4005). Version is also checked on every
-  later request; an incompatible one is answered with an error and the connection is closed
-  (§11).
-- **Compatibility rule**: same major, and while at `0.x` also the same minor. This document
-  defines `selvage/1`, so the rule in force is *same major* alone: every `selvage/1.x` is
-  accepted, including `selvage/1.9` and the bare `selvage/1`, whose minor defaults to `0`. Same-major
-  acceptance is not a promise that binary frames interoperate across minors: a minor **MUST NOT**
-  change the binary encoding without a handling rule both sides share, since binary frames carry
-  no version to check. The
-  grammar is the one [`schema/negotiation.json`](schema/) encodes as `wireVersion`: `selvage/`
-  then a major, then optionally a minor, each a plain decimal with no leading zero and nothing
-  after it, so `selvage/2` and `selvage/x` are refused for their major, and `selvage/01`,
-  `selvage/1.09`, `selvage/1.9.3` and `selvage/1.` are refused because they are not that grammar
-  at all. A receiver **MUST** refuse a version outside the grammar, and outside the grammar is
-  still `unsupported_version`, never `bad_message`: at the handshake a refusal closed with 4005,
-  on a seated connection the error response to the offending request followed by close 4005
-  (§9.2, §11). The minor becomes decisive
-  only when the major reaches `0`. A conforming producer writes `selvage/1`, never `selvage/1.0`
-  (`CANONICAL.md` §2.5).
+- The wire version is `selvage/2` and it appears in every text frame as `v`. It **MUST NOT** be
+  omitted, and it has one value: a frame with no `v`, or with any other, is not a session
+  envelope, and is answered with `bad_message` like any other frame the receiver cannot read
+  (`CANONICAL.md` §2.5). There is nothing to negotiate — the protocol has one wire version, so a
+  peer writes it and a receiver reads it — and a connection is seated at that version alone.
 - Capabilities are advertised additively by the server in `room.created`/`room.joined` and in
   `/meta`, and optionally by the client in `session.hello`. **Unknown capabilities and unknown
   fields are ignored by both sides**: a receiver **MUST** ignore a capability name it does not
@@ -2133,54 +2046,39 @@ same vocabulary is used in both, and the state a connection is in decides what a
 | `bad_message` | not a session envelope / no `id` / duplicate member name / undecodable | refusal: `session.error`, then close **4000** | `session.error`; the connection stays open |
 | `bad_params` | method params missing or malformed | refusal for a blank, over-long or control-carrying `display_name`: `session.error`, then close **4000** | error response; the connection stays open |
 | `hello_required` | the first text frame was not `session.hello`, or none arrived in time | refusal: `session.error`, then close **4000** | — |
-| `unsupported_version` | version refused | refusal: `session.error`, then close **4005** | the error response to the offending request, then close **4005** |
 | `room_unknown` | no such room (never minted, or destroyed) | refusal: `session.error`, then close **4001** | — |
 | `token_invalid` | room present, token absent or wrong | refusal: `session.error`, then close **4002** | — |
 | `room_gone` | the room was destroyed under a seated connection. The frame that announces it is the `room.gone` **event** (§6), and a later join is `room_unknown` | — | — |
-| `host_present` | a host is already connected (`selvage/1`: a `selvage/2` server seats nobody as the host and never sends this) | refusal: `session.error`, then close **4004** | — |
 | `already_seated` | `session.hello` sent twice | — | error response; the connection stays open |
-| `doc_not_open` | reserved; not produced by this slice, and there is no `doc.*` method in `selvage/2` for it to be about | — | — |
 
-The **close** vocabulary is separate, and `selvage/1`'s part of it lives in the private-use
-range: 4000 `protocol_error`, 4001 `room_unknown`, 4002 `token_invalid`, 4003 `room_gone`, 4004
-`host_present`, 4005 `unsupported_version`. A code with a matching close ends the connection; a
+The **close** vocabulary is separate, and it lives in the private-use range: 4000 `protocol_error`,
+4001 `room_unknown`, 4002 `token_invalid`, 4003 `room_gone`. A code with a matching close ends the
+connection; a
 code without one does not. That vocabulary is not the whole of what a peer can receive: a close
 outside it carries no session meaning and a client **MUST NOT** read one into it, because a
 capacity fault that is not about the session protocol is IANA's to name — the reference server
 closes **1013** (try again later) at its connection cap and when a connection has spent its
 inbound budget (§2.1, §12) — and 1013 is not in the private-use range at all.
 
-**The vocabulary in `selvage/2`.** A server of that version carries nine of the eleven codes above,
-and the two it does not are the ones its own shape leaves no meaning for. `host_present` is a
-refusal a server makes when a host is already connected, and this one seats nobody as the host;
-`doc_not_open` is reserved for a `doc.*` method this version does not have, which is why no version
-produces it. What is left is `unknown_method`, `bad_message`, `bad_params`, `hello_required`,
-`unsupported_version`, `room_unknown`, `token_invalid`, `room_gone` and `already_seated`, plus any
-`x.` code an implementation defines for itself (§10.1), and the closes are 4000, 4001, 4002, 4003
-and 4005.
+**The vocabulary is closed.** An implementation **MUST NOT** reuse a code with a different meaning,
+and one that needs a code of its own **SHOULD** name it in the reserved `x.` namespace (§10.1)
+rather than invent a bare name a later version may want. `room_gone` is the one code a server of this
+protocol never sends in practice: a room is destroyed only once no connection is left in it (§9), so
+there is nobody to tell. It stays in the vocabulary for the reason the `room.gone` event stays in
+§6's — the vocabulary is closed and a client reads a code by what its name means rather than by which
+server can produce it.
 
-`room_gone` is the one code in those nine a `selvage/2` server never sends: a room here is destroyed
-only once no connection is left in it (§9), so there is nobody to tell, and it stays in the
-vocabulary for the reason `room.gone` the event stays in §6's — the vocabulary is closed, both
-versions name this fault with the same word, and a client reads a code by what its name means rather
-than by which server can produce it. A server that seats both versions does produce it, on a
-`selvage/1` room whose grace deadline passes with the host still away.
-
-Everything else this section states holds in both versions exactly as written — the fault order, the
-refusal/error-response split, the truncation of a close reason, and that a code with no matching
-close does not end the connection. The split is what `room_unknown` and `token_invalid` are: a
-`selvage/2` server refuses a join naming a room that is gone or a token that does not match, before
-seating, and it has no reason to refuse anything a peer sends afterwards except a malformed request
-— a frame it cannot read is a binary frame it relays rather than a fault (§3), and the bounds of
-§2.1 are the other thing it can refuse past. What the version needs a reader to carry away is that
-`room_unknown` is the ending: a room is gone for good, and the id is the whole of what a later
-connection can be told about it (§9).
+The split is what `room_unknown` and `token_invalid` are: a server refuses a join naming a room that
+is gone or a token that does not match, before seating, and it has no reason to refuse anything a
+peer sends afterwards except a malformed request — a frame it cannot read is a binary frame it relays
+rather than a fault (§3), and the bounds of §2.1 are the other thing it can refuse past. What a
+reader should carry away is that `room_unknown` is the ending: a room is gone for good, and the id is
+the whole of what a later connection can be told about it (§9).
 
 **A fault before seating is announced as a refusal**: a `session.error` event and then a close
 with the matching code, so a client that does not read close frames still learns why. **A fault on
 a seated connection is announced in the frame's own vocabulary**: an error response for a request,
-and the `room.gone` event for the one fault that is not about a request. The version fault is the
-case where both vocabularies meet: see its row above.
+and the `room.gone` event for the one fault that is not about a request.
 
 A close reason is WebSocket control-frame payload, so it is truncated to 123 bytes (RFC 6455
 allows 125, two of which the code takes) when the message it would carry is longer: the reason is
@@ -2194,26 +2092,21 @@ frame, say) is reported as `bad_message` and the connection closes with 4000, no
 it would get for an unparsable envelope.
 
 **When one frame carries more than one fault, one order decides which is answered.** A receiver
-**MUST** judge a frame in the order it is read: the envelope must parse and carry an `id`
-(`bad_message`), then its `v` must be compatible (`unsupported_version`), then the method must
-resolve (`hello_required` for a first frame that is not `session.hello`, `unknown_method`,
-`already_seated`) and only then are its `params` read, with the code each method's params rule
-gives (§5). The first fault in that order is the only one answered, and before seating it is the
-one whose close code is used. So
+**MUST** judge a frame in the order it is read: the envelope must parse and carry an `id` and a
+`v` (`bad_message`), then the method must resolve (`hello_required` for a first frame that is not
+`session.hello`, `unknown_method`, `already_seated`) and only then are its `params` read, with the
+code each method's params rule gives (§5). The first fault in that order is the only one answered,
+and before seating it is the one whose close code is used. So
 `{"v":"selvage/2","id":5,"method":"cursor.teleport"}` on a seated connection is
-`unsupported_version` and close **4005**, never `unknown_method` and a live connection; a first
-frame with neither `id` nor a compatible `v` is `bad_message` and close **4000**, never
-`hello_required` or `unsupported_version`; and a frame that repeats a member name is `bad_message`
-before any of them. Two implementations that dispatch in a different order answer differently (on
-this wire one answer closes the connection where the other keeps it), so the order above is the one
-`selvage/1` fixes (`vectors/028` pins a frame of each pairing).
+`unknown_method` and a live connection; a first frame with no `id` is `bad_message` and close
+**4000**, never `hello_required`; and a frame that repeats a member name is `bad_message` before any
+of them. Two implementations that dispatch in a different order answer differently (one answer closes
+the connection where the other keeps it), so the order above is the one this document fixes
+(`vectors/028` pins a frame of each pairing).
 
-The codes above are `selvage/1`'s. An implementation **MUST NOT** reuse one with a different
-meaning, and an implementation that needs a code of its own **SHOULD** name it in the reserved
-`x.` namespace (§10.1) rather than invent a bare name that a later version may want. Close codes
-are the same story: 4000–4005 are fixed here, and the rest of the private-use range (4000–4999) is
-unregistered: two implementations that both pick 4006 have to be assumed to mean different
-things.
+Close codes are the same story: 4000–4003 are fixed here, and the rest of the private-use range
+(4004–4999) is unregistered: two implementations that both pick 4004 have to be assumed to mean
+different things.
 
 ## 12. Security considerations
 
@@ -2899,7 +2792,6 @@ assertion about them says.
 | A verified closing ends; an unverified one does not (§13.10) | `ended` true for the first, false for the second and for a closing delivered to a subject holding no state | two `kind = 2` frames, one above the mark and one at it, and one delivered before any state; the mutation that drops the `issued` ordering must fail the first leg |
 | The room is gone, not retryable (§13.10) | the subject sends no second `session.hello` to the id; `published` shows the one hello | an absence scan over the transcript after `room_unknown`, as §6's scans are |
 | §5.1's fragment names one of its two keys and not the other | the refusal, naming the missing key; no session seated behind it | one link of each shape — `k` without `h`, and `h` without `k` — with the whole fragment beside them, which must join; the mutation that accepts a partial fragment must fail the refusal legs |
-| A reachable `/meta` names no version at major 2 for a client that speaks it (§2, §10) | the refusal, naming the version the client would need; no socket, and nothing seated | a link that would speak `selvage/2` against `/meta`'s list, and the link naming `selvage/1` that a client pinned there must join; the mutation that falls back to `selvage/1` must fail the refusal leg |
 | The invite's `viewer` parameter is not authoritative (§13.9) | a subject handed the parameter, then a state committing it as `guest`, behaves as a `guest` | a fixture state that contradicts the parameter; a client that trusts the URL must fail |
 
 **What a vector can pin.** The bytes: that a holds message is sealed and signed as §6.1 fixes, that
@@ -2909,20 +2801,17 @@ the mark ends while one at or below it does not. These are envelope facts, and a
 against the fixture keys pins them: the corpus holds nineteen of them for the frame layer — among
 them `vectors/peer/114` for the holds carrier and its replay, `105` and `108` for the session-key
 announcement, `110` for a plaintext that is not its kind's object, and `117` and `119` for a path §5
-refuses — and eight decision vectors beside them, each red under the one mutation it declares
+refuses — and seven decision vectors beside them, each red under the one mutation it declares
 (`runner/run_peer.py --mutation-census`).
 
-**The two rules a link is decided about, and where they are pinned.** §5.1's local refusal of an
-invite whose fragment names one of its two keys and not the other, and §2/§10's no-fallback rule for
-a client that can speak `selvage/2`, are decided before a socket is opened: nothing is sent, so no
-byte-exact vector can pin either one, and the decision layer is where they are pinned instead,
-because that layer hands its subject the link it starts from. `vectors/peer/157` is the fragment, in
-both directions, with the whole fragment beside them as the leg that must join. `vectors/peer/158` is
-the version gate: a link that would speak `selvage/2` against a `/meta` whose list names no version
-at major 2, refused, and the `selvage/1` link a client pinned there joins. A refusal happens before a
-socket, so what a vector can show is that the client refused the link and seated nothing behind it;
-nothing about it reaches §11's vocabulary, and a subject answers it by refusing the `join` itself
-([`NOTES.md`](NOTES.md) §B.41).
+**The rule a link is decided about, and where it is pinned.** §5.1's local refusal of an invite
+whose fragment names one of its two keys and not the other is decided before a socket is opened:
+nothing is sent, so no byte-exact vector can pin it, and the decision layer is where it is pinned
+instead, because that layer hands its subject the link it starts from. `vectors/peer/157` is the
+fragment, in both directions, with the whole fragment beside them as the leg that must join. A
+refusal happens before a socket, so what a vector can show is that the client refused the link and
+seated nothing behind it; nothing about it reaches §11's vocabulary, and a subject answers it by
+refusing the `join` itself ([`NOTES.md`](NOTES.md) §B.41).
 
 **What no vector can pin, and it is the lease's own limit.** A vector is byte-exact evidence and a
 clock is not. No vector can tell a client that renews on its own timer from one that renews on

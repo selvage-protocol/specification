@@ -6,11 +6,11 @@ compare and produce the same bytes. `PROTOCOL.md` says what the members mean; th
 are written.
 
 It is versioned with the prose it belongs to: this is **SJ-C/1**, the canonical form for wire
-version `selvage/1`. A future wire version that changes a frame's members changes this document's
-version at the same time, and [`vectors/`](vectors/) records which of the two each transcript is
-valid against. §6.1 is the one passage here that is not `selvage/1`'s: it fixes the bytes of a
-`selvage/2` binary frame, which is not a JSON frame at all, and it says of itself which of the two
-versions reads it.
+version `selvage/2`. A later wire version that changes a frame's members changes this document's
+version at the same time, and [`vectors/`](vectors/) records which canonical form each transcript
+is valid against. §6.1 is the one passage here about bytes that are not a JSON frame at all: it
+fixes the layout of a sealed binary frame, and it says of itself which rules §2's a value read
+there keeps.
 
 ## 1. Scope
 
@@ -86,16 +86,18 @@ round-trip. Both are non-negative.
 
 ### 2.5 The version member
 
-`v` is present in every frame, and a frame with no `v` is rejected (§5). Its value is:
+`v` is present in every frame, and a frame with no `v` is rejected (§5). Its value is fixed: the
+protocol has one wire version, and a producer writes exactly
 
 ```
-"selvage/" major [ "." minor ]
+"selvage/2"
 ```
 
-with `major` and `minor` written as in §2.4. **The canonical spelling of the current version is
-`selvage/1`: a zero minor is omitted, so a producer must not write `selvage/1.0`.** A receiver
-must accept both spellings: `PROTOCOL.md` §10 makes `selvage/1.0` and `selvage/1.9` the same
-version as `selvage/1`, because the compatibility rule at major 1 is same-major.
+**There is no grammar to write a second spelling in and nothing to negotiate** (`PROTOCOL.md` §10):
+`selvage/2.0`, `selvage/2.1` and `selvage/1` are all a value a receiver does not read as this
+protocol's, and a frame carrying one is not a session envelope. The member stays because a later
+wire version is what would give it another value, and the byte form of the one it has is what this
+section fixes.
 
 ### 2.6 Absent members
 
@@ -143,7 +145,7 @@ follow:
 ### 2.8 String length
 
 SJ-C fixes a string's bytes, not its length: a value longer than a receiver's bound is still
-canonical, and a receiver that refuses it refuses the value, not the encoding. `selvage/1` fixes
+canonical, and a receiver that refuses it refuses the value, not the encoding. The protocol fixes
 one such bound on a value: a `display_name` is at most 32 **UTF-16 code units** (`PROTOCOL.md`
 §5), counted in the unit a JavaScript string's `.length` reports and the unit §8.1 of that document
 counts offsets in, so an astral character costs two. A name over the bound is refused `bad_params`,
@@ -167,8 +169,8 @@ and the session params are built member by member.
 Dropping is what makes `PROTOCOL.md` §4.1's promise true (a receiver that keeps working when a
 *later* version adds a member), and it is why the vectors in [`vectors/`](vectors/) can assert the
 *exact* member set of a frame: a version-locked vector is checking that no member has been silently
-added or renamed. Within `selvage/1` the member set of every frame is fixed; tolerance is what
-makes the transition to `selvage/2` soft, not a licence to add one now.
+added or renamed. The member set of every frame of this version is fixed, and that is what lets a
+vector assert an exact one.
 
 A receiver that preserves unknown members has not been asked to, but is not conformant with this
 document: preservation is untestable (nothing observable differs) except when a peer echoes the
@@ -213,20 +215,18 @@ dropped, because silence is how version skew becomes a timeout.
 
 ## 6. Binary frames
 
-In `selvage/1` a binary frame is a stream of y-protocols messages (§7); in `selvage/2` it is one
-**sealed frame** (§6.1) whose plaintext is that same stream. Either way it is **not**
-canonicalised, re-encoded or inspected: the server relays the bytes it received, unchanged, to
-every other member of the room, and the vectors assert byte equality in both directions. Two
-implementations conform on the document-sync path when the bytes they exchange encode the same
-messages, which is a property of `y-protocols`, not of SJ-C.
+A binary frame is one **sealed frame** (§6.1) whose plaintext is a stream of y-protocols messages
+(§7). It is **not** canonicalised, re-encoded or inspected: the server relays the bytes it received,
+unchanged, to every other member of the room, and the vectors assert byte equality in both
+directions. Two implementations conform on the document-sync path when the bytes they exchange
+encode the same messages, which is a property of `y-protocols`, not of SJ-C.
 
 
-### 6.1 Sealed frames (`selvage/2`)
+### 6.1 Sealed frames
 
-**Scope.** This subsection is `selvage/2`'s and nothing above it is: a `selvage/1` binary frame is
-the bare y-protocols stream §6 describes, and a `selvage/2` one is an envelope whose plaintext is
-that same stream. It fixes the envelope's bytes, the two values the invite URL's fragment carries,
-and the order a receiver reads the bytes in. `PROTOCOL.md` §7.1 says what the envelope carries and
+**Scope.** This subsection fixes the envelope's bytes, the two values the invite URL's fragment
+carries, and the order a receiver reads the bytes in: a binary frame is an envelope whose plaintext
+is the y-protocols stream §6 describes. `PROTOCOL.md` §7.1 says what the envelope carries and
 §5.1 says where the two values sit in a link. Every rule here is written from the design rather
 than observed on a wire.
 
@@ -489,8 +489,7 @@ A path over §13.3's 4096-byte bound is the same kind of value and takes the sam
 value over a bound canonical and leaves the bound to the receiver that will not carry it.
 
 **The kinds.** `0` carries the y-protocols stream of `PROTOCOL.md` §7 as its plaintext, whole: one
-binary frame is one envelope, and the messages inside it are that section's, exactly as they are
-in `selvage/1`. `1`, `2`, `3` and `4` carry one JSON object each, as the UTF-8 bytes of its canonical
+binary frame is one envelope, and the messages inside it are that section's. `1`, `2`, `3` and `4` carry one JSON object each, as the UTF-8 bytes of its canonical
 form: `1` the room state, `2` the closing, `3` the sender's holds, `4` the session-key
 announcement. Values above `4`, and every `epoch` but `0`, are this version's to leave unused: a
 later revision defines one, and a receiver of this version refuses a frame that uses one rather than
@@ -540,8 +539,8 @@ The **holds** message has exactly one member:
 {"holds":["README.md","src/main.rs"]}
 ```
 
-`holds` is the set of paths the sender keeps open — the same kind of value and the same kind of
-claim as a `selvage/1` `doc.open` path, and the thing `PROTOCOL.md` §13.7 leases. It is replaced
+`holds` is the set of paths the sender keeps open — a claim about what its working copy has open, and
+the thing `PROTOCOL.md` §13.7 leases. It is replaced
 wholesale by the next holds message under the same key, its order carries nothing (§2.7), and a path
 in it is held to `PROTOCOL.md` §5's rule for one, and a path that breaks it is dropped at the
 receiver rather than refused (§13.7). No member names the peer the set belongs to: the

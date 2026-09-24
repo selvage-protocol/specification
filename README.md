@@ -25,17 +25,16 @@ python3 schema/validate.py
 ```
 
 A green run prints one line for the schemas, one for the sealed payloads, one for the reasons a
-refused sealed frame is reported in, one for `selvage/2`'s session layer, one for each layer of
-the corpus, one for the absence scan, and `result OK`:
+refused sealed frame is reported in, one for each layer of the corpus, one for the absence scan,
+and `result OK`:
 
 ```
-schema ok      11 schemas, 39 values checked against the control-character refusal
+schema ok      10 schemas, 39 values checked against the control-character refusal
 sealed         48 values checked against the sealed payloads of selvage/2
 refusals       13 values checked against selvage/2's local report vocabulary
-session v2     42 values checked against selvage/2's session layer
-vectors        36 files, 35022 frame checks, 8676 assertion steps
-peer vectors   27 files, 19 frame, 8 decision, 222 checks, 74 assertion steps
-absence        8 selvage/2 shapes, 27 vectors of this version, 8636 selvage/1 frames (8742 carrying a deleted member, 197 a deleted event), 50 sealed frames, 100 needle checks
+vectors        22 files, 33686 frame checks, 8368 assertion steps
+peer vectors   26 files, 19 frame, 7 decision, 217 checks, 74 assertion steps
+absence        49 session shapes, 48 vectors, 9 control violations, 50 sealed frames, 100 needle checks
 result         OK
 ```
 
@@ -115,7 +114,7 @@ in every vector against them. It prints a line for the schemas, a line for the c
 - that every vector asserts something, and that the corpus still holds the number of vectors,
   frame checks and assertion steps it is pinned to, so a deleted assertion is a red run
   rather than a smaller number in a line of output;
-- that a vector is bound to `selvage/1` and `SJ-C/1`;
+- that a vector is bound to `selvage/2` and `SJ-C/1`;
 - that the schema itself refuses a control character in a `display_name`, a `path` and each
   member of a `paths` or `documents` list, which is `PROTOCOL.md` §5's Unicode `Cc` exclusion:
   nothing else in the corpus exercises it, because a frame sent on purpose to test a refusal is
@@ -143,40 +142,29 @@ in every vector against them. It prints a line for the schemas, a line for the c
   directions, so a reason removed from it, a reason added with no rule behind it, and the reason a
   reader expects and cannot have (`bad_tag`, because the signature covers the ciphertext) are each a
   red run.
-- that `schema/session-v2.json` describes the shapes `selvage/2`'s session layer states and
-  `selvage/1`'s do not — a `/meta` body of four members whose `wire_versions` name `selvage/2` or a
-  later minor and whose `keepalive` carries `room_grace_ms`, a `PeerInfo` without `role`, the two
-  replies to `session.hello` without `documents`, the `peer.joined` whose params that peer record
-  is, and the fault vocabulary of a server that seats nobody as the host — the same way and for
-  the same reason: `/meta` carries no `v`, the transcripts are `selvage/1`'s until the corpus is
-  re-baselined, and nothing else in this suite reaches a frame of that version. It pins the
-  tolerance as well as the shape: a body, a peer record, an event or a reply carrying a member the
-  version does not define must still validate, because `PROTOCOL.md` §4.1 has a receiver ignore one,
-  and a capability of a server's own is one of those. The fault code is the exception, and it is a
-  closed value rather than a member: the two codes `PROTOCOL.md` §11 takes out of this version —
-  `host_present` and the reserved `doc_not_open` — must validate under `selvage/1`'s vocabulary and
-  be refused by this one, which is checked in the same run.
+- that the session layer's own shapes hold: `/meta`'s four members, a `PeerInfo` without `role`,
+  the two replies to `session.hello` without `documents`, the `peer.joined` whose params that peer
+  record is, and the fault vocabulary of a server that seats nobody as the host, are validated by
+  every wire vector's frames, because the transcripts are this version's.
 - every peer vector's steps, recipes and refusals: the version and layer it declares, a `kind` of
   `frame` or `decision` with the step vocabulary that kind has, each `seal`/`deliver` recipe's
   shape — a fixture key that exists, a count, a nonce of twelve bytes, exactly one of `plaintext`
   and `payload` — every `expectReject` reason against §6.1's closed vocabulary, an `expectRefusal`'s
-  `names`, and the two members a `decision` vector's `start` hands a client before a socket
-  (`meta`, the body `GET /meta` answered, and `pin`, the version the client's own setting pins it
-  to — each `selvage/1` or `selvage/2`) — and the mutation in `catches` against the layer's own
+  `names`, and the mutation in `catches` against the layer's own
   table. It
   also pins the peer layer's own counts and two censuses: `EXPECTED_REFUSALS`, which vector asserts
   which reasons, and `EXPECTED_MUTATIONS`, which vector must go **red** under which removed guard.
   The second is the one pin in this corpus that is a statement about what the corpus catches rather
   than what it contains, and it is `runner/run_peer.py --mutation-census` that drives it.
-- the absence rule, three ways. **The model**: every `selvage/2` session shape is walked for a
-  member no server-authored frame of that version may carry — a `role` made a property or a
-  required entry of `session-v2.json` is a red run, which is the structural half and the strongest
-  of the three. **The frames**: every peer vector declares the strings its own plaintext names, and
-  none of them may appear in the bytes of a frame it seals, which needs no key because the
-  ciphertext is in the vector. **The control**: the same walk is run over the `selvage/1` corpus,
-  where it must find something — 8,335 frames naming `role`, 397 naming `documents`, 197 naming one
-  of the five events this version deletes — and those counts are pinned, because a scan that read
-  nothing reports zero and an unpinned zero is a green line rather than a check.
+- the absence rule, three ways. **The model**: every session-layer shape is walked for a member no
+  server-authored frame may carry — a `role` made a property or a required entry of a session schema
+  is a red run, which is the structural half and the strongest of the three. **The frames**: every
+  peer vector declares the strings its own plaintext names, and none of them may appear in the bytes
+  of a frame it seals, which needs no key because the ciphertext is in the vector. **The control**:
+  the same walk is run over a document built to break every rule the scan states — a `role` on a
+  peer record, a `documents` list, a path, a `paths` grant and the five events this protocol does
+  not have — and the nine violations it must find are pinned, because a scan that read nothing
+  reports nothing and an unpinned nothing is a green line rather than a check.
 
 Testing a refusal means sending a frame the server must reject. Such a frame carries
 `"refused": true`, and its params are not schema-checked. When the frame is not JSON at all, it
@@ -225,18 +213,16 @@ python3 runner/run_vectors.py
 Against a `selvaged` that implements every frame the corpus covers, it ends with:
 
 ```
-summary        36 files, 35022 frame checks, 36 vectors passed, 0 failed
+summary        22 files, 33686 frame checks, 22 vectors passed, 0 failed
 ```
 
 The red line to expect is a vector that pins behaviour newer than the server you point it at; the
 summary names the file and the frame it disagreed about.
 
-It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS` and
-`--serve-version-1-only`: the grace period is per-vector (`vectors/012` waits out 400 ms,
-`vectors/011` four seconds), and a runner that spawns the server has no other way to set it, while
-every vector in this corpus is bound to `selvage/1` and two of them — `001`'s `/meta` and `005`'s
-refused `selvage/2` hello — are claims about a server that seats that version alone, so the runner
-starts the server that way. `SELVAGE_VECTORS=DIR` reads the transcripts
+It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS`: the grace
+period is per-vector (`vectors/012` waits out 400 ms), and a runner that spawns the server has no
+other way to set it. There is no version to select — the protocol has one — so the runner starts the
+server with no flag at all. `SELVAGE_VECTORS=DIR` reads the transcripts
 from another directory, the same escape `schema/validate.py` honours, and the replay holds the
 same pin on the file count before it starts. `--schema-only` is exactly
 `python3 schema/validate.py` and starts no server.
@@ -318,11 +304,11 @@ Four are worth knowing before writing a vector, because the runner enforces them
 
 - **Member sets are exact, in both directions.** A frame with a member the vector does not
   mention fails. A version-locked vector is checking that nothing was silently added or renamed,
-  so an implementation that adds a member to a `selvage/1` frame has broken this version.
-- **`peers`, `capabilities`, `wire_versions` and `roles` are compared as sets.** The protocol
+  so an implementation that adds a member to a frame has broken this version.
+- **`peers`, `capabilities` and `wire_versions` are compared as sets.** The protocol
   promises no order for them (`CANONICAL.md` §2.7), so the comparison matches them as multisets
-  and puts the vector's into the order the wire sent before it compares the bytes. `documents`
-  and a grant's `paths` are not among them: the protocol promises an order for both (`PROTOCOL.md`
+  and puts the vector's into the order the wire sent before it compares the bytes. A listing and a
+  holds set are not among them: the protocol promises an order for both (`PROTOCOL.md`
   §6.2 and §5), and the comparison holds each to the order the vector wrote.
 - **The bytes are compared, not just the parsed JSON.** The vector's frame is written in the
   canonical form of `CANONICAL.md`, the reference server produces exactly those bytes, and a
@@ -383,8 +369,9 @@ cursor. The file's own `notes` member says the same thing next to the data.
 
 Three numbers move together, and nothing here is allowed to move independently of the prose:
 
-1. **The wire version**, `selvage/1`, in the `v` member of every text frame and in
-   `GET /meta`'s `wire_versions`. It changes when a member's meaning or presence changes.
+1. **The wire version**, `selvage/2`, in the `v` member of every text frame and in
+   `GET /meta`'s `wire_versions`. It changes when a member's meaning or presence changes, and the
+   protocol has one of them.
 2. **The canonical form version**, `SJ-C/1`, in this file's sibling `CANONICAL.md`. It changes
    when the *bytes* of a frame change: a different member order, a different number form, even
    when the members' meaning does not.
@@ -398,9 +385,9 @@ Every vector carries both versions in `selvage` and `canonical`, and the runner 
 a vector bound to anything else. That is the version binding: a vector set without
 one rots, because nothing can say whether it is out of date or the implementation is wrong.
 
-The compatibility rule itself is `PROTOCOL.md` §10: same major, and while at `0.x` also the same
-minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this version, but only
-`selvage/1` is how a conforming producer writes it (`CANONICAL.md` §2.5).
+The version member itself is `PROTOCOL.md` §10: one version, `selvage/2`, written exactly so in
+every frame, with nothing to negotiate and no other value a receiver reads as this protocol's
+(`CANONICAL.md` §2.5).
 
 ## Adding a vector
 
@@ -417,7 +404,7 @@ minor. At major 1, `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this ver
 
    ```json
    {
-     "selvage": "selvage/1",
+     "selvage": "selvage/2",
      "canonical": "SJ-C/1",
      "id": "013",
      "title": "one line, in the present tense, saying what holds",
