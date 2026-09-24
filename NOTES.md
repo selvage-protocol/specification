@@ -1571,3 +1571,101 @@ consistent with §10. Which one the version means decides whether a guest handed
 truncated the `#` off is refused or seated in the clear, so it is a decision and not a wording.
 `vectors/peer/157` is about a fragment that names one of the two keys and its third leg is the whole
 fragment, so neither leg reaches this case. **Unresolved.**
+
+**B.43 A review pass over §7.1's host, §13's peer side and the sealed frame's key.** Seven changes,
+none of them to a byte, a schema or a vector; the corpus counts are unchanged.
+
+- **Which seat a new key is labelled with is fixed.** §7.1 let a host label a key it could not place
+  with "any seat the roster names, its own included", and in the same paragraph had a new key replace
+  the key its seat held — so a guest's announcement labelled with the host's own seat would have
+  replaced the one `host` entry the list below it obliges. The four implementations had each settled
+  it the same way, with a comment that §7.1 "does not say which seat gives way" (`HostProducer.label`
+  in `vscode_client`, `web_client` and `nvim_client`'s vendored engine; `fn label` and
+  `fallback_seat` in `reference_server`'s `crates/client/src/host.rs`): a free seat first, then the
+  seat whose key was committed earliest, and the host's own seat last and without eviction. §7.1 now
+  states that order, the reason the last case needs a reordering relay to arise, and the residual of
+  the third: a peer that holds the room key can displace the earliest commitment one window at a time.
+- **The peer re-send of a state is for a room whose host is away.** §7.1 had every peer holding a
+  state re-send it on every `peer.joined`, beside the host's own fresh state for the same join. A state
+  carries the whole listing — up to 4 MiB at §13.3's bounds — so a join cost one copy per seated peer
+  on every connection, against an outbound queue of 32 frames and 32 MiB (§2.1) that disconnects a
+  peer past either. The two cases the re-send exists for — a joiner while the host is away, and a
+  returning host that lost its `issued` — both arrive while the applied state's `host` entry labels a
+  seat the roster lacks, so the **SHOULD** is now conditioned on that and a **SHOULD NOT** covers the
+  rest. **Divergence:** every client engine re-sends unconditionally today (`PeerSession.seatJoined`
+  in the three TypeScript engines); no vector pins either behaviour.
+- **§13.1's host paragraph said "on every session-key announcement it accepts"**, which read as a
+  state per announcement against §7.1's window bound. It now says what §7.1 says, and names
+  `peer.left` beside `peer.joined`.
+- **A `viewer` is as read-only as its own client, and §7.1 says so.** Every host commits an undeclared
+  key as `guest` (`declared ?? 'guest'`, `declared.unwrap_or("guest")`), and a host can place no key,
+  so a peer handed a `viewer` invite that leaves the declaration out of its announcement is a writer.
+  §13.5 already called the role a denial between conforming peers; it now names this path to it, and
+  a deployment is told not to rely on the role for a reader who must not write.
+- **The frame key's nonce budget.** Every sender seals under one frame key with random 96-bit nonces
+  for the life of the room, and `epoch` is reserved, so nothing rekeys. `CANONICAL.md` §6.1 now states
+  SP 800-38D's 2³² bound as the room's, and has every client count the room's frames and stop at
+  2³¹: a deployment cannot count sealed frames and a relay cannot read them, so the peers, which see
+  every frame, are the parties a rule can bind (§1.1).
+- **§13.3's no-state rejoin is once.** The **MAY** that let a client with no state rejoin instead of
+  ending had no bound, and a client that took it at every window's end would hold a hostless room
+  alive indefinitely — the case the ending exists for. No client takes it today.
+- **Two numbers.** §2.1's inbound-budget row now says each frame is charged at least 1 KiB, which
+  `selvaged`'s `budget.rs` (`FRAME_COST_BYTES`) does and the table did not say; and §8.3's awareness
+  query example said a 256 KiB frame of one-byte messages is 256 000 of them, which is 262 144.
+
+**What B.43 asks of each implementation.** Checked against every repository's `main` on
+2026-09-24; none of them had an open pull request. Two items need code, items 1 and 4, each the
+same change in four places. Everything else needs nothing or is optional.
+
+1. **The state re-send is conditional (§7.1). Needed in every client engine.** A non-host peer
+   re-sends the state frame it holds on `peer.joined` only when the seat its applied state's `host`
+   entry labels is not in the roster, or when the state has no `host` entry. It does not re-send
+   while the host's seat is seated. The host's own path, which publishes a fresh state, is
+   unchanged. The roster check comes *after* the joining seat is added, so a returning host's new
+   seat still triggers the re-send, because the old `host` entry labels a seat that has gone.
+   - `vscode_client` `src/engine/peer.ts`, `PeerSession.seatJoined` (the
+     `if (this.heldStateFrame !== undefined) this.republish(...)` branch): guard it with
+     `const seat = this.hostSeat(); if (seat === undefined || !this.roster.has(seat))`.
+   - `web_client` `src/engine/peer.ts`, `seatJoined`: the same guard. This is the same engine; keep
+     the files identical.
+   - `nvim_client` `vendor/engine/peer.ts`, `seatJoined`: the same guard. This is the vendored
+     engine, so re-sync it from `vscode_client` with `scripts/sync-engine.sh` rather than editing it
+     by hand.
+   - `reference_server` `crates/client/src/peer.rs`, `PeerSession::seat_joined` (the
+     `if let Some(frame) = self.held_state_frame.clone()` branch): guard it with
+     `self.host_seat().is_none_or(|s| !self.roster.contains(s))`. Leave `announce_holds` unguarded:
+     §13.7's holds re-announcement on `peer.joined` is still a **MUST**.
+   - Tests for each engine: (a) with the host's seat in the roster, a non-host `seatJoined`
+     publishes no state frame (the `published` count does not move for it); (b) after `seatLeft`
+     for the host's seat, a `seatJoined` for a new seat re-sends the held frame byte for byte;
+     (c) with a held state that has no `host` entry, it re-sends. No vector in this repository pins
+     either behaviour yet. A decision vector for (a) and (b) is a follow-up here.
+2. **The seat label (§7.1). Nothing to change.** `HostProducer.label`/`commit` in the three
+   TypeScript engines and `label`/`fallback_seat`/`commit` in `crates/client/src/host.rs` are the
+   order §7.1 now states. The code comments that say §7.1 "does not say which seat gives way" and
+   cite "*its own included*" can be re-pointed at §7.1's numbered list when the file is next
+   touched.
+3. **The viewer declaration (§7.1, §13.5). Nothing to change.** No host engine can place a key at a
+   seat, so the new **SHOULD** does not apply to any of them. A client UI that presents a `viewer`
+   invite as a read-only guarantee (`web_client`'s host invite, `vscode_client`'s share command)
+   **SHOULD** word it as a request the viewer's client honours, not as enforcement.
+4. **The frame budget (`CANONICAL.md` §6.1). Needed in every client engine.** A session counts
+   every binary frame it is delivered and every frame it seals, but not a state it re-sends
+   unchanged. Once the count reaches 2³¹ it seals nothing more. A host publishes one closing and
+   every session ends with its own ending, `frame-budget`, and says why. Take the number from an
+   option, so that a test can set the budget to a handful of frames.
+   - `vscode_client` `src/engine/peer.ts`: add `'frame-budget'` to `Ending` and `endingReason`,
+     add `frameBudget?: number` to `PeerOptions` (default `FRAME_BUDGET = 2 ** 31`), count in
+     `deliverOne`, `publish` and `publishState` (fresh publications only), refuse to seal in
+     `publish` once spent, and end in `tickOne`, publishing the host's closing first.
+   - `web_client` `src/engine/peer.ts` and `nvim_client` `vendor/engine/peer.ts`: the same change.
+   - `reference_server` `crates/client/src/peer.rs`: the same, plus an `Ending::FrameBudget`
+     variant carried through `relay.rs`'s `RelayEnding`.
+   - Tests: with a budget of a few frames, the session ends `frame-budget` at the count and seals
+     nothing after it, and a host session publishes a closing first.
+5. **The no-state rejoin (§13.3). Nothing to change.** Every engine ends at the no-state window
+   (`Ending` `'no-state'` in `peer.ts`) and none rejoins, which the bounded **MAY** allows.
+6. **`selvaged` (`reference_server/crates/selvaged`). Nothing to change.** Every §2.1 number matches
+   `lib.rs`, `room.rs`, `budget.rs` and `net/`. The 1 KiB per-frame floor is now written down, and
+   the code already applies it.

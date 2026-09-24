@@ -288,7 +288,23 @@ two from any other key.
 
 **What is authenticated.** The AEAD is **AES-256-GCM**; the tag is the 16 bytes GCM appends to the
 ciphertext; the nonce is the envelope's 12 bytes, drawn fresh from the CSPRNG for every frame and
-never derived from a counter, a key, or a value another sender also holds. Its **associated data**
+never derived from a counter, a key, or a value another sender also holds. A random 96-bit nonce is
+safe under one key only up to a bound on how many frames that key seals, and here the key is shared:
+every sender in a room seals under the one frame key, for as long as the room lives, and `epoch` —
+the member a rekey would move — is reserved and unused in this version. SP 800-38D §8.3 bounds the
+invocations of one key with random nonces at **2³²**, and that bound is the room's, summed over
+every sender, and not any one sender's. No room an editor produces approaches it (a sustained
+thousand frames a second takes more than a month to reach it), but nothing in this version resets
+it, so the peers enforce it, because they are the parties that can count: the relay delivers every
+frame to every other connection, so a client that counts the binary frames it receives in the room
+and the frames it seals itself counts the room's total, less whatever the relay dropped on the way
+to it. **A client MUST keep that count** for the life of its session, and once it reaches the
+**frame budget, 2³¹** — half the bound, which leaves room for every frame a client did not see —
+it **MUST NOT** seal another frame under the frame key: a host publishes one closing
+(`PROTOCOL.md` §7.1), whose `issued` ends the room for every peer holding its state, and every
+client, the host included, ends its session and says why (`PROTOCOL.md` §13.10). A room that must
+go on is a new room, minted with a new room key. A frame a client re-sends unchanged (`PROTOCOL.md`
+§7.1's re-send of a state) is not sealed again and is not counted twice. Its **associated data**
 is:
 
 ```
