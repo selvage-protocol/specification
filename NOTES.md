@@ -167,14 +167,13 @@ rest of the design's reasoning is inline in `PROTOCOL.md` or in `B` below.
 
 `PROTOCOL.md` §10 says `v` has one value, `selvage/2`, and that a frame naming anything else is an
 envelope the receiver does not read: `bad_message`, refused before seating and an event on a seated
-connection. The reference server's parser is more lenient than that in one respect:
-`crates/protocol/src/lib.rs`'s `is_compatible` reads `selvage/<major>[.<minor>]` and compares the
-**major**, so it seats `selvage/2.0` and `selvage/2.9` (its unit tests beside it assert that it
-does) where this document says they are not its version, and it refuses `selvage/1`, `selvage/3`,
-`selvage`, `selvage/x` and `other/2`, which are the values the corpus refuses. The minor at major 2
-is therefore the one disagreement between the two, and nothing in the corpus distinguishes the
-readings: `vectors/005` and `vectors/027` name `selvage/3`, `selvage`, `selvage/03`, no `v` at all
-and `selvage/1`, every one of which both readings refuse.
+connection. The reference server reads it the same way and nothing wider:
+`crates/protocol/src/lib.rs`'s `speaks` is `version == WIRE_VERSION`, so `selvage/2.0`, `selvage/2.9`,
+`selvage/1`, `selvage/3`, `selvage`, `selvage/03` and `selvage/x` are every one of them a version it
+does not read. Nothing is matched by prefix and no major is compared, so no second spelling of the
+one value is open between the two. The corpus pins both shapes the refusal takes: `vectors/005`
+refuses `selvage/3`, `selvage/1`, `selvage`, `selvage/03` and a frame carrying no `v` before
+seating, and `vectors/027` the same on a seated connection, which stays open.
 
 ---
 
@@ -320,6 +319,13 @@ whether a reconnecting host should re-`doc.open` its documents rather than inher
 **settled by `PROTOCOL.md` §9.1**: it should, and both clients do. One smaller question remains
 **unresolved**: whether a disconnect should drop the paths that only the departing peer held (today
 it does not, so a path can outlive every peer that opened it).
+
+**Revised 2026-09-24 by §B.45.** That remaining question is settled by the removal rather than
+answered in prose, and it is no longer open: the set is the peers' own — the union of the seated
+peers' live holds, an open path being a hold that a connection renews on a clock a receiver runs
+(`PROTOCOL.md` §1.2, §13.7) — so a connection's holds are released when it ends and nothing a
+departing peer held on its own outlives it. There is no server-held set left to ask the question
+about.
 
 **B.11 No `session.leave`.** A client leaves by closing the WebSocket. There is no graceful goodbye
 message and no way to detach from a room while keeping the connection. **Unresolved**, and cheap to
@@ -605,6 +611,13 @@ is the only thing that makes either terminal. The same question is recorded for 
 publisher in `B.23`. Whether a later version defines `room_full`, `server_full` and a rate-limit
 code as `selvage/1` codes with their own closes, or keeps them private and leaves a client to treat
 every refusal the same, is **unresolved**.
+
+**Revised 2026-09-24 by §B.45.** The question as it stands is settled by the removal: there is no
+`selvage/1` for a later version to give a code to, and every capacity refusal is the implementation's
+own `x.` code with the close that follows it, which is what the version has instead of a reserved
+name. What the question was reaching for survives as a question about a **future** version — whether
+`selvage/3` or later defines `room_full`, `server_full` and a rate-limit code of its own — and that
+is decided when such a version is written rather than here.
 
 **B.31 The sealed frame's bytes, and Ed25519 over ECDSA P-256.** `PROTOCOL.md` §7.1 and §5.1's
 fragment paragraph, `CANONICAL.md` §6.1 and `schema/sealed.json` now fix `selvage/2`'s sealed
@@ -1420,6 +1433,14 @@ implementation decision with a wire-visible consequence and no passage of this d
 it; it is recorded here so that the next implementation does not have to guess, and it is a
 candidate for a sentence of its own if a second server has to agree with this one.
 
+**Revised 2026-09-24 by §B.45.** Both halves are settled by the removal. There is no server that
+implements both versions, so there is no list to widen: `wire_versions` is a list with the one entry
+in it precisely because the member stays a list for a later version to say so in (§2, §10), and a
+server of this protocol implements `selvage/2` alone. And no room's version is pinned by its mint,
+because there is one version for a room to be: the open-document set is the peers' own (§1.2,
+§13.7), so a connection has no version for a mint to pin, and `unsupported_version` with close
+**4005** is gone with the pin it refused (§10, §11).
+
 **B.40 `selvage/2`'s decision layer runs: the subject, its one seam, four §13 corrections and two
 reader defects.** `PROTOCOL.md` §13.3, §13.6, §13.7, §13.8, §13.9 and §13.11, `runner/subject.py`,
 `runner/run_peer.py`, `runner/sealed.py`, `runner/test_runner.py` and `README.md` hold what running
@@ -1806,15 +1827,13 @@ counts above are the repaired corpus's, re-derived from the same two runs, with 
 against `chore/drop-version-1` in `reference_server`: `24 files, 33760 frame checks, 24 vectors
 passed, 0 failed`.
 
-**What the corpus is not verified against.** The `selvaged` in this workspace is built from
-`reference_server`'s `main`, which seats **both** versions. It answers a pre-seating fault in
-`selvage/1` (`crates/protocol/src/lib.rs`'s `WIRE_VERSION`), its `/meta` advertises `selvage/1`
-beside `selvage/2`, and it refuses a `v` it does not read with `unsupported_version` and close
-**4005**, the code and close this corpus replaced. Against it the replay ends with `24 files,
-33760 frame checks, 9 vectors passed, 15 failed`, and every failure is that member or that code.
-The server this corpus is written for is `chore/drop-version-1` in `reference_server`, where
-`WIRE_VERSION` is `selvage/2` and the list holds one entry; the nine that pass today are the ones
-whose every assertion is a server-authored frame on a seated version-2 connection. The reference
+**What the corpus is verified against.** The `selvaged` in this workspace is built from
+`reference_server`'s `main` (`c8cee0d`), which seats the one version: `crates/protocol/src/lib.rs`'s
+`WIRE_VERSION` is `selvage/2`, its `/meta` advertises the one entry and no `roles`, and a `v` it does
+not read is `bad_message` rather than `unsupported_version`. Against it the replay is green —
+`nix develop . -c python3 runner/run_vectors.py --layer wire --server
+<reference_server>/target/debug/selvaged` ends `24 files, 33760 frame checks, 24 vectors passed,
+0 failed`. The reference
 server's own `crates/harness/tests/vectors.rs` is the other half of the same gate, and it replays
 this corpus over its vendored copy.
 
@@ -1824,3 +1843,53 @@ vocabulary, §12 and §13 are written for the one version: no sentence of `PROTO
 second wire, and §10 is "The wire version, and capabilities" — the one value `v` has, the refusal a
 frame naming another is answered with, and the capability table. §10, §10.1 and §13 keep their
 numbers so that a citation in a dated record still lands.
+
+**B.46 The revision's review: what the sealed frame's marks and §13.3's declaration leave open.**
+`CANONICAL.md` §6.1 and §2.4, `PROTOCOL.md` §13.3 and §13.5, `reference_server`'s
+`crates/client/src/sealed.rs` and `vscode_client`'s `src/engine/sealed.ts`. **Open** (2026-09-24), each
+one a place where the prose and the code say different things rather than a decision anybody has
+taken. What they sit under is sound: the room id, the kind, the epoch and the key id are inside
+§6.1's associated data and the counter is inside the signed input, so a relay cannot move a frame
+between rooms, between kinds or between senders, and truncating one breaks its signature. None of the
+six below lets a relay change what a conforming receiver *does* with a frame. The review that found
+them is `ai_notes/docs/review-one-wire-2026-09-24.md`.
+
+- **A receiver that holds no mark yet accepts an old `kind = 0` or `3` frame.** §6.1's mark starts
+  at `0` for a key, and `Reader::replayed` is
+  `counter <= self.marks.get(&id).map_or(0, |mark| mark.counter)` — so a receiver with no entry for
+  the sender compares against `0` and applies whatever arrives. A joiner has accepted nothing from
+  anyone and is the case that matters: a frame the room published before it arrived is applied. What
+  the prose has to state is what a receiver holding no mark does with those two kinds, which is the
+  rule §6.1 already states for a mark that exists.
+- **A non-minimal `varUint` is read while the signed input is written minimally.**
+  `crates/client/src/sealed.rs`'s `read_varuint` and `vscode_client/src/engine/sealed.ts`'s
+  `readVaruint` both accept a value whose continuation bytes could have been written shorter —
+  `0x80 0x00` for `0` — and `signing_input` re-encodes `varuint(counter)` minimally, so a relay can
+  change a frame's bytes without breaking its signature. No value changes and no conforming receiver
+  behaves differently; what is open is whether §6.1's bytes are canonical as evidence or only as a
+  value.
+- **The TypeScript reader refuses a counter above 2⁵³−1 where Rust reads on.** `readVaruint` returns
+  `undefined` past `Number.MAX_SAFE_INTEGER` while the Rust reader holds the same bytes in a `u64`,
+  so the two readers disagree about one frame's bytes — the disagreement §2.4's bound on every count
+  exists to prevent.
+- **Marks are kept per 8-byte id where §6.1 says "for each key it holds".** `Reader::marks` is
+  a `HashMap<KeyId, Mark>` and `KeyId` is the first 8 bytes of the key's hash, so two keys sharing an
+  id share a mark. A collision is not a misattribution — `read_ordinary` verifies every key the id
+  names and the frame belongs to the one that verified — but it is one peer's counter refusing
+  another's frame. Either the prose says `key_id` or the code keys the map by the key.
+- **A `viewer` can declare itself a writer.** §13.3 lets a client announce the role it believes it has
+  been given, `guest` or `viewer` and never `host`, and the first half of the rule it states is
+  implemented: `crates/client/src/host.rs`'s `commit` writes `declared.unwrap_or("guest")`, so a
+  declaration is honoured. The half that is not implemented is the **SHOULD** beside it — a host that
+  has its own reason to hold a seat read-only, an invite it handed out as `viewer` alone, should
+  commit that key as `viewer` whatever it declares. `commit` never consults the invite, so a `viewer`
+  that announces `guest`, or announces nothing, is committed as a writer and writes. It is a missing
+  implementation rather than a wording difference, and §13.5's residual states the cost in the same
+  breath: a `viewer` is exactly as read-only as its own client.
+- **The relay can make the host look like a guest in the roster.** Withholding a joiner's
+  `peer.joined` leaves a seat the roster does not carry, and the roster is the server's word about
+  names. The authority does not move — the state names the host and the state is verified against the
+  host key the invite's fragment carries — and §13.3 already says that the one binding not signed is
+  `peer_id`, the label a host writes into the state from the roster it was sent. What is open is
+  whether the prose says what a client draws when the roster and the state disagree, which today it
+  does not.
