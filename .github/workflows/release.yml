@@ -19,10 +19,10 @@ name: release
 # it and attach the bundle. A release is only cut from a commit already on the default branch:
 # a dispatch can name any ref and a tag can be pushed at any commit, and neither is review.
 #
-# The wire version string is `selvage/1` and the canonical form is `SJ-C/1`.
+# The wire version string is `selvage/2` and the canonical form is `SJ-C/1`.
 # Both are protocol CONSTANTS, not release versions; the release version is
 # the `version` input on dispatch, or the tag name on a tag push. The typo
-# guard names the near-homophone `salvage/1`, one keystroke away.
+# guard names the near-homophone `salvage/`, one keystroke away.
 on:
   workflow_dispatch:
     inputs:
@@ -108,8 +108,8 @@ jobs:
 
       - name: reject the wire-version typo
         run: |
-          if grep -rn "salvage/1" PROTOCOL.md CANONICAL.md NOTES.md README.md schema vectors runner; then
-            printf 'found the near-homophone salvage/1; the wire version is selvage/1\n' >&2
+          if grep -rn "salvage/" PROTOCOL.md CANONICAL.md NOTES.md README.md schema vectors runner; then
+            printf 'found the near-homophone salvage/; the wire version is selvage/2\n' >&2
             exit 1
           fi
 
@@ -220,7 +220,7 @@ jobs:
           documents (\`PROTOCOL.md\`, \`CANONICAL.md\` defining the SJ-C/1 byte form),
           exactly as validated on the tag's commit.
 
-          The wire version string is \`selvage/1\`. It is a protocol constant, not
+          The wire version string is \`selvage/2\`. It is a protocol constant, not
           this release's version.
 
           Prose, schema and vectors are CC-BY-4.0 (see \`LICENSE\` in the bundle).

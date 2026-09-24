@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dontblameme.dev/schema/1/events.json",
-  "title": "Selvage Session Protocol — every event of `selvage/1`",
-  "description": "The twelve events a server sends, with the params of each. Valid against PROTOCOL.md \u00a76. Event `params` are flat objects; an event name a receiver does not know is ignored, like an unknown member.",
+  "title": "Selvage Session Protocol — every event",
+  "description": "The seven events a server sends, with the params of each. Valid against PROTOCOL.md \u00a76. Event `params` are flat objects; an event name a receiver does not know is ignored, like an unknown member.",
   "$defs": {
     "peerList": {
       "type": "array",
@@ -12,33 +12,31 @@
     "anyEventName": {
       "type": "string",
       "minLength": 1,
-      "description": "An event name. The twelve below are defined by `selvage/1`; any other, including every `x.`-prefixed name, is ignored rather than refused (contrast `unknown_method`)."
+      "description": "An event name. The seven below are defined by this protocol; any other, including every `x.`-prefixed name, is ignored rather than refused (contrast `unknown_method`)."
     },
     "roomCreated": {
-      "description": "`room.created`: the reply to a `session.hello` that minted a room. The minting connection is the host and is told the invite token here and nowhere else.",
+      "description": "`room.created`: the reply to a `session.hello` that minted a room. The minting connection is the room's host — by holding the private half of the host keypair whose public half the invite's fragment carries, not by the server saying so — and it is told the invite token here and nowhere else.",
       "type": "object",
-      "required": ["room_id", "token", "self", "peers", "documents", "capabilities", "keepalive"],
+      "required": ["room_id", "token", "self", "peers", "capabilities", "keepalive"],
       "properties": {
         "capabilities": { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/capabilityList" },
-        "documents": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentList" },
         "keepalive": { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/keepalive" },
         "peers": { "$ref": "#/$defs/peerList" },
         "room_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/roomId" },
         "self": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peer" },
         "token": {
           "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/token",
-          "description": "Present only here: the token is echoed exactly once, to the connection that minted the room, and a host that may reclaim must keep it (\u00a79.1)."
+          "description": "Present only here: the token is echoed exactly once, to the connection that minted the room, and a host that may have to reconnect must keep it (\u00a79.1)."
         }
       }
     },
     "roomJoined": {
-      "description": "`room.joined`: the reply to a `session.hello` that joined an existing room. It never carries `token` \u2014 not even to a host reclaiming its own room.",
+      "description": "`room.joined`: the reply to a `session.hello` that joined an existing room. It never carries `token`, and it carries no listing: the room's documents are the host's sealed state, which arrives over the relay after this frame.",
       "type": "object",
-      "required": ["room_id", "self", "peers", "documents", "capabilities", "keepalive"],
+      "required": ["room_id", "self", "peers", "capabilities", "keepalive"],
       "not": { "required": ["token"] },
       "properties": {
         "capabilities": { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/capabilityList" },
-        "documents": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentList" },
         "keepalive": { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/keepalive" },
         "peers": { "$ref": "#/$defs/peerList" },
         "room_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/roomId" },
@@ -47,7 +45,7 @@
     },
     "peerJoined": {
       "title": "peer.joined",
-      "description": "To the peers already present when a connection is seated. A guest joining produces this; a host reclaiming its room produces `host.attached` instead.",
+      "description": "To the peers already present when a connection is seated. It has one meaning: a connection was seated. It is also the trigger for the room's host to re-announce the sealed room state, which is what makes the roster a joiner sees a live one (`PROTOCOL.md` \u00a77.1, \u00a713.1).",
       "type": "object",
       "required": ["peer"],
       "properties": {
@@ -56,7 +54,7 @@
     },
     "peerLeft": {
       "title": "peer.left",
-      "description": "To the remaining peers when a connection ends, including the host's: a host disconnect sends `peer.left` first and `host.detached` after it.",
+      "description": "To the remaining peers when a connection ends. It says nothing about the room's host: who holds the host key is not the server's to know. A departing peer's holds and presence expire on their own lease rather than by this event (`PROTOCOL.md` \u00a713.7).",
       "type": "object",
       "required": ["peer_id"],
       "properties": {
@@ -73,72 +71,23 @@
         "display_name": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/displayName" }
       }
     },
-    "docOpened": {
-      "title": "doc.opened",
-      "description": "To every peer, the one that made the change included, when a peer opens a document. The response to the request carries the same `documents` list.",
-      "type": "object",
-      "required": ["peer_id", "path", "documents"],
-      "properties": {
-        "documents": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentList" },
-        "path": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentPath" },
-        "peer_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peerId" }
-      }
-    },
-    "docClosed": {
-      "title": "doc.closed",
-      "description": "To every peer when a peer closes a document. `documents` is the room's set after the change, which is unchanged when another peer still holds the path open. A disconnect releases holds silently and announces nothing.",
-      "type": "object",
-      "required": ["peer_id", "path", "documents"],
-      "properties": {
-        "documents": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentList" },
-        "path": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentPath" },
-        "peer_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peerId" }
-      }
-    },
-    "docGranted": {
-      "title": "doc.granted",
-      "description": "To every peer, the publishing host included, when the host publishes a grant; and to a joining connection immediately after its `room.joined` when the room's grant is non-empty (\u00a76.3). It names no peer: the host is the only publisher. `paths` replaces the receiver's view of the room's grant \u2014 it is a snapshot, never a delta \u2014 and carries no content: a name in it is not a promise that a file exists, is readable, or is held by any peer.",
-      "type": "object",
-      "required": ["paths"],
-      "properties": {
-        "paths": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentList" }
-      }
-    },
-    "hostDetached": {
-      "title": "host.detached",
-      "description": "To the remaining peers when the host's connection ends. The room is fully usable during the grace period and dies when it expires.",
-      "type": "object",
-      "required": ["grace_ms"],
-      "properties": {
-        "grace_ms": {
-          "type": "integer",
-          "minimum": 0,
-          "description": "The server's host-reconnect grace period, in milliseconds."
-        }
-      }
-    },
-    "hostAttached": {
-      "title": "host.attached",
-      "description": "To the remaining peers when a connection reclaims a room that is between hosts. It names whoever claimed the host role with the right token, which is not necessarily the host a peer remembers.",
-      "type": "object",
-      "required": ["peer"],
-      "properties": {
-        "peer": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peer" }
-      }
-    },
     "roomGone": {
       "title": "room.gone",
-      "description": "To the peers left behind when a room is destroyed: its host stayed away for the whole grace period. The room is gone for good, and the connection is closed with 4003.",
+      "description": "To the peers left in a room when the room is destroyed, followed by close 4003. The room is not retryable: the same link learns `room_unknown` after it (`PROTOCOL.md` \u00a76, \u00a79). A room whose last connection has ended has nobody left to tell, which is why the next join, and not this event, is how a destroyed room is normally met.",
       "type": "object",
       "required": ["room_id", "reason"],
       "properties": {
-        "reason": { "type": "string", "minLength": 1 },
+        "reason": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Free-form and not stable: a client may log it and must not branch on it."
+        },
         "room_id": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/roomId" }
       }
     },
     "sessionError": {
       "title": "session.error",
-      "description": "A fault that cannot be attached to a request id: a handshake refusal, an unreadable envelope, or a fatal error on a request, in which case a matching close code follows.",
+      "description": "A fault that has no request to answer \u2014 a bad handshake, a fatal condition on a seated connection. It carries no `id`; a fault that answers a request is an error **response** instead (\u00a74.2).",
       "type": "object",
       "required": ["code", "message"],
       "properties": {
@@ -148,7 +97,11 @@
             { "$ref": "https://dontblameme.dev/schema/1/errors.json#/$defs/extensionCode" }
           ]
         },
-        "message": { "type": "string", "minLength": 1 }
+        "message": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Human-readable and explicitly not stable."
+        }
       }
     }
   }

@@ -33,9 +33,8 @@ recipes, seals them and hands them over, and it is the same code that replays a 
 so the two layers seal one way.
 
 **A link the client refuses is an answer to `join` and not a failure.** `PROTOCOL.md` §5.1's
-partial fragment and §10's version-1-only server are decided before a socket, so there is no
-frame to decide about: the subject refuses the `join` itself, in its own words, and seats
-nothing. `join_or_refusal` reads that, `run_peer.py` records it, and the vector asserts it with
+partial fragment is decided before a socket, so there is no frame to decide about: the subject
+refuses the `join` itself, in its own words, and seats nothing. `join_or_refusal` reads that, `run_peer.py` records it, and the vector asserts it with
 `expectRefusal`. A subject left unseated is free to be handed another link, which is what lets
 one vector hold a refusal and the control leg beside it.
 """
@@ -65,9 +64,9 @@ STDERR_TAIL = 16 * 1024
 #: The mutations a *subject* must be able to remove, one rule each, and the name a vector
 #: declares in its `catches`. `PROTOCOL.md` §13.11's table is the list of rules a conformance
 #: test observes; these are the wrong implementations it must fail. They are the counterpart
-#: of `sealed.MUTATIONS`, which removes a *receiver's* guard: these remove a client's. The last
-#: two are guards on the **link**, which a client reads before any session exists; `LINK_MUTATIONS`
-#: names them, and the runner removes those before the `join` rather than after it.
+#: of `sealed.MUTATIONS`, which removes a *receiver's* guard: these remove a client's. One is a
+#: guard on the **link**, which a client reads before any session exists; `LINK_MUTATIONS` names
+#: it, and the runner removes it before the `join` rather than after it.
 SUBJECT_MUTATIONS = {
     "ignore-roles": "§13.5: apply document content from a key the state gives role `viewer`",
     "ignore-issued": "§13.3: apply a room state that is not above the mark the client holds",
@@ -78,16 +77,13 @@ SUBJECT_MUTATIONS = {
     "wait-for-ever": "§13.3: stay seated with no state applied and never end",
     "accept-partial-fragment": "§5.1: join a link whose fragment names one of the two keys, "
     "with the other one missing",
-    "fall-back-to-version-1": "§2, §10: connect to a server whose reachable `/meta` names no "
-    "version at major 2 by speaking `selvage/1` instead of refusing",
 }
 
-#: The guards of that table a client has read **before any session exists**, and which a caller
-#: therefore has to remove before the `join` that reads its link: §5.1's fragment and §2/§10's
-#: version gate are decided about the link itself, so a subject asked for one of these after it
-#: is seated could not have refused the link anyway. Every other guard sits in a session and is
-#: removed after the join.
-LINK_MUTATIONS = frozenset({"accept-partial-fragment", "fall-back-to-version-1"})
+#: The guard of that table a client has read **before any session exists**, and which a caller
+#: therefore has to remove before the `join` that reads its link: §5.1's fragment is decided
+#: about the link itself, so a subject asked for it after it is seated could not have refused
+#: the link anyway. Every other guard sits in a session and is removed after the join.
+LINK_MUTATIONS = frozenset({"accept-partial-fragment"})
 
 
 class SubjectError(Exception):
@@ -98,8 +94,8 @@ class SubjectError(Exception):
 class Refusal:
     """A link this client refused **locally**, in its own words.
 
-    `PROTOCOL.md` §5.1's fragment rule and §10's no-fallback rule are decided before a socket
-    is opened, so a client that holds them has no frame to report the refusal in and answers
+    `PROTOCOL.md` §5.1's fragment rule is decided before a socket is opened, so a client that
+    holds it has no frame to report the refusal in and answers
     the `join` itself: the subject protocol's `{"ok": false, "error": …}` is that answer, and
     the words are the client's. A decision vector asserts them with `expectRefusal`, which
     asserts the naming rather than the sentence.
@@ -410,9 +406,8 @@ class Subject:
 
         Both answers are decisions: a `Report` is a seated subject, and a `Refusal` is a link
         this client will not join with, in its own words, with no session behind it — which is
-        what §5.1's partial fragment and §10's version-1-only server are. A subject left
-        unseated by one refusal is free to be handed another link, which is how a vector
-        carries a refusal and its control leg.
+        what §5.1's partial fragment is. A subject left unseated by one refusal is free to be
+        handed another link, which is how a vector carries a refusal and its control leg.
 
         The invite is the vector's template with `$room`, `$token`, `$room_key` and
         `$host_key` substituted. `offline` says the caller will hand the frames over with
@@ -421,9 +416,7 @@ class Subject:
 
         `mutation` is not a member of this command: a guard is removed with `mutate`, and a caller
         that removes one **before** the `join` is removing a guard on the link, which a client
-        reads before any session exists (`LINK_MUTATIONS`). `meta` is what `GET /meta` answered
-        and `pin` the version this client's own setting pins it to, both of which §2 and §10
-        read before a socket; the layer that opens none carries them here.
+        reads before any session exists (`LINK_MUTATIONS`).
 
         `key` names a **fixture entry** — `"guest-1"` — and the runner resolves it to that
         keypair's 32-byte seed and sends it as `session_key`. It is a **test seam and not

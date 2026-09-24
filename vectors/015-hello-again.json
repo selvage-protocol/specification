@@ -12,39 +12,24 @@
     {
       "op": "send",
       "conn": "host",
-      "text": "{\"id\":1,\"method\":\"session.hello\",\"params\":{\"display_name\":\"Ada\",\"role\":\"host\"},\"v\":\"selvage/1\"}"
+      "text": "{\"id\":1,\"method\":\"session.hello\",\"params\":{\"display_name\":\"Ada\"},\"v\":\"selvage/2\"}"
     },
     {
       "op": "expect",
       "conn": "host",
-      "text": "{\"event\":\"room.created\",\"params\":{\"capabilities\":[\"y-protocols/1\",\"awareness\",\"open-document-set\",\"host-reclaim\"],\"documents\":[],\"keepalive\":{\"awareness_expire_ms\":30000,\"awareness_renew_ms\":15000,\"ping_interval_ms\":30000},\"peers\":[],\"room_id\":\"$room\",\"self\":{\"display_name\":\"Ada\",\"peer_id\":\"$host_peer\",\"role\":\"host\"},\"token\":\"$token\"},\"v\":\"selvage/1\"}"
+      "text": "{\"event\":\"room.created\",\"params\":{\"capabilities\":[\"y-protocols/1\",\"awareness\"],\"keepalive\":{\"awareness_expire_ms\":30000,\"awareness_renew_ms\":15000,\"ping_interval_ms\":30000},\"peers\":[],\"room_id\":\"$room\",\"self\":{\"display_name\":\"Ada\",\"peer_id\":\"$host_peer\"},\"token\":\"$token\"},\"v\":\"selvage/2\"}"
     },
     {
       "op": "send",
       "conn": "host",
-      "text": "{\"id\":2,\"method\":\"session.hello\",\"params\":{\"display_name\":\"Ada\"},\"v\":\"selvage/1\"}"
+      "text": "{\"id\":2,\"method\":\"session.hello\",\"params\":{\"display_name\":\"Ada\"},\"v\":\"selvage/2\"}"
     },
     {
       "op": "expect",
       "conn": "host",
-      "text": "{\"error\":{\"code\":\"already_seated\",\"message\":\"$_\"},\"id\":2,\"v\":\"selvage/1\"}"
-    },
-    {
-      "op": "send",
-      "conn": "host",
-      "text": "{\"id\":3,\"method\":\"doc.open\",\"params\":{\"path\":\"src/main.rs\"},\"v\":\"selvage/1\"}"
-    },
-    {
-      "op": "expect",
-      "conn": "host",
-      "text": "{\"id\":3,\"result\":{\"documents\":[\"src/main.rs\"]},\"v\":\"selvage/1\"}"
-    },
-    {
-      "op": "expect",
-      "conn": "host",
-      "text": "{\"event\":\"doc.opened\",\"params\":{\"documents\":[\"src/main.rs\"],\"path\":\"src/main.rs\",\"peer_id\":\"$host_peer\"},\"v\":\"selvage/1\"}"
+      "text": "{\"error\":{\"code\":\"already_seated\",\"message\":\"$_\"},\"id\":2,\"v\":\"selvage/2\"}"
     }
   ],
-  "selvage": "selvage/1",
+  "selvage": "selvage/2",
   "canonical": "SJ-C/1"
 }

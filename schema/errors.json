@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dontblameme.dev/schema/1/errors.json",
   "title": "Selvage Session Protocol — error codes and close codes",
-  "description": "The machine-readable vocabulary of `selvage/1` faults: `error.code` on a response, `session.error.params.code` on an event, and the WebSocket close code that a fatal fault is paired with. Valid against PROTOCOL.md \u00a711.",
+  "description": "The machine-readable vocabulary of faults: `error.code` on a response, `session.error.params.code` on an event, and the WebSocket close code that a fatal fault is paired with. Valid against PROTOCOL.md \u00a711.",
   "$defs": {
     "errorCode": {
       "type": "string",
@@ -11,25 +11,22 @@
         "bad_message",
         "bad_params",
         "hello_required",
-        "unsupported_version",
         "room_unknown",
         "token_invalid",
         "room_gone",
-        "host_present",
-        "already_seated",
-        "doc_not_open"
+        "already_seated"
       ],
-      "description": "Every code `selvage/1` defines. `doc_not_open` is reserved and never produced by this slice; a code a receiver does not know is treated as an unknown fault, not as a protocol error."
+      "description": "Every code this protocol defines. A code a receiver does not know is treated as an unknown fault, not as a protocol error."
     },
     "extensionCode": {
       "type": "string",
       "pattern": "^x\\.\\S+$",
-      "description": "An implementation's own code in the reserved `x.` namespace (PROTOCOL.md §10.1, §11): only the `x.` prefix is protocol, the suffix is the definer's. The reference server refuses past its capacity with `x.server_full`, `x.room_full` and `x.rate_limited`, the bounds and their close codes in PROTOCOL.md §2.1. Not defined by `selvage/1`, but carriable wherever an `errorCode` is."
+      "description": "An implementation's own code in the reserved `x.` namespace (PROTOCOL.md §10.1, §11): only the `x.` prefix is protocol, the suffix is the definer's. The reference server refuses past its capacity with `x.server_full`, `x.room_full` and `x.rate_limited`, the bounds and their close codes in PROTOCOL.md §2.1. Not defined by this protocol, but carriable wherever an `errorCode` is."
     },
     "closeCode": {
       "type": "integer",
-      "enum": [4000, 4001, 4002, 4003, 4004, 4005],
-      "description": "WebSocket close codes, in the private-use range: 4000 protocol_error, 4001 room_unknown, 4002 token_invalid, 4003 room_gone, 4004 host_present, 4005 unsupported_version."
+      "enum": [4000, 4001, 4002, 4003],
+      "description": "WebSocket close codes, in the private-use range: 4000 protocol_error, 4001 room_unknown, 4002 token_invalid, 4003 room_gone."
     },
     "errorObject": {
       "type": "object",

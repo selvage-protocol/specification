@@ -13,12 +13,12 @@
       "op": "send",
       "conn": "toolong",
       "refused": true,
-      "text": "{\"id\":1,\"method\":\"session.hello\",\"params\":{\"display_name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa𝄞\",\"role\":\"host\"},\"v\":\"selvage/1\"}"
+      "text": "{\"id\":1,\"method\":\"session.hello\",\"params\":{\"display_name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa𝄞\"},\"v\":\"selvage/2\"}"
     },
     {
       "op": "expect",
       "conn": "toolong",
-      "text": "{\"event\":\"session.error\",\"params\":{\"code\":\"bad_params\",\"message\":\"$_\"},\"v\":\"selvage/1\"}"
+      "text": "{\"event\":\"session.error\",\"params\":{\"code\":\"bad_params\",\"message\":\"$_\"},\"v\":\"selvage/2\"}"
     },
     {
       "op": "expectClose",
@@ -33,14 +33,14 @@
     {
       "op": "send",
       "conn": "atlimit",
-      "text": "{\"id\":1,\"method\":\"session.hello\",\"params\":{\"display_name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa𝄞\",\"role\":\"host\"},\"v\":\"selvage/1\"}"
+      "text": "{\"id\":1,\"method\":\"session.hello\",\"params\":{\"display_name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa𝄞\"},\"v\":\"selvage/2\"}"
     },
     {
       "op": "expect",
       "conn": "atlimit",
-      "text": "{\"event\":\"room.created\",\"params\":{\"capabilities\":[\"y-protocols/1\",\"awareness\",\"open-document-set\",\"host-reclaim\"],\"documents\":[],\"keepalive\":{\"awareness_expire_ms\":30000,\"awareness_renew_ms\":15000,\"ping_interval_ms\":30000},\"peers\":[],\"room_id\":\"$room\",\"self\":{\"display_name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa𝄞\",\"peer_id\":\"$host_peer\",\"role\":\"host\"},\"token\":\"$token\"},\"v\":\"selvage/1\"}"
+      "text": "{\"event\":\"room.created\",\"params\":{\"capabilities\":[\"y-protocols/1\",\"awareness\"],\"keepalive\":{\"awareness_expire_ms\":30000,\"awareness_renew_ms\":15000,\"ping_interval_ms\":30000},\"peers\":[],\"room_id\":\"$room\",\"self\":{\"display_name\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa𝄞\",\"peer_id\":\"$host_peer\"},\"token\":\"$token\"},\"v\":\"selvage/2\"}"
     }
   ],
-  "selvage": "selvage/1",
+  "selvage": "selvage/2",
   "canonical": "SJ-C/1"
 }

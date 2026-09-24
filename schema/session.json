@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dontblameme.dev/schema/1/session.json",
-  "title": "Selvage Session Protocol `selvage/1` — any text frame",
+  "title": "Selvage Session Protocol `selvage/2` — any text frame",
   "description": "The umbrella schema: validate any single session text frame against this, in either direction. Members an implementation does not know are tolerated everywhere (CANONICAL.md \u00a73), so no object here forbids one; a vector that must assert an exact member set does that with its own comparison, not with `additionalProperties`. Draft: JSON Schema 2020-12.",
   "$ref": "#/$defs/frame",
   "$defs": {
