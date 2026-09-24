@@ -1857,8 +1857,10 @@ them is `ai_notes/docs/review-one-wire-2026-09-24.md`.
 - **A receiver that holds no mark yet accepts an old `kind = 0` or `3` frame.** §6.1's mark starts
   at `0` for a key, and `Reader::replayed` is
   `counter <= self.marks.get(&id).map_or(0, |mark| mark.counter)` — so a receiver with no entry for
-  the sender compares against `0` and applies whatever arrives. A joiner has accepted nothing from
-  anyone and is the case that matters: a frame the room published before it arrived is applied. What
+  the sender is handed `0` to compare against: counter `0` is refused there, and every positive
+  counter passes. A joiner has accepted nothing from
+  anyone and is the case that matters: a frame the room published before it joined carried a
+  positive counter, which is what the mark check does not reject. What
   the prose has to state is what a receiver holding no mark does with those two kinds, which is the
   rule §6.1 already states for a mark that exists.
 - **A non-minimal `varUint` is read while the signed input is written minimally.**
