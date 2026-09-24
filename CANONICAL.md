@@ -318,16 +318,31 @@ re-send of a state) is not sealed again and is not counted twice.
   holding its state, and every client, the host included, ends its session and says why
   (`PROTOCOL.md` §13.10). A room that must go on is a new room, minted with a new room key.
 
-**What the host's count misses, and why the margin covers it.** A host that is away counts nothing,
-so the frames sealed during its absence are the ones its count lacks. The absence is bounded by the
-peers' own rules: a guest ends its session once its host-away window, `awareness_expire_ms`, has
-passed (`PROTOCOL.md` §13.8), and a client that joins while the host is away ends once its no-state
-window has passed (§13.3) and publishes nothing but its announcement meanwhile (§13.1). So one
-absence hides at most about two host-away windows of the room's traffic — 30 000 to 60 000 frames at
-a sustained thousand a second and the default 30 s window — against a margin of 2³¹, which is some
-thirty-five thousand such absences, each at that rate throughout. What a host cannot bound is a
-client that keeps sealing after its window has passed, which is a client outside §13.8 rather than a
-gap in the count. Its **associated data** is:
+**What the host's count misses, and the charge that bounds it.** A host that is away counts
+nothing, so the frames sealed during its absence are the ones its count lacks, and absences add up:
+a host that leaves and returns inside its host-away window keeps the room going, and nothing on the
+wire carries the frames it missed back to it. One absence is bounded by the peers' own rules — a
+guest ends its session once its host-away window, `awareness_expire_ms`, has passed
+(`PROTOCOL.md` §13.8), and a client that joins while the host is away ends once its no-state window
+has passed (§13.3) and publishes nothing but its announcement meanwhile (§13.1) — so one absence
+lasts at most about two windows. The number of absences is bounded by charging for them:
+
+- **Every return costs the host's count the absence charge, 2²¹ frames.** A host **MUST** add it to
+  its count each time it resumes the room after an absence: on every reconnect (`PROTOCOL.md` §9.1)
+  and on every reload that continues a persisted count. The charge is a fixed ceiling on what one
+  absence can hide rather than a measurement of it: 2²¹ frames in two 30 s windows is some 35 000
+  frames a second across the whole room, far above anything an editor produces, and a room whose
+  host has resumed 1024 times has spent the margin on charges alone and closes at the budget.
+- **The charge is not read from the peers.** Each frame's counter would say how many frames its
+  sender sealed while the host was away, but a counter is its sender's own word, and a peer holding
+  the room key that inflated one would close the room at will. The charge is the host's alone.
+- **A persisted host record without a count is a spent budget.** A host that resumes from a record
+  written before the count existed cannot know what the room has sealed, so it **MUST** read the
+  count as the frame budget itself: it publishes its closing at once and ends, and the room that
+  must go on is a new one.
+
+What the charge cannot bound is a client that keeps sealing after its own window has passed, which
+is a client outside §13.8 rather than a gap in the count. Its **associated data** is:
 
 ```
 aad = varUint8Array("selvage/2") ‖ varUint8Array(room id) ‖ varUint(kind) ‖ varUint(epoch) ‖ varUint8Array(key_id)
