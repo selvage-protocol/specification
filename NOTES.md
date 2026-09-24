@@ -1571,3 +1571,43 @@ consistent with §10. Which one the version means decides whether a guest handed
 truncated the `#` off is refused or seated in the clear, so it is a decision and not a wording.
 `vectors/peer/157` is about a fragment that names one of the two keys and its third leg is the whole
 fragment, so neither leg reaches this case. **Unresolved.**
+
+**B.43 A review pass over §7.1's host, §13's peer side and the sealed frame's key.** Seven changes,
+none of them to a byte, a schema or a vector; the corpus counts are unchanged.
+
+- **Which seat a new key is labelled with is fixed.** §7.1 let a host label a key it could not place
+  with "any seat the roster names, its own included", and in the same paragraph had a new key replace
+  the key its seat held — so a guest's announcement labelled with the host's own seat would have
+  replaced the one `host` entry the list below it obliges. The four implementations had each settled
+  it the same way, with a comment that §7.1 "does not say which seat gives way" (`HostProducer.label`
+  in `vscode_client`, `web_client` and `nvim_client`'s vendored engine; `fn label` and
+  `fallback_seat` in `reference_server`'s `crates/client/src/host.rs`): a free seat first, then the
+  seat whose key was committed earliest, and the host's own seat last and without eviction. §7.1 now
+  states that order, the reason the last case needs a reordering relay to arise, and the residual of
+  the third: a peer that holds the room key can displace the earliest commitment one window at a time.
+- **The peer re-send of a state is for a room whose host is away.** §7.1 had every peer holding a
+  state re-send it on every `peer.joined`, beside the host's own fresh state for the same join. A state
+  carries the whole listing — up to 4 MiB at §13.3's bounds — so a join cost one copy per seated peer
+  on every connection, against an outbound queue of 32 frames and 32 MiB (§2.1) that disconnects a
+  peer past either. The two cases the re-send exists for — a joiner while the host is away, and a
+  returning host that lost its `issued` — both arrive while the applied state's `host` entry labels a
+  seat the roster lacks, so the **SHOULD** is now conditioned on that and a **SHOULD NOT** covers the
+  rest. **Divergence:** every client engine re-sends unconditionally today (`PeerSession.seatJoined`
+  in the three TypeScript engines); no vector pins either behaviour.
+- **§13.1's host paragraph said "on every session-key announcement it accepts"**, which read as a
+  state per announcement against §7.1's window bound. It now says what §7.1 says, and names
+  `peer.left` beside `peer.joined`.
+- **A `viewer` is as read-only as its own client, and §7.1 says so.** Every host commits an undeclared
+  key as `guest` (`declared ?? 'guest'`, `declared.unwrap_or("guest")`), and a host can place no key,
+  so a peer handed a `viewer` invite that leaves the declaration out of its announcement is a writer.
+  §13.5 already called the role a denial between conforming peers; it now names this path to it, and
+  a deployment is told not to rely on the role for a reader who must not write.
+- **The frame key's nonce budget.** Every sender seals under one frame key with random 96-bit nonces
+  for the life of the room, and `epoch` is reserved, so nothing rekeys. `CANONICAL.md` §6.1 now states
+  SP 800-38D's 2³² bound as the room's and has a deployment that could pass it mint a new room.
+- **§13.3's no-state rejoin is once.** The **MAY** that let a client with no state rejoin instead of
+  ending had no bound, and a client that took it at every window's end would hold a hostless room
+  alive indefinitely — the case the ending exists for. No client takes it today.
+- **Two numbers.** §2.1's inbound-budget row now says each frame is charged at least 1 KiB, which
+  `selvaged`'s `budget.rs` (`FRAME_COST_BYTES`) does and the table did not say; and §8.3's awareness
+  query example said a 256 KiB frame of one-byte messages is 256 000 of them, which is 262 144.

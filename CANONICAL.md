@@ -288,8 +288,15 @@ two from any other key.
 
 **What is authenticated.** The AEAD is **AES-256-GCM**; the tag is the 16 bytes GCM appends to the
 ciphertext; the nonce is the envelope's 12 bytes, drawn fresh from the CSPRNG for every frame and
-never derived from a counter, a key, or a value another sender also holds. Its **associated data**
-is:
+never derived from a counter, a key, or a value another sender also holds. A random 96-bit nonce is
+safe under one key only up to a bound on how many frames that key seals, and here the key is shared:
+every sender in a room seals under the one frame key, for as long as the room lives, and `epoch` —
+the member a rekey would move — is reserved and unused in this version. SP 800-38D §8.3 bounds the
+invocations of one key with random nonces at **2³²**, and that bound is the room's, summed over
+every sender, and not any one sender's. No room an editor produces approaches it (a sustained
+thousand frames a second takes more than a month to reach it), but nothing in this version resets
+it: a deployment that keeps one room alive past that many frames **MUST** mint a new room, with a
+new room key, rather than go on sealing under the old one. Its **associated data** is:
 
 ```
 aad = varUint8Array("selvage/2") ‖ varUint8Array(room id) ‖ varUint(kind) ‖ varUint(epoch) ‖ varUint8Array(key_id)
