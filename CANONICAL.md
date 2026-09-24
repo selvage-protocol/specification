@@ -321,18 +321,25 @@ re-send of a state) is not sealed again and is not counted twice.
 **What the host's count misses, and the charge that bounds it.** A host that is away counts
 nothing, so the frames sealed during its absence are the ones its count lacks, and absences add up:
 a host that leaves and returns inside its host-away window keeps the room going, and nothing on the
-wire carries the frames it missed back to it. One absence is bounded by the peers' own rules — a
-guest ends its session once its host-away window, `awareness_expire_ms`, has passed
-(`PROTOCOL.md` §13.8), and a client that joins while the host is away ends once its no-state window
-has passed (§13.3) and publishes nothing but its announcement meanwhile (§13.1) — so one absence
-lasts at most about two windows. The number of absences is bounded by charging for them:
+wire carries the frames it missed back to it. One absence is bounded in time by the peers' own
+rules — a guest ends its session once its host-away window, `awareness_expire_ms`, has passed and
+no later than twice it (`PROTOCOL.md` §13.8), and a client that joins while the host is away ends
+once its no-state window has passed (§13.3) and publishes nothing but its announcement meanwhile
+(§13.1). The number of absences is bounded by charging for them:
 
 - **Every return costs the host's count the absence charge, 2²¹ frames.** A host **MUST** add it to
   its count each time it resumes the room after an absence: on every reconnect (`PROTOCOL.md` §9.1)
-  and on every reload that continues a persisted count. The charge is a fixed ceiling on what one
-  absence can hide rather than a measurement of it: 2²¹ frames in two 30 s windows is some 35 000
-  frames a second across the whole room, far above anything an editor produces, and a room whose
-  host has resumed 1024 times has spent the margin on charges alone and closes at the budget.
+  and on every reload that continues a persisted count. The charge bounds the **number** of
+  absences a room can have — a room whose host has resumed 1024 times has spent the margin on
+  charges alone and closes at the budget — and it covers the frames of each one under an
+  assumption that is stated rather than hidden: that the room seals fewer than 2²¹ frames while its
+  host is away. A conforming guest leaves no later than twice its host-away window after the host
+  did (`PROTOCOL.md` §13.8), so one absence lasts at most about three windows counting the host's
+  own reconnect, and the assumption is that the whole room seals under about 23 000 frames a second
+  for that long at the default 30 s window — far above anything an editor produces. This version
+  fixes no rate a sender must keep to, so a room that breaks the assumption, or a client that
+  ignores §13.8, is outside what the charge bounds, and the bound is only as good as that
+  assumption.
 - **The charge is not read from the peers.** Each frame's counter would say how many frames its
   sender sealed while the host was away, but a counter is its sender's own word, and a peer holding
   the room key that inflated one would close the room at will. The charge is the host's alone.

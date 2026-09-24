@@ -2707,7 +2707,10 @@ sends.
   host that has dropped its socket to come back in, and a client that leaves inside it abandons a
   room whose host may still return. A client **MAY** wait longer, and the margin beyond the window
   is the observation delay: it errs in the safe direction, because the clock starts no earlier than
-  the host actually left.
+  the host actually left. It **MUST NOT** wait longer than twice the window: the host's frame count
+  is charged for an absence on the assumption that an absence ends ([`CANONICAL.md`](CANONICAL.md)
+  §6.1's absence charge), and a client that stayed on for ever would let one absence hide any
+  number of frames.
 - **The two windows run in sequence, and both are owed.** A client seated with no state waits the
   **no-state window** of §13.3, and a state whose `host` entry labels an absent seat is what ends
   that wait — so the same client then waits the host-away window from the moment it applied that

@@ -1688,7 +1688,11 @@ absence of the host hides at most about two host-away windows of traffic and tha
 some thirty-five thousand of them. That bounds one absence and not their number, and a host that
 leaves and returns inside its window keeps the room going indefinitely. `CANONICAL.md` §6.1 now
 charges the count a fixed 2²¹ frames on every return — a reconnect or a reload — which bounds the
-number of uncounted absences at 1024 with no rate measured and no value read from a peer. Reading
+number of uncounted absences at 1024 with no rate measured and no value read from a peer. A
+follow-up comment pointed out that §13.8's "MAY wait longer" left one absence unbounded in time, and
+that this version fixes no sending rate. §13.8 now caps the wait at twice the window, and §6.1
+states the charge's one assumption, that a room seals fewer than 2²¹ frames during an absence,
+rather than presenting the charge as a guarantee. Reading
 the peers' envelope counters instead was rejected again for the reason above. The second finding:
 a persisted host record written before the count existed loaded as `0`, which would continue a room
 that may already have sealed frames. Such a record now reads as a spent budget, and the host closes
