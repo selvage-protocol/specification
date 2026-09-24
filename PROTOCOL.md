@@ -1286,8 +1286,10 @@ with, and so which key it replaces, is fixed rather than left to a host, because
 name the host's own seat would have a guest's announcement replace the one `host` entry below:
 
 1. the announcer's own seat, where the host can tell which seat that is;
-2. otherwise the first seat the roster names, in the order the roster showed them, that carries no
-   committed key and is not the host's own;
+2. otherwise a seat the roster names that carries no committed key and is not the host's own —
+   which one, when several qualify, is the host's to pick, because no receiver recomputes a label
+   and nothing reads the roster's order (§6.2), and the implementations take the seat they were
+   told of first;
 3. otherwise the seat, other than the host's own, whose key the host committed **earliest**, and the
    new key replaces that one — it is the key most likely to belong to a connection whose
    `peer.left` has not arrived yet;
@@ -2777,9 +2779,11 @@ last rule), and the key it announced is the thing the state names.**
 
 ### 13.10 The room's life, as a client sees it
 
-**A client's copy of a room is its own, and a room can end for it in four ways: a verified closing,
-the destruction that reaches it as `room_unknown`, its own host-away clock, and §13.3's no-state
-window when it never held a state to arm one.** §9's version-2 room
+**A client's copy of a room is its own, and a room can end for it in five ways: a verified closing,
+the destruction that reaches it as `room_unknown`, its own host-away clock, §13.3's no-state
+window when it never held a state to arm one, and the frame budget of
+[`CANONICAL.md`](CANONICAL.md) §6.1, past which no client seals another frame under the room's
+key.** §9's version-2 room
 is what the room *is* and §9.1 is the rejoin; this subsection is only what a client holds and
 shows.
 

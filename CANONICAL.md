@@ -295,8 +295,17 @@ the member a rekey would move — is reserved and unused in this version. SP 800
 invocations of one key with random nonces at **2³²**, and that bound is the room's, summed over
 every sender, and not any one sender's. No room an editor produces approaches it (a sustained
 thousand frames a second takes more than a month to reach it), but nothing in this version resets
-it: a deployment that keeps one room alive past that many frames **MUST** mint a new room, with a
-new room key, rather than go on sealing under the old one. Its **associated data** is:
+it, so the peers enforce it, because they are the parties that can count: the relay delivers every
+frame to every other connection, so a client that counts the binary frames it receives in the room
+and the frames it seals itself counts the room's total, less whatever the relay dropped on the way
+to it. **A client MUST keep that count** for the life of its session, and once it reaches the
+**frame budget, 2³¹** — half the bound, which leaves room for every frame a client did not see —
+it **MUST NOT** seal another frame under the frame key: a host publishes one closing
+(`PROTOCOL.md` §7.1), whose `issued` ends the room for every peer holding its state, and every
+client, the host included, ends its session and says why (`PROTOCOL.md` §13.10). A room that must
+go on is a new room, minted with a new room key. A frame a client re-sends unchanged (`PROTOCOL.md`
+§7.1's re-send of a state) is not sealed again and is not counted twice. Its **associated data**
+is:
 
 ```
 aad = varUint8Array("selvage/2") ‖ varUint8Array(room id) ‖ varUint(kind) ‖ varUint(epoch) ‖ varUint8Array(key_id)

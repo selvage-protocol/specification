@@ -1604,7 +1604,9 @@ none of them to a byte, a schema or a vector; the corpus counts are unchanged.
   a deployment is told not to rely on the role for a reader who must not write.
 - **The frame key's nonce budget.** Every sender seals under one frame key with random 96-bit nonces
   for the life of the room, and `epoch` is reserved, so nothing rekeys. `CANONICAL.md` §6.1 now states
-  SP 800-38D's 2³² bound as the room's and has a deployment that could pass it mint a new room.
+  SP 800-38D's 2³² bound as the room's, and has every client count the room's frames and stop at
+  2³¹: a deployment cannot count sealed frames and a relay cannot read them, so the peers, which see
+  every frame, are the parties a rule can bind (§1.1).
 - **§13.3's no-state rejoin is once.** The **MAY** that let a client with no state rejoin instead of
   ending had no bound, and a client that took it at every window's end would hold a hostless room
   alive indefinitely — the case the ending exists for. No client takes it today.
@@ -1613,8 +1615,8 @@ none of them to a byte, a schema or a vector; the corpus counts are unchanged.
   query example said a 256 KiB frame of one-byte messages is 256 000 of them, which is 262 144.
 
 **What B.43 asks of each implementation.** Checked against every repository's `main` on
-2026-09-24; none of them has an open pull request. One item needs code, and it is the same change in
-four places. Everything else needs nothing or is optional.
+2026-09-24; none of them had an open pull request. Two items need code, items 1 and 4, each the
+same change in four places. Everything else needs nothing or is optional.
 
 1. **The state re-send is conditional (§7.1). Needed in every client engine.** A non-host peer
    re-sends the state frame it holds on `peer.joined` only when the seat its applied state's `host`
@@ -1648,9 +1650,20 @@ four places. Everything else needs nothing or is optional.
    seat, so the new **SHOULD** does not apply to any of them. A client UI that presents a `viewer`
    invite as a read-only guarantee (`web_client`'s host invite, `vscode_client`'s share command)
    **SHOULD** word it as a request the viewer's client honours, not as enforcement.
-4. **The frame key's 2³² frames (`CANONICAL.md` §6.1). Nothing required.** No realistic room
-   reaches it. Optional hardening for a host engine: count the sealed frames it verifies in a room
-   and close the room (a `kind = 2` closing) well before 2³², telling its person to mint a new one.
+4. **The frame budget (`CANONICAL.md` §6.1). Needed in every client engine.** A session counts
+   every binary frame it is delivered and every frame it seals, but not a state it re-sends
+   unchanged. Once the count reaches 2³¹ it seals nothing more. A host publishes one closing and
+   every session ends with its own ending, `frame-budget`, and says why. Take the number from an
+   option, so that a test can set the budget to a handful of frames.
+   - `vscode_client` `src/engine/peer.ts`: add `'frame-budget'` to `Ending` and `endingReason`,
+     add `frameBudget?: number` to `PeerOptions` (default `FRAME_BUDGET = 2 ** 31`), count in
+     `deliverOne`, `publish` and `publishState` (fresh publications only), refuse to seal in
+     `publish` once spent, and end in `tickOne`, publishing the host's closing first.
+   - `web_client` `src/engine/peer.ts` and `nvim_client` `vendor/engine/peer.ts`: the same change.
+   - `reference_server` `crates/client/src/peer.rs`: the same, plus an `Ending::FrameBudget`
+     variant carried through `relay.rs`'s `RelayEnding`.
+   - Tests: with a budget of a few frames, the session ends `frame-budget` at the count and seals
+     nothing after it, and a host session publishes a closing first.
 5. **The no-state rejoin (§13.3). Nothing to change.** Every engine ends at the no-state window
    (`Ending` `'no-state'` in `peer.ts`) and none rejoins, which the bounded **MAY** allows.
 6. **`selvaged` (`reference_server/crates/selvaged`). Nothing to change.** Every §2.1 number matches
