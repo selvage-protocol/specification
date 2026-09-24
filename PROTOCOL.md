@@ -1374,7 +1374,9 @@ existence;
   ([`CANONICAL.md`](CANONICAL.md) §6.1). A host that persists its host key **MUST** persist
   its `issued` with it and continue the series rather than restart it: a state at or below the
   room's edition is refused by every peer, and nothing in the protocol carries that refusal back to
-  its publisher (§13.3);
+  its publisher (§13.3). The room's frame count is persisted beside the two and continued the same
+  way ([`CANONICAL.md`](CANONICAL.md) §6.1's frame budget), because the host's count is the only one
+  that runs from the room's first frame;
 - **MUST** give exactly one key the role `host`, its own connection's, because that entry is what
   tells a receiver which seated peer holds the host key;
 - **MUST** keep its `peers` a statement about the seats the roster has: a key whose entry labels a
@@ -1842,11 +1844,11 @@ itself: the connection that signed the state is the one the entry commits (§7.1
 
 What that costs is the host key's persistence, and the cost is the host's own: the keypair is minted
 with the room and travels nowhere but the host's machine, so **a host that means to keep hosting
-after a reload MUST persist its private half**, with its `issued` beside it (§7.1). A client that
-does not persist it ends its own hosting when it reloads — it can be seated in the room, and it can
-never publish a state a peer accepts again. A host on another device is in the same position: the key
-belongs to a room and a machine, and there is no portable host identity that is not also an
-identifier every guest can see.
+after a reload MUST persist its private half**, with its `issued` and the room's frame count beside
+it (§7.1, [`CANONICAL.md`](CANONICAL.md) §6.1). A client that does not persist it ends its own
+hosting when it reloads — it can be seated in the room, and it can never publish a state a peer
+accepts again. A host on another device is in the same position: the key belongs to a room and a
+machine, and there is no portable host identity that is not also an identifier every guest can see.
 
 A dropped connection takes everything that belonged to it: the `peer_id`, the claimed role
 (`selvage/1`), this connection's document holds and its awareness state. Nothing about a client
@@ -2705,7 +2707,10 @@ sends.
   host that has dropped its socket to come back in, and a client that leaves inside it abandons a
   room whose host may still return. A client **MAY** wait longer, and the margin beyond the window
   is the observation delay: it errs in the safe direction, because the clock starts no earlier than
-  the host actually left.
+  the host actually left. It **MUST NOT** wait longer than twice the window: the host's frame count
+  is charged for an absence on the assumption that an absence ends ([`CANONICAL.md`](CANONICAL.md)
+  §6.1's absence charge), and a client that stayed on for ever would let one absence hide any
+  number of frames.
 - **The two windows run in sequence, and both are owed.** A client seated with no state waits the
   **no-state window** of §13.3, and a state whose `host` entry labels an absent seat is what ends
   that wait — so the same client then waits the host-away window from the moment it applied that
@@ -2788,14 +2793,15 @@ is what the room *is* and §9.1 is the rejoin; this subsection is only what a cl
 shows.
 
 - **What a client keeps.** The last room state it verified — its listing and its roles — and the
-  roster the server gave it. Across a blip it **MUST** keep what a rejoin needs: the room id and
-  the token (§5.1's "never echoed after the mint"), and, if it is the host, the private half of the
-  host key with its `issued` beside it (§9.1). What it keeps of the *document* is a local decision
-  and both answers work: keeping its `Y.Doc` and asking for the delta it missed, or starting empty
-  and being brought up to date; and it **MUST NOT** conclude the room is empty because its replica
-  is (§9.1). It carries nothing across the socket that the protocol says belongs to a connection: a
-  hold, an awareness state or a role belongs to the connection that ended, and a reconnecting
-  client re-announces what it still holds rather than trusting what it remembered.
+  roster the server gave it. Across a blip it **MUST** keep what a rejoin needs: the room id and the
+  token (§5.1's "never echoed after the mint"), and, if it is the host, the private half of the host
+  key with its `issued` and the room's frame count beside it (§9.1), and its own frame count
+  whatever its role ([`CANONICAL.md`](CANONICAL.md) §6.1). What it keeps of the *document* is a
+  local decision and both answers work: keeping its `Y.Doc` and asking for the delta it missed, or
+  starting empty and being brought up to date; and it **MUST NOT** conclude the room is empty
+  because its replica is (§9.1). It carries nothing across the socket that the protocol says belongs
+  to a connection: a hold, an awareness state or a role belongs to the connection that ended, and a
+  reconnecting client re-announces what it still holds rather than trusting what it remembered.
 - **A verified `room.closing`.** A client that applies a `kind = 2` closing whose `issued` is above
   the mark it holds, **and that already holds a verified state below it**, treats the session as
   ended (§7.1): it shows the room as over and does not rejoin the id. A closing that does not

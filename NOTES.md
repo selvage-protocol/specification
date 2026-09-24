@@ -1669,3 +1669,50 @@ same change in four places. Everything else needs nothing or is optional.
 6. **`selvaged` (`reference_server/crates/selvaged`). Nothing to change.** Every §2.1 number matches
    `lib.rs`, `room.rs`, `budget.rs` and `net/`. The 1 KiB per-frame floor is now written down, and
    the code already applies it.
+
+**B.44 The frame budget's count is the host's.** §B.43 had every client count the room's frames and
+stop at 2³¹, and claimed a client's count was the room's total. It is not: a client that joined late
+counts from its own seat, so every client can stay below the budget while the room as a whole passes
+the bound (a review comment on specification#58 caught it after the merge). `CANONICAL.md` §6.1 now
+makes the **host's** count the room's: the host is present from the room's first frame, keeps
+its count across every reconnect, persists it beside `issued` at least once per
+`awareness_renew_ms`, and continues it after a reload. Every other client's count stays as the
+backstop that runs while the host is away. What the host's count misses — frames sealed while it is
+away — is bounded by §13.8's host-away window and §13.3's no-state window, which end the peers'
+sessions. §6.1 states that bound against the 2³¹ margin. Reading the peers' envelope counters on the
+host's return would close even that gap, but it would let any holder of the room key inflate its
+counter and close the room at will, so it was left out.
+
+**Two review findings on specification#59, both taken.** The first version of this entry said one
+absence of the host hides at most about two host-away windows of traffic and that the margin covers
+some thirty-five thousand of them. That bounds one absence and not their number, and a host that
+leaves and returns inside its window keeps the room going indefinitely. `CANONICAL.md` §6.1 now
+charges the count a fixed 2²¹ frames on every return — a reconnect or a reload — which bounds the
+number of uncounted absences at 1024 with no rate measured and no value read from a peer. A
+follow-up comment pointed out that §13.8's "MAY wait longer" left one absence unbounded in time, and
+that this version fixes no sending rate. §13.8 now caps the wait at twice the window, and §6.1
+states the charge's one assumption, that a room seals fewer than 2²¹ frames during an absence,
+rather than presenting the charge as a guarantee. Reading
+the peers' envelope counters instead was rejected again for the reason above. The second finding:
+a persisted host record written before the count existed loaded as `0`, which would continue a room
+that may already have sealed frames. Such a record now reads as a spent budget, and the host closes
+the room at once. No implementation persists host records yet, so that costs nothing today.
+
+**What B.44 asks of each implementation.** One change, the same in four places:
+
+- `vscode_client` `src/engine/host.ts`: `PersistedHost` gains an optional `frames: number`.
+  `HostProducer` loads it under the seed check `issued` already has. A record without it loads as
+  the frame budget itself, so the host closes the room at its first tick. A record with it loads as
+  that count plus the absence charge, `ABSENCE_CHARGE = 2 ** 21`. The producer takes the session's
+  current count, writes it in every `save` beside `issued`, saves it from the tick at least once per
+  `awareness_renew_ms` when it has moved, and saves it at once when the session ends. `FRAME_BUDGET`
+  moves here from `peer.ts`, which re-exports it. `src/engine/peer.ts`: a host session starts
+  `roomFrames` from the producer, hands its count to the producer as it moves, flushes on the tick,
+  counts and saves the closing on both closing paths, and adds `ABSENCE_CHARGE` on every re-seat.
+- `web_client` `src/engine/` and `nvim_client` `vendor/engine/`: the same change, synced or applied
+  as with §B.43.
+- `reference_server` `crates/client/src/host.rs` and `peer.rs`: the same, with `PersistedHost`
+  gaining `frames: Option<u64>`.
+- Tests: a reload continues the saved count plus the charge; a re-seat adds the charge; a record
+  without a count closes the room at the first tick; the moving count is saved at least once a
+  renewal interval; and both closing paths save a count that includes the closing.
