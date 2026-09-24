@@ -1,7 +1,7 @@
 {
   "id": "015",
   "title": "A second `session.hello` on a seated connection is `already_seated` and changes nothing",
-  "spec": "PROTOCOL.md#session-hello--the-handshake",
+  "spec": "PROTOCOL.md#sessionhello--the-handshake",
   "notes": "The handshake happens once per connection. A second hello is answered with an error response naming that request's id — not a `session.error` event, because the seated connection can correlate it — and the connection stays open: the document method after it still works. Re-hello is not a resume and not a second peer.",
   "steps": [
     {

@@ -21,8 +21,9 @@ protocol (`runner/subject.py`). `start` seats it with the invite, the fixture se
 the roster and the session's clock; `expectSubject` is the decision channel. So a decision
 vector needs one thing and this runner names it: a subject.
 
-**A link is refused before a socket, and that is a decision too.** §5.1's partial fragment is
-decided about the link itself, so a client refuses the `join` in its own words and seats
+**A link is refused before a socket, and that is a decision too.** §5.1's fragment is
+decided about the link itself — a key absent, missing or not a key — so a client refuses the `join`
+in its own words and seats
 nothing; `expectRefusal` is the step that asserts what those words carry, and the subject stays
 free for the vector's next `start`. A guard on the link (`subject.LINK_MUTATIONS`) is removed
 before the `join` for the same reason: it has to be gone before the link is read.
@@ -652,11 +653,12 @@ class DecisionRun:
         handler(where, step)
 
     def start(self, where: str, step: dict) -> None:
-        """Hand the subject the link it starts from: the invite, the clock, the roster, the
-        session keypair, and the two things §2 and §10 read before a socket.
+        """Hand the subject the link it starts from: the invite, the clock, the roster and the
+        session keypair.
 
         The answer is either a seating or the client's own words for a link it refuses
-        (`PROTOCOL.md` §5.1's partial fragment, §10's version-1-only server), and the second is
+        (`PROTOCOL.md` §5.1's fragment, whose absent, missing or malformed key is refused before a
+        socket), and the second is
         a decision the vector asserts with `expectRefusal` rather than a failure of the run.
 
         The guard this run removes is named **before** the join when it sits on the link, which
@@ -745,8 +747,8 @@ class DecisionRun:
         """One `expectRefusal`: the subject refused the link, and its own words name what the
         vector says they must.
 
-        `PROTOCOL.md` §2 and §5.1 leave the sentence to the client — "the client's to word,
-        naming the server and the version it would need" — so what a vector can hold an
+        `PROTOCOL.md` §5.1 leaves the sentence to the client — "the sentence is the client's" —
+        so what a vector can hold an
         implementation to is the **naming**: every string `names` lists is in the refusal. A
         subject that joined the link instead has answered the one question the step asks, and
         its report is printed so a reader sees what it did instead.

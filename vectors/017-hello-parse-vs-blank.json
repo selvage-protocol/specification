@@ -1,7 +1,7 @@
 {
   "id": "017",
   "title": "A `session.hello` with no `display_name` is `bad_message`; a blank one is `bad_params`",
-  "spec": "PROTOCOL.md#session-hello--the-handshake",
+  "spec": "PROTOCOL.md#sessionhello--the-handshake",
   "notes": "The distinction is parse failure against semantic failure, and both are reachable before the handshake completes, where every fault closes the connection. Params with no `display_name` cannot be read as a hello at all; params that carry a blank one read fine and are refused as a value. Neither mints a room, and a well-formed hello afterwards seats normally.",
   "steps": [
     {

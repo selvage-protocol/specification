@@ -1,7 +1,7 @@
 {
   "id": "029",
   "title": "A control character in a `display_name` is `bad_params`",
-  "spec": "PROTOCOL.md#session-hello--the-handshake",
+  "spec": "PROTOCOL.md#sessionhello--the-handshake",
   "notes": "PROTOCOL.md §5's Unicode `Cc` exclusion is on the identity the server reads, and it is judged on the received value before the trim: a name carrying U+0001 and one carrying a tab are both refused, and the connection closes. The same exclusion on a path and on a grant member is a receiver's rule and not the server's, and it is pinned in the peer layer (`vectors/peer/117`, `119`) and in `schema/common.json`'s own refusal, because `doc.*` is not a method of this version.",
   "selvage": "selvage/2",
   "canonical": "SJ-C/1",

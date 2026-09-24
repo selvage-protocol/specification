@@ -94,16 +94,16 @@ BASE = "https://dontblameme.dev/schema/1/"
 # run instead of a smaller number in a line of output. Update them in the same commit that changes
 # the corpus. The two layers are counted apart on purpose: they are committed and replayed by
 # different tools, and one number would let one layer's loss be paid by the other's gain.
-EXPECTED_WIRE_VECTORS = 22
+EXPECTED_WIRE_VECTORS = 24
 EXPECTED_PEER_VECTORS = 26
-EXPECTED_FRAME_CHECKS = 33686
-EXPECTED_ASSERTIONS = 8368
+EXPECTED_FRAME_CHECKS = 33728
+EXPECTED_ASSERTIONS = 8381
 # The peer layer's own counts. `PEER_CHECKS` is one per peer step plus one per recipe, and
 # `PEER_ASSERTIONS` counts the assertion steps of the **frame** vectors, which is what
 # `runner/run_peer.py` runs without a client; a decision vector's `expectSubject` steps are checked
 # here and are not in this number, because they are asserted against a *subject* — a client named by
 # `--subject` — and are counted in that run's own summary rather than in a corpus-wide pin.
-EXPECTED_PEER_CHECKS = 217
+EXPECTED_PEER_CHECKS = 221
 EXPECTED_PEER_ASSERTIONS = 74
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
@@ -117,6 +117,9 @@ EXPECTED_CODES = {
     "001": [],
     "002": [],
     "003": [],
+    "005": ["close:4000", "close:4000", "close:4000", "close:4000",
+            "session.error:bad_message", "session.error:bad_message",
+            "session.error:bad_message", "session.error:bad_message"],
     "007": ["error:unknown_method", "error:unknown_method", "error:unknown_method"],
     "008": ["close:4000", "close:4000", "session.error:bad_message",
             "session.error:hello_required"],
@@ -132,6 +135,7 @@ EXPECTED_CODES = {
     "019": ["close:4000", "session.error:bad_params"],
     "020": ["error:bad_params"],
     "026": ["close:4000", "session.error:x.room_full"],
+    "027": ["session.error:bad_message"],
     "028": ["close:4000", "close:4000", "error:bad_params", "error:unknown_method",
             "session.error:bad_message", "session.error:bad_message"],
     "029": ["close:4000", "close:4000", "session.error:bad_params",
@@ -215,9 +219,10 @@ EXPECTED_MUTATIONS = {
 
 # The control of the absence scan: a document built to break every rule the scan states, and the
 # violations it must find in it. The rule is "no server-authored `selvage/2` frame carries a path,
-# a role, a byte of content, or an event the version deletes", and the corpus that this scan runs
+# a role, a byte of content, or an event this protocol does not have", and the corpus that this scan runs
 # over is a corpus of the version the rule is about, so the corpus can no longer be its own
-# positive control the way the `selvage/1` layer was: a document that breaks the rule is the
+# positive control the way a corpus of the version the rule is about cannot be: a document that
+# breaks the rule is the
 # subject instead, and the pinned violations are what makes a walker that stopped walking a red
 # run rather than a shorter list.
 ABSENCE_CONTROL = {
@@ -250,12 +255,12 @@ ABSENCE_CONTROL = {
 EXPECTED_CONTROL_VIOLATIONS = [
     "step 0 (expect) carries ['documents', 'role']",
     "step 1 (expect) carries ['documents', 'path']",
-    "step 1 (expect) is a `doc.opened`, which this version deletes",
+    "step 1 (expect) is a `doc.opened`, an event this protocol does not have",
     "step 2 (expect) carries ['paths']",
-    "step 2 (expect) is a `doc.granted`, which this version deletes",
-    "step 3 (expect) is a `host.detached`, which this version deletes",
+    "step 2 (expect) is a `doc.granted`, an event this protocol does not have",
+    "step 3 (expect) is a `host.detached`, an event this protocol does not have",
     "step 4 (expect) carries ['role']",
-    "step 4 (expect) is a `host.attached`, which this version deletes",
+    "step 4 (expect) is a `host.attached`, an event this protocol does not have",
     "step 5 (sendBinary) carries 'src/main.rs' in its bytes",
 ]
 
@@ -381,12 +386,11 @@ PEER_SUBJECT_MUTATIONS = frozenset(
         "any-closing",
         "wait-for-ever",
         "accept-partial-fragment",
-        "fall-back-to-version-1",
     }
 )
 
 #: The member names no server-authored `selvage/2` frame may carry, and the events the version
-#: deletes. `host` was in the corpus study's table of member names and is not one: `host` appears
+#: does not have. `host` was in the corpus study's table of member names and is not one: `host` appears
 #: in this corpus as the first half of an *event* name, `host.attached` and `host.detached`, and
 #: the study's 186 is a count of something else. A member census and an event census are two
 #: different measurements, so they are two, and the events are pinned as well as scanned.
@@ -425,7 +429,7 @@ def fail(where: str, problem: str) -> None:
 
 
 def close_codes() -> list[int]:
-    """The close codes `selvage/1` uses, read from the vocabulary that defines them."""
+    """The close codes the vocabulary defines, read from the schema that defines them."""
     schema = json.loads((SCHEMA_DIR / "errors.json").read_text())
     return schema["$defs"]["closeCode"]["enum"]
 
@@ -462,7 +466,7 @@ METHODS_SCHEMA = load_methods_schema()
 
 
 def known_methods() -> list[str]:
-    """The method names `selvage/1` defines, read from the schema that defines them."""
+    """The method names the schema defines, read from it."""
     if METHODS_SCHEMA is None:
         return []
     return METHODS_SCHEMA["$defs"]["knownMethod"]["enum"]
@@ -1255,7 +1259,8 @@ def absence_violations(document: object) -> list[str]:
     > `role`, or any byte of document content or cursor state.
 
     A frame carrying one of the five member names fails, and so does an `event` naming one of
-    the five events this version deletes: the member is what a receiver would read and the event
+    the five events this protocol does not have: the member is what a receiver would read and the
+    event
     is what would tell it to look. The three keys the server *does* author — the room id, the
     token, and a peer's `display_name` — are how a scan that read nothing is told apart from a
     scan that passed, which is why the caller asserts them separately.
@@ -1279,7 +1284,7 @@ def absence_violations(document: object) -> list[str]:
             if names:
                 violations.append(f"{at} carries {names}")
             if frame.get("event") in FORBIDDEN_EVENTS:
-                violations.append(f"{at} is a `{frame['event']}`, which this version deletes")
+                violations.append(f"{at} is a `{frame['event']}`, an event this protocol does not have")
         if "hex" not in step:
             continue
         try:

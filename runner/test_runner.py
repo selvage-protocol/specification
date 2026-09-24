@@ -165,9 +165,9 @@ class TestPeers(unittest.TestCase):
     def test_a_string_array_in_another_order_is_the_same_array(self) -> None:
         # The prose promises no order for `capabilities` either, and it is built from a
         # constant here and from whatever an implementation holds elsewhere.
-        want = ["y-protocols/1", "awareness", "host-reclaim"]
+        want = ["y-protocols/1", "awareness", "x.example"]
         matches_unordered(
-            list(want), ["host-reclaim", "y-protocols/1", "awareness"], Bindings()
+            list(want), ["x.example", "y-protocols/1", "awareness"], Bindings()
         )
         with self.assertRaises(Mismatch):
             matches_unordered(list(want), ["y-protocols/1", "awareness"], Bindings())
@@ -741,11 +741,10 @@ class TestStepVocabulary(unittest.TestCase):
 class TestTheTwoLinkRules(unittest.TestCase):
     """The two rules a link is decided about **before a socket**, driven against a stub client.
 
-    `PROTOCOL.md` §13.11 says these two are the decision layer's own subject, and no client in
-    this repository drives them, so what is checked here is the **vector**: each passes against a
-    subject that holds the rule, goes red under the one mutation it declares it catches, stays
-    green under the *other* link guard — a guard with a vector of its own and not this one's —
-    and fails a subject that refuses every link. That is the property the census asserts of a
+    `PROTOCOL.md` §13.11 says this one is the decision layer's own subject, and no client in
+    this repository drives it, so what is checked here is the **vector**: it passes against a
+    subject that holds the rule, goes red under the one mutation it declares it catches, and
+    fails a subject that refuses every link. That is the property the census asserts of a
     declared mutation, and it is the one a runner with no client cannot show.
     """
 
@@ -768,7 +767,7 @@ class TestTheTwoLinkRules(unittest.TestCase):
     def test_the_partial_fragment_vector_holds_and_catches_its_guard_alone(self) -> None:
         clean = self.link("157")
         self.assertIsNone(clean.failure)
-        self.assertEqual(clean.assertions, 3, "two refusals and the leg that must join")
+        self.assertEqual(clean.assertions, 5, "four refusals and the leg that must join")
         red = self.link("157", mutation="accept-partial-fragment")
         self.assertIn("(`expectRefusal`)", red.failure or "", red.failure)
 
@@ -888,7 +887,7 @@ class TestAbsenceRule(unittest.TestCase):
         found = validate.absence_violations(validate.ABSENCE_CONTROL)
         self.assertEqual(found, validate.EXPECTED_CONTROL_VIOLATIONS)
         self.assertTrue(any("carries" in line for line in found))
-        self.assertTrue(any("deletes" in line for line in found))
+        self.assertTrue(any("does not have" in line for line in found))
         self.assertTrue(any("bytes" in line for line in found))
 
 
@@ -1127,7 +1126,8 @@ def link_reply(behaviour: str, command: dict, state: dict) -> dict:
 
     It is a client for the one decision a link carries **before a socket**, which is the layer
     the rest of the corpus has no subject for: `PROTOCOL.md` §5.1 refuses a fragment that names
-    one of its two keys and not the other, naming the missing one.
+    one of its two keys and not the other, naming the missing one, and one whose `k` or `h` is not
+    a 32-byte value, naming that key.
 
     `state["mutation"]` is the guard this run removed, and it arrives before the `join`: a guard
     on the link has to be gone before the link is read.
@@ -1162,13 +1162,23 @@ def link_refusal(behaviour: str, command: dict, mutation: str | None) -> str | N
         # exists to say "refusing everything is not answering".
         return "the invite carries no room key (`k`) and no host key (`h`)"
     fragment = invite.split("#", 1)[1] if "#" in invite else ""
-    names = {pair.split("=", 1)[0] for pair in fragment.split("&") if pair}
+    pairs = [pair.partition("=") for pair in fragment.split("&") if pair]
+    names = [name for name, _, _ in pairs]
     if mutation != "accept-partial-fragment":
         if "k" in names and "h" not in names:
             return "the invite carries no host key (`h`)"
         if "h" in names and "k" not in names:
             return "the invite carries no room key (`k`)"
+        for name, _, value in pairs:
+            if name in ("k", "h") and not is_key(value):
+                return f"`{name}` is not a 32-byte key in the fragment's encoding"
     return None
+
+
+def is_key(value: str) -> bool:
+    """A §5.1 value: 32 bytes, base64url without padding, camel-case, and canonical — 43
+    characters, the last one carrying no non-zero padding bits."""
+    return len(value) == 43 and value[-1] in "AEIMQUYcgkosw048"
 
 
 def link_report(state: dict) -> dict:
