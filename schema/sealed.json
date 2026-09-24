@@ -34,7 +34,7 @@
         "guest",
         "viewer"
       ],
-      "description": "The role the host assigns to a key in the room state: `host`, `guest`, or `viewer`, the role the host denies a peer's edits to. It is `common.json`'s `role` with one more value and a different author — that one is the claim a `selvage/1` connection makes about itself in `session.hello` (`PROTOCOL.md` §9), this one is a fact the host states and signs, and no server seats it. What a receiver does with a key it commits as `viewer` is `PROTOCOL.md` §13.5's: it refuses document content from that peer and reports it `unauthorised_content`, while its SyncStep1 and its awareness are answered and applied."
+      "description": "The role the host assigns to a key in the room state: `host`, `guest`, or `viewer`, the role the host denies a peer's edits to. It is a fact the host states and signs, and no server seats it: a role binds to a key, and it is the host's to assign (`PROTOCOL.md` §1.2, §7.1, §13.4). What a receiver does with a key it commits as `viewer` is `PROTOCOL.md` §13.5's: it refuses document content from that peer and reports it `unauthorised_content`, while its SyncStep1 and its awareness are answered and applied."
     },
     "declaredRole": {
       "type": "string",
@@ -86,7 +86,7 @@
           "items": {
             "type": "string"
           },
-          "description": "The host's working tree as it enumerated it: paths, carrying no content, each a candidate rather than a promise of a readable file, exactly as a `selvage/1` grant's `paths` is. Written ascending by UTF-16 code unit (CANONICAL.md §2.7), which is the only order `selvage/2` promises. Each path is held to `PROTOCOL.md` §5's rule for one, and that rule is not read here: a receiver that will not carry a path *drops the path* and applies the rest of the listing and the state's roles, refusing neither the frame nor the state, so this member is held to step 8's member set and types and not to the value of each path (`PROTOCOL.md` §13.3, CANONICAL.md §6.1). `common.json`'s `documentList` is `selvage/1`'s shape and is not this one: there a blank or control-carrying path is refused `bad_params` at a method, which is a refusal about a request and not about a frame."
+          "description": "The host's working tree as it enumerated it: paths, carrying no content, each a candidate rather than a promise of a readable file. Written ascending by UTF-16 code unit (CANONICAL.md §2.7), which is the only order `selvage/2` promises. Each path is held to `PROTOCOL.md` §5's rule for one, and that rule is not read here: a receiver that will not carry a path *drops the path* and applies the rest of the listing and the state's roles, refusing neither the frame nor the state, so this member is held to step 8's member set and types and not to the value of each path (`PROTOCOL.md` §13.3, CANONICAL.md §6.1)."
         },
         "peers": {
           "type": "object",

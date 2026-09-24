@@ -48,7 +48,7 @@
         },
         "type": {
           "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/documentPath",
-          "description": "A nested type name. `selvage/1` produces none, so a scope resolving anywhere other than the `Y.Text` for `path` fails to resolve."
+          "description": "A nested type name. This protocol produces none, so a scope resolving anywhere other than the `Y.Text` for `path` fails to resolve."
         }
       }
     },

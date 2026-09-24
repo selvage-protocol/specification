@@ -108,23 +108,18 @@ particular `"params": null` is not the same as an absent `params`.
 
 ### 2.7 Array order
 
-An array's order is part of what a frame *says* only where `PROTOCOL.md` promises one. Three
-arrays are in that position:
+An array's order is part of what a frame *says* only where `PROTOCOL.md` promises one. One array
+is in that position:
 
-- **`documents`**, "the room's open-document set, in first-opened order" (§6.2), which a
-  comparison holds to that order;
-- **a grant's `paths`** (`doc.grant`, `doc.granted`), which `PROTOCOL.md` §5 requires its
-  *publisher* to write in ascending order by UTF-16 code unit and requires a server to carry
-  unchanged. This one is written in an order the sender chose rather than one the server arrived
-  at, which is the only thing that distinguishes it from `documents` here: the order is still a
-  claim, and a comparison holds the bytes to it.
-- **the sealed room state's `listing`** (§6.1), written ascending by UTF-16 code unit like a
-  grant's `paths`, and the one array a `selvage/2` frame carries. Nothing else `selvage/2` writes
-  is ordered: the room state's `peers` is an object whose members §2.1 orders by name, and not the
-  array `PROTOCOL.md` §6.2 gives that name to.
+- **the sealed room state's `listing`** (`PROTOCOL.md` §7.1), written ascending by UTF-16 code
+  unit by its publisher, which is the host. The order is the sender's claim: the bytes a receiver
+  holds are the bytes the host wrote, and a comparison holds them to it. The state's `peers` is an
+  object whose members §2.1 orders by name, and not the array `PROTOCOL.md` §6.1 gives that name
+  to.
 
 Every other array this protocol defines is a **set**: `peers` ("No order is promised for it",
-§6.2), `capabilities` (§2, §6.2, §10), `wire_versions` and `roles` (§2). There is no order to write
+§6.1), `capabilities` (§2, §6.1, §10), `wire_versions` (§2) and a peer's holds (§13.7). There is no
+order to write
 it in that follows from its members. There is no analogue of §2.1 here:
 member names give an object a total order that is a function of its members, and an array of
 `PeerInfo` has no such name. Sorting `peers` by `peer_id` does not help either, because a
@@ -181,9 +176,9 @@ unknown member back, which §4.1 forbids in effect by making every frame's membe
 - **Any member order** and any insignificant whitespace: this is the whole point of §2, and a
   receiver that compares frames byte for byte is wrong, not the peer that sent them.
 - **Any order of an array `PROTOCOL.md` does not order.** `peers`, `capabilities`,
-  `wire_versions` and `roles` are sets (§2.7); their order is not a claim, and a receiver that
-  reads one into one is wrong, not the peer that wrote them. `documents` and a grant's `paths`
-  are the exceptions §2.7 names, and a receiver reads them as the order they were sent in.
+  `wire_versions` and a peer's holds are sets (§2.7); their order is not a claim, and a receiver
+  that reads one into one is wrong, not the peer that wrote them. The sealed room state's
+  `listing` is the exception §2.7 names, and a receiver reads it as the order it was sent in.
 - **Members it does not know**, at any depth, in either direction (§3).
 - **Event names it does not know**: ignored, like an unknown member.
 - **Capability names it does not know**: ignored, in `/meta` and in the `capabilities` member.
@@ -203,8 +198,9 @@ dropped, because silence is how version skew becomes a timeout.
 
 - A text frame that is not one JSON object (an array, a bare string, a number, or bytes that are
   not JSON at all): `bad_message`.
-- A frame with no `v`: `bad_message`, because it is not a session envelope at all (§10). A
-  frame with an incompatible `v`: `unsupported_version` (§10).
+- A frame with no `v`: `bad_message`, because it is not a session envelope at all, and one whose
+  `v` is another value the same way: the member has one value and this protocol reads it alone
+  (§10).
 - A request with no `id`: `bad_message` (§4.1).
 - A first frame that is not `session.hello`, and any first frame that is not a text frame:
   `hello_required` and `bad_message` respectively (§5, §11).
@@ -220,7 +216,6 @@ A binary frame is one **sealed frame** (§6.1) whose plaintext is a stream of y-
 unchanged, to every other member of the room, and the vectors assert byte equality in both
 directions. Two implementations conform on the document-sync path when the bytes they exchange
 encode the same messages, which is a property of `y-protocols`, not of SJ-C.
-
 
 ### 6.1 Sealed frames
 
@@ -577,12 +572,14 @@ values [`NOTES.md`](NOTES.md) §B.31 records.
 
 The `GET /meta` body is an object with the members of `PROTOCOL.md` §2 and is canonical when it
 follows §2 like any other frame. It is **not** a session frame: it has no `v`, it is not part of
-the envelope, and it is read for negotiation rather than compared. A client **must parse** it and
-**must not** depend on its bytes, its whitespace or its member order.
+the envelope, and it is read for what a server is rather than compared. A client **must parse** it
+and **must not** depend on its bytes, its whitespace or its member order.
 
-An unreachable `/meta` is not a negotiation failure: a client that cannot read it connects
-anyway and lets `session.hello` decide. A reachable `/meta` whose `wire_versions` do not include a
-version the client can speak **is** a failure, and it is a failure before the socket is opened.
+An unreachable `/meta` is not a failure: a client that cannot read it connects
+anyway and lets `session.hello` decide. A `/meta` whose `wire_versions` name no version this client
+speaks is no failure either — it is the server's statement about itself, and the handshake is where
+a frame is refused (`PROTOCOL.md` §10) — so a client reads it, says what it found, and connects or
+not by its own judgement.
 
 ## 8. How this document is used
 
