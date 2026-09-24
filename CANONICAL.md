@@ -295,17 +295,39 @@ the member a rekey would move — is reserved and unused in this version. SP 800
 invocations of one key with random nonces at **2³²**, and that bound is the room's, summed over
 every sender, and not any one sender's. No room an editor produces approaches it (a sustained
 thousand frames a second takes more than a month to reach it), but nothing in this version resets
-it, so the peers enforce it, because they are the parties that can count: the relay delivers every
-frame to every other connection, so a client that counts the binary frames it receives in the room
-and the frames it seals itself counts the room's total, less whatever the relay dropped on the way
-to it. **A client MUST keep that count** for the life of its session, and once it reaches the
-**frame budget, 2³¹** — half the bound, which leaves room for every frame a client did not see —
-it **MUST NOT** seal another frame under the frame key: a host publishes one closing
-(`PROTOCOL.md` §7.1), whose `issued` ends the room for every peer holding its state, and every
-client, the host included, ends its session and says why (`PROTOCOL.md` §13.10). A room that must
-go on is a new room, minted with a new room key. A frame a client re-sends unchanged (`PROTOCOL.md`
-§7.1's re-send of a state) is not sealed again and is not counted twice. Its **associated data**
-is:
+it, so the peers enforce it, because they are the parties that can count. The relay delivers every
+frame to every other connection, so a client that counts the binary frames it is delivered in the
+room and the frames it seals itself counts every frame sealed while it was connected, less whatever
+the relay dropped on the way to it. A frame a client re-sends unchanged (`PROTOCOL.md` §7.1's
+re-send of a state) is not sealed again and is not counted twice.
+
+- **The host's count is the room's.** The host is the one peer present from the room's first frame:
+  it mints the room, and its state is the first frame sealed under the frame key. A host **MUST**
+  keep that count from the mint for the life of the room, across a dropped socket as across any
+  other reconnect, and a host that persists its host key **MUST** persist the count with it, beside
+  its `issued` (`PROTOCOL.md` §7.1), and continue it rather than restart it. It **MUST** write the
+  persisted count at least once every `awareness_renew_ms` while the count moves, so that a host
+  that dies loses at most one renewal interval of it.
+- **Every other client's count is a backstop.** A client that joined after the mint counts from the
+  moment it was seated and cannot know what was sealed before, so its count is below the room's. It
+  **MUST** keep it all the same, for the life of its session and across its own reconnects, because
+  it is the count that still runs while the host is away.
+- **At the frame budget, 2³¹** — half the bound, which leaves room for every frame the host did not
+  see — a client whose count has reached it **MUST NOT** seal another frame under the frame key: a
+  host publishes one closing (`PROTOCOL.md` §7.1), whose `issued` ends the room for every peer
+  holding its state, and every client, the host included, ends its session and says why
+  (`PROTOCOL.md` §13.10). A room that must go on is a new room, minted with a new room key.
+
+**What the host's count misses, and why the margin covers it.** A host that is away counts nothing,
+so the frames sealed during its absence are the ones its count lacks. The absence is bounded by the
+peers' own rules: a guest ends its session once its host-away window, `awareness_expire_ms`, has
+passed (`PROTOCOL.md` §13.8), and a client that joins while the host is away ends once its no-state
+window has passed (§13.3) and publishes nothing but its announcement meanwhile (§13.1). So one
+absence hides at most about two host-away windows of the room's traffic — 30 000 to 60 000 frames at
+a sustained thousand a second and the default 30 s window — against a margin of 2³¹, which is some
+thirty-five thousand such absences, each at that rate throughout. What a host cannot bound is a
+client that keeps sealing after its window has passed, which is a client outside §13.8 rather than a
+gap in the count. Its **associated data** is:
 
 ```
 aad = varUint8Array("selvage/2") ‖ varUint8Array(room id) ‖ varUint(kind) ‖ varUint(epoch) ‖ varUint8Array(key_id)

@@ -1669,3 +1669,33 @@ same change in four places. Everything else needs nothing or is optional.
 6. **`selvaged` (`reference_server/crates/selvaged`). Nothing to change.** Every §2.1 number matches
    `lib.rs`, `room.rs`, `budget.rs` and `net/`. The 1 KiB per-frame floor is now written down, and
    the code already applies it.
+
+**B.44 The frame budget's count is the host's.** §B.43 had every client count the room's frames and
+stop at 2³¹, and claimed a client's count was the room's total. It is not: a client that joined late
+counts from its own seat, so every client can stay below the budget while the room as a whole passes
+the bound (a review comment on specification#58 caught it after the merge). `CANONICAL.md` §6.1 now
+makes the **host's** count the room's: the host is present from the room's first frame, keeps
+its count across every reconnect, persists it beside `issued` at least once per
+`awareness_renew_ms`, and continues it after a reload. Every other client's count stays as the
+backstop that runs while the host is away. What the host's count misses — frames sealed while it is
+away — is bounded by §13.8's host-away window and §13.3's no-state window, which end the peers'
+sessions. §6.1 states that bound against the 2³¹ margin. Reading the peers' envelope counters on the
+host's return would close even that gap, but it would let any holder of the room key inflate its
+counter and close the room at will, so it was left out.
+
+**What B.44 asks of each implementation.** One change, the same in four places:
+
+- `vscode_client` `src/engine/host.ts`: `PersistedHost` gains an optional `frames: number` (optional
+  so a value saved before this change still loads, as `0`). `HostProducer` loads it with the seed
+  check `issued` already has, exposes it to the session, takes the session's current count, writes
+  it in every `save` beside `issued`, and saves it from the tick at least once per
+  `awareness_renew_ms` when it has moved. `src/engine/peer.ts`: a host session starts `roomFrames`
+  from the persisted count rather than `0`, hands its count to the producer as it moves, and flushes
+  on the tick.
+- `web_client` `src/engine/` and `nvim_client` `vendor/engine/`: the same change, synced or applied
+  as with §B.43.
+- `reference_server` `crates/client/src/host.rs` and `peer.rs`: the same, with `PersistedHost`
+  gaining `frames: u64` and a stored value without it reading as `0`.
+- Tests: a host whose store holds a count near the budget ends at the budget rather than at 2³¹ from
+  zero; a host that seals frames and then ticks past `awareness_renew_ms` has saved the moved count;
+  and a stored value without the count still loads.
