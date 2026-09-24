@@ -34,8 +34,8 @@ sealed         48 values checked against the sealed payloads of selvage/2
 refusals       13 values checked against selvage/2's local report vocabulary
 session v2     42 values checked against selvage/2's session layer
 vectors        36 files, 35022 frame checks, 8676 assertion steps
-peer vectors   25 files, 19 frame, 6 decision, 210 checks, 74 assertion steps
-absence        8 selvage/2 shapes, 25 vectors of this version, 8636 selvage/1 frames (8742 carrying a deleted member, 197 a deleted event), 50 sealed frames, 100 needle checks
+peer vectors   27 files, 19 frame, 8 decision, 222 checks, 74 assertion steps
+absence        8 selvage/2 shapes, 27 vectors of this version, 8636 selvage/1 frames (8742 carrying a deleted member, 197 a deleted event), 50 sealed frames, 100 needle checks
 result         OK
 ```
 
@@ -159,12 +159,15 @@ in every vector against them. It prints a line for the schemas, a line for the c
 - every peer vector's steps, recipes and refusals: the version and layer it declares, a `kind` of
   `frame` or `decision` with the step vocabulary that kind has, each `seal`/`deliver` recipe's
   shape — a fixture key that exists, a count, a nonce of twelve bytes, exactly one of `plaintext`
-  and `payload` — every `expectReject` reason against §6.1's closed vocabulary, and the mutation in
-  `catches` against the layer's own table. It also pins the peer layer's own counts and two
-  censuses: `EXPECTED_REFUSALS`, which vector asserts which reasons, and `EXPECTED_MUTATIONS`,
-  which vector must go **red** under which removed guard. The second is the one pin in this corpus
-  that is a statement about what the corpus catches rather than what it contains, and it is
-  `runner/run_peer.py --mutation-census` that drives it.
+  and `payload` — every `expectReject` reason against §6.1's closed vocabulary, an `expectRefusal`'s
+  `names`, and the two members a `decision` vector's `start` hands a client before a socket
+  (`meta`, the body `GET /meta` answered, and `pin`, the version the client's own setting pins it
+  to — each `selvage/1` or `selvage/2`) — and the mutation in `catches` against the layer's own
+  table. It
+  also pins the peer layer's own counts and two censuses: `EXPECTED_REFUSALS`, which vector asserts
+  which reasons, and `EXPECTED_MUTATIONS`, which vector must go **red** under which removed guard.
+  The second is the one pin in this corpus that is a statement about what the corpus catches rather
+  than what it contains, and it is `runner/run_peer.py --mutation-census` that drives it.
 - the absence rule, three ways. **The model**: every `selvage/2` session shape is walked for a
   member no server-authored frame of that version may carry — a `role` made a property or a
   required entry of `session-v2.json` is a red run, which is the structural half and the strongest
@@ -276,12 +279,23 @@ corruption, and the corruption is a step of its own — `{"op": "corrupt", "fram
 **The decision layer runs a client, and the runner says which client.** A `"kind": "decision"`
 vector is about what a real client did with a frame it received — what it applied, what it dropped
 and why, what it published, whether it ended — so it needs a subject, which is a client named by a
-command: `--subject "my-client --drive"`. The runner plays the relay: `start` seats the subject
-with the invite, the session's clock, the roster and the session keypair the vector's `key` names,
-`deliver` hands over one sealed frame, and `expectSubject` reads the report. With no `--subject`
-every such vector is reported **not attempted**, the summary counts `not attempted` separately
-from `passed`, and `runner/subject.py` holds the protocol a client implements. Run
+command: `--subject "my-client --drive"`. The runner plays the relay: `start` hands the subject the
+link it starts from — the invite, the session's clock, the roster, the session keypair the vector's
+`key` names, what `/meta` answered and any version the client is pinned to — `deliver` hands over
+one sealed frame, and `expectSubject` reads the report. With no `--subject` every such vector is
+reported **not attempted**, the summary counts `not attempted` separately from `passed`, and
+`runner/subject.py` holds the protocol a client implements. Run
 `python3 runner/run_vectors.py --layer all` to see the same split from the wire layer's side.
+
+**Two rules are decided about the link, before a socket, and a subject answers them by refusing
+the `join`.** §5.1's partial fragment and §2/§10's version-1-only server are not frames, so there
+is nothing to deliver and no reason of §6.1's to report: the client answers the `join` itself, in
+its own words, and seats nothing, leaving the subject free for the vector's next `start`. A vector
+asserts that with `expectRefusal`, whose `names` are the strings the client's words must carry —
+the missing key (§5.1) or the version it would need (§2, §10) — because both sections leave the
+sentence to the client. A guard on the link is removed **before** the `join`
+(`runner/subject.py`'s `LINK_MUTATIONS`), which is where a client reads it; every other guard is
+removed once the subject is seated.
 
 ```
 python3 runner/run_peer.py --subject "./target/debug/my-client --drive"
@@ -323,7 +337,10 @@ transcripts, and every `expect` in it is the server speaking. The peer corpus ho
 client to the rules of `selvage/2`, and it does it twice over: its frame vectors hold any
 *receiver* to `CANONICAL.md` §6.1 — the envelope, the key schedule, the counter mark, the ten
 reasons — with no client at all, and its decision vectors hold a real client to what it does
-with a frame it has received, which is what a subject is for. What no vector here
+with a frame it has received or a link it is handed, which is what a subject is for. Two of those
+decisions are made before a socket is opened at all (§5.1's fragment, §2/§10's version gate), so
+what a subject shows for them is its refusal and that it seated nothing; the rest are frames.
+What no vector here
 can show is that two clients **agree**: a vector can hold a client to a rule it states, and it
 cannot show that two implementations reach the same state. That stays the interop test's job
 (`vscode_client/test/interop.test.ts` against
@@ -334,7 +351,9 @@ Three more limits, said rather than left to be discovered. A vector asserts the 
 frame; a conforming implementation whose Ed25519 **randomises** its signatures — Safari's does —
 produces a different 64-byte signature for the same frame, so what such an implementation is
 held to is that its signature **verifies** over §6.1's input, which is what `NOTES.md` §B.31
-records. The peer corpus's mutation census shows that a vector catches a named mutation of the
+records. A refusal of a link is the other way round: the vector holds the client to the *naming*
+in its own words and not to the sentence, because `PROTOCOL.md` §2 and §5.1 leave the sentence to
+the client. The peer corpus's mutation census shows that a vector catches a named mutation of the
 runner's own reader; it does not show that a differently-wrong client fails. And the runner's
 frame layer is a **format** check and a **self-consistency** check rather than a second
 implementation: it was written from the same prose as any client will be, so agreement between
@@ -475,6 +494,15 @@ Same file, same conventions, two things different.
    subject's own report (`expectSubject`). `schema/validate.py` pins the reasons each vector
    asserts in `EXPECTED_REFUSALS` and the mutation each declares in `EXPECTED_MUTATIONS`, so both
    move in the same commit as the vector.
+4. **A `decision` vector about a link is refused or seated, and it carries the leg that must not
+   be refused.** §5.1's fragment and §2/§10's version gate are answered by the client's refusal of
+   the `join`: `expectRefusal` names what the client's own words must carry, and a vector asserting
+   one carries a `start` that must join, because a subject that refuses every link passes a
+   refusal leg and is caught by the seating beside it. A guard that sits on the link is removed
+   before the `join` (`runner/subject.py`'s `LINK_MUTATIONS`), and a `start` that needs the two
+   things a client reads before a socket carries `meta` and `pin`. One vector carries **one** leg
+   that seats the subject: a subject already in a session refuses the next `join`, so a second
+   seating leg is a failure of the harness rather than a decision.
 
 ## Why each one exists
 

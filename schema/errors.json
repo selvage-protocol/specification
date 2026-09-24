@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://selvageprotocol.com/schema/1/errors.json",
+  "$id": "https://dontblameme.dev/schema/1/errors.json",
   "title": "Selvage Session Protocol — error codes and close codes",
   "description": "The machine-readable vocabulary of `selvage/1` faults: `error.code` on a response, `session.error.params.code` on an event, and the WebSocket close code that a fatal fault is paired with. Valid against PROTOCOL.md \u00a711.",
   "$defs": {

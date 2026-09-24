@@ -87,7 +87,7 @@ SCHEMA_DIR = pathlib.Path(__file__).resolve().parent
 VECTOR_DIR = pathlib.Path(
     os.environ.get("SELVAGE_VECTORS", SCHEMA_DIR.parent / "vectors")
 )
-BASE = "https://selvageprotocol.com/schema/1/"
+BASE = "https://dontblameme.dev/schema/1/"
 
 # What the corpus is expected to hold. Adding a vector, or an assertion inside one, is a
 # deliberate edit, and these numbers are what makes the opposite edit — a silent deletion — a red
@@ -95,7 +95,7 @@ BASE = "https://selvageprotocol.com/schema/1/"
 # the corpus. The two layers are counted apart on purpose: they are committed and replayed by
 # different tools, and one number would let one layer's loss be paid by the other's gain.
 EXPECTED_WIRE_VECTORS = 36
-EXPECTED_PEER_VECTORS = 25
+EXPECTED_PEER_VECTORS = 27
 EXPECTED_FRAME_CHECKS = 35022
 EXPECTED_ASSERTIONS = 8676
 # The peer layer's own counts. `PEER_CHECKS` is one per peer step plus one per recipe, and
@@ -103,7 +103,7 @@ EXPECTED_ASSERTIONS = 8676
 # `runner/run_peer.py` runs without a client; a decision vector's `expectSubject` steps are checked
 # here and are not in this number, because they are asserted against a *subject* — a client named by
 # `--subject` — and are counted in that run's own summary rather than in a corpus-wide pin.
-EXPECTED_PEER_CHECKS = 210
+EXPECTED_PEER_CHECKS = 222
 EXPECTED_PEER_ASSERTIONS = 74
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
@@ -171,7 +171,9 @@ EXPECTED_CODES = {
 # *catches* rather than what it contains: `None` is a vector that must stay green under every
 # mutation there is, because the alternative way to pass a corpus of refusals is to refuse
 # everything. `runner/run_peer.py --mutation-census` is what drives it, and a decision vector's
-# entry names a mutation of the *subject*, which nothing can remove yet.
+# entry names a mutation of the *subject* — a client, which this repository does not contain; a
+# guard that sits on the link is removed before the `join` (`runner/subject.py`'s
+# `LINK_MUTATIONS`), because that is where the client reads it.
 EXPECTED_REFUSALS = {
     "101": [],
     "102": ["bad_signature"],
@@ -198,6 +200,8 @@ EXPECTED_REFUSALS = {
     "154": [],
     "155": [],
     "156": [],
+    "157": [],
+    "158": [],
 }
 EXPECTED_MUTATIONS = {
     "101": None,
@@ -225,6 +229,8 @@ EXPECTED_MUTATIONS = {
     "154": "no-lease",
     "155": "any-closing",
     "156": "wait-for-ever",
+    "157": "accept-partial-fragment",
+    "158": "fall-back-to-version-1",
 }
 
 # The positive control of the absence scan, and the reason it is a control rather than a
@@ -304,11 +310,15 @@ PEER_DECISION_OPS = frozenset(
         "stop",
         "deliver",
         "expectSubject",
+        "expectRefusal",
         "wait",
     }
 )
-# The ops in a peer vector that assert something, split by kind: a frame vector's are the ones
-# `run_peer.py` counts, and a decision vector's `expectSubject` is the decision channel.
+# The **frame layer's** assertion ops: the ones `run_peer.py` counts and the ones
+# `schema/validate.py` pins in `EXPECTED_PEER_ASSERTIONS`. A decision vector's own assertion
+# steps — `expectSubject` and `expectRefusal` — are read here for their shape and are counted
+# in the decision run's summary instead, because what they assert is about a *subject* and not
+# about a corpus of bytes.
 PEER_ASSERTION_OPS = frozenset(
     {"expectVerify", "expectReject", "expectPlaintext", "expectListing", "expectHolds",
      "expectDoc"}
@@ -349,6 +359,8 @@ PEER_SUBJECT_MUTATIONS = frozenset(
         "no-lease",
         "any-closing",
         "wait-for-ever",
+        "accept-partial-fragment",
+        "fall-back-to-version-1",
     }
 )
 
@@ -1843,7 +1855,8 @@ def check_peer_step(at: str, step: dict, kind: str, fixture: dict, vocab: list[s
         # observables `PROTOCOL.md` §13.11 fixes: the exact members are compared exactly, `at_least`
         # is a monotone bound it may exceed, `frozen` names the members that must not move over one
         # more window, and `within_ms` is the deadline the predicate is polled to rather than slept
-        # through.
+        # through. `expectRefusal` is the other decision a client makes before a socket: the link
+        # it refuses, whose `names` are what the client's own words must carry.
         if op != "wait" and "conn" not in step:
             fail(at, f"`{op}` needs a `conn`")
         if op in ("deliver", "publish"):
@@ -1852,6 +1865,26 @@ def check_peer_step(at: str, step: dict, kind: str, fixture: dict, vocab: list[s
             check_recipe(at, step, fixture)
         if op == "start" and step.get("key") not in fixture.get("keys", []):
             fail(at, f"`key` names {step.get('key')!r}, which the fixture does not have")
+        if op == "start" and "pin" in step and step["pin"] not in ("selvage/1", "selvage/2"):
+            fail(at, f"`pin` is one of the two wire versions, not {step['pin']!r}")
+        if op == "start" and "meta" in step:
+            meta = step["meta"]
+            if not isinstance(meta, dict):
+                fail(at, "`meta` is the body `GET /meta` answered")
+            elif set(meta) - {"wire_versions"}:
+                fail(at, f"`meta` names {sorted(set(meta) - {'wire_versions'})}, which nothing reads")
+            elif not isinstance(meta.get("wire_versions"), list) or any(
+                not isinstance(one, str) for one in meta.get("wire_versions", [])
+            ):
+                fail(at, "`meta.wire_versions` is the list the server advertises")
+        if op == "expectRefusal":
+            names = step.get("names")
+            if (
+                not isinstance(names, list)
+                or not names
+                or any(not isinstance(one, str) or not one for one in names)
+            ):
+                fail(at, "`names` is the non-empty list of strings the refusal must carry")
         if op == "wait" and (
             not isinstance(step.get("ms"), int)
             or isinstance(step["ms"], bool)

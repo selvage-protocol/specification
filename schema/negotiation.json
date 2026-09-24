@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://selvageprotocol.com/schema/1/negotiation.json",
+  "$id": "https://dontblameme.dev/schema/1/negotiation.json",
   "title": "Selvage Session Protocol — version and capability negotiation",
   "description": "The parts of `selvage/1` that decide whether two peers can talk at all: the wire version grammar, the compatibility rule, capability names, and the advertised block (`capabilities` plus `keepalive`) that both `GET /meta` and the reply to `session.hello` carry. Valid against PROTOCOL.md §10; the canonical byte form is CANONICAL.md §2.5.",
   "$defs": {

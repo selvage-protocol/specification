@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://selvageprotocol.com/schema/1/envelope.json",
+  "$id": "https://dontblameme.dev/schema/1/envelope.json",
   "title": "Selvage Session Protocol — the session envelope",
   "description": "Every text frame is one JSON object, and one of three shapes: a request, a response, or an event. Valid against PROTOCOL.md \u00a74. The byte form is CANONICAL.md \u00a72.",
   "$defs": {
@@ -11,17 +11,17 @@
       "required": ["v", "id", "method"],
       "properties": {
         "id": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/requestId",
+          "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/requestId",
           "description": "Unique per connection. The response carries the same value, so it is the only correlation the wire has."
         },
         "method": {
-          "$ref": "https://selvageprotocol.com/schema/1/methods.json#/$defs/anyMethod",
+          "$ref": "https://dontblameme.dev/schema/1/methods.json#/$defs/anyMethod",
           "description": "One of the method names of \u00a75, or an `x.`-prefixed name, or any other name at all: an unknown method is answered with `unknown_method` and the connection stays open."
         },
         "params": {
-          "$ref": "https://selvageprotocol.com/schema/1/methods.json#/$defs/anyParams"
+          "$ref": "https://dontblameme.dev/schema/1/methods.json#/$defs/anyParams"
         },
-        "v": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/version" }
+        "v": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/version" }
       }
     },
     "responseMessage": {
@@ -35,18 +35,18 @@
       ],
       "properties": {
         "error": {
-          "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/errorObject",
+          "$ref": "https://dontblameme.dev/schema/1/errors.json#/$defs/errorObject",
           "description": "Present instead of `result`. `code` is machine-readable; `message` is not stable."
         },
         "id": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/requestId",
+          "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/requestId",
           "description": "The id of the request being answered."
         },
         "result": {
-          "$ref": "https://selvageprotocol.com/schema/1/methods.json#/$defs/anyResult",
+          "$ref": "https://dontblameme.dev/schema/1/methods.json#/$defs/anyResult",
           "description": "An object, `{}` when a method has nothing to return."
         },
-        "v": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/version" }
+        "v": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/version" }
       }
     },
     "eventMessage": {
@@ -56,13 +56,13 @@
       "required": ["v", "event", "params"],
       "properties": {
         "event": {
-          "$ref": "https://selvageprotocol.com/schema/1/events.json#/$defs/anyEventName"
+          "$ref": "https://dontblameme.dev/schema/1/events.json#/$defs/anyEventName"
         },
         "params": {
           "type": "object",
           "description": "Flat, and specific to the event. See the `events.json` schemas for the known names."
         },
-        "v": { "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/version" }
+        "v": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/version" }
       }
     },
     "serverMessage": {

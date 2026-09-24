@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://selvageprotocol.com/schema/1/session-v2.json",
+  "$id": "https://dontblameme.dev/schema/1/session-v2.json",
   "title": "Selvage Session Protocol — `selvage/2`'s session layer",
   "description": "The shapes `selvage/2`'s session layer states that `selvage/1`'s do not: the `GET /meta` body its server advertises, the peer record its frames carry, the two replies to `session.hello`, the `peer.joined` event whose params that record is, and the fault vocabulary the server of this version answers with. Valid against PROTOCOL.md §2, §5, §6 and §11. A member `selvage/1` gives a frame and this version does not carry is not a member of it, so the objects here are what a `selvage/2` producer writes; a receiver tolerates one it is handed anyway (PROTOCOL.md §4.1), so nothing here forbids a *member*, and what holds a *server* to the member set of its version is the corpus's exact comparison and not this file. The error code is a *value* rather than a member and is closed in both versions (PROTOCOL.md §11, §10.1), so the one place this file does refuse something is a code the version cannot carry. `session.hello`'s params are not repeated here: `role` is optional in `methods.json` and its absence is already that schema, so the version's handshake needs no second shape. No vector reaches this file yet — the transcripts are `selvage/1`'s until the corpus is re-baselined — which is why `validate.py` exercises it against values that must and must not validate.",
   "$defs": {
@@ -12,14 +12,14 @@
       "properties": {
         "capabilities": {
           "allOf": [
-            { "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityList" },
+            { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/capabilityList" },
             { "contains": { "const": "y-protocols/1" } },
             { "contains": { "const": "awareness" } }
           ],
           "description": "`[\"y-protocols/1\", \"awareness\"]` from a server of this version: the two names it carries are the ones this version defines (`PROTOCOL.md` §2, §10). A name an implementation adds of its own is permitted — §10 advertises additively and nothing is gated by a capability — so the two are required to be present and no list is required to be exactly them. The other two names `selvage/1` defined are absent because they are that version's server machinery: a set this server does not keep, and a reclaim it does not have."
         },
         "keepalive": {
-          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/metaKeepalive",
+          "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/metaKeepalive",
           "description": "Unchanged in shape and in membership, `room_grace_ms` included. In this version `awareness_renew_ms` and `awareness_expire_ms` are the session's only clock, and `room_grace_ms` is how long a room survives its last connection ending (PROTOCOL.md §1.2, §2)."
         },
         "server": {
@@ -28,7 +28,7 @@
           "description": "Free-form server identification, as in `meta.json`: for diagnostics only, and not stable."
         },
         "wire_versions": {
-          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/advertisedVersionsAtLeastTwo",
+          "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/advertisedVersionsAtLeastTwo",
           "description": "Names `selvage/2`, or a later minor of it, and no version below it: a `selvage/2` server cannot seat a `selvage/1` peer, and a list offering one would be a downgrade a compromised server could take a client down (PROTOCOL.md §2, §10)."
         }
       }
@@ -40,14 +40,14 @@
       "required": ["peer_id", "display_name"],
       "properties": {
         "awareness_client_id": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/awarenessClientId",
+          "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/awarenessClientId",
           "description": "Omitted when the connection did not claim one, as in `selvage/1`."
         },
         "display_name": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/displayName"
+          "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/displayName"
         },
         "peer_id": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/peerId"
+          "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/peerId"
         }
       }
     },
@@ -80,7 +80,7 @@
             "already_seated"
           ]
         },
-        { "$ref": "https://selvageprotocol.com/schema/1/errors.json#/$defs/extensionCode" }
+        { "$ref": "https://dontblameme.dev/schema/1/errors.json#/$defs/extensionCode" }
       ]
     },
     "errorObject": {
@@ -100,11 +100,11 @@
       "required": ["room_id", "self", "peers", "capabilities", "keepalive"],
       "properties": {
         "capabilities": {
-          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/capabilityList",
+          "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/capabilityList",
           "description": "The same advertised list as `/meta`'s, as in `selvage/1`."
         },
         "keepalive": {
-          "$ref": "https://selvageprotocol.com/schema/1/negotiation.json#/$defs/keepalive"
+          "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/keepalive"
         },
         "peers": {
           "type": "array",
@@ -112,7 +112,7 @@
           "description": "The peers already seated, excluding `self`. A set: no order is promised and a receiver must not depend on one."
         },
         "room_id": {
-          "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/roomId"
+          "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/roomId"
         },
         "self": { "$ref": "#/$defs/peer" }
       }
@@ -134,7 +134,7 @@
           "required": ["token"],
           "properties": {
             "token": {
-              "$ref": "https://selvageprotocol.com/schema/1/common.json#/$defs/token",
+              "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/token",
               "description": "Present only here: a client that may have to reconnect has to keep it, since nothing re-sends it."
             }
           }

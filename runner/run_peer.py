@@ -18,8 +18,16 @@ what a real client does with a frame it has already received — what it applied
 dropped and why, what it published, whether it ended — and the frames it would receive on a
 socket are the vector's own `deliver` steps, sealed here and handed over through the subject
 protocol (`runner/subject.py`). `start` seats it with the invite, the fixture session keypair,
-the roster and the session's clock; `expectSubject` is the decision channel. So a decision
-vector needs one thing and this runner names it: a subject.
+the roster, the session's clock, what `/meta` answered and any version it is pinned to;
+`expectSubject` is the decision channel. So a decision vector needs one thing and this runner
+names it: a subject.
+
+**A link is refused before a socket, and that is a decision too.** §5.1's partial fragment and
+§10's version-1-only server are decided about the link itself, so a client refuses the `join`
+in its own words and seats nothing; `expectRefusal` is the step that asserts what those words
+carry, and the subject stays free for the vector's next `start`. A guard on the link
+(`subject.LINK_MUTATIONS`) is removed before the `join` for the same reason: it has to be gone
+before the link is read.
 
 **The mutation census is what makes the corpus evidence rather than a list of assertions.** A
 conforming receiver and a wrong one both pass a vector that asserts nothing, so `--mutation-census`
@@ -66,7 +74,13 @@ FRAME_OPS = ("seal", "corrupt", "expectVerify", "expectReject", "expectPlaintext
              "expectListing", "expectHolds", "expectDoc")
 
 #: The ops a decision vector's steps may use, pinned against the same table.
-DECISION_OPS = ("start", "stop", "deliver", "wait", "expectSubject")
+DECISION_OPS = ("start", "stop", "deliver", "wait", "expectSubject", "expectRefusal")
+
+#: The ops of that layer that assert something about the subject: the report channel, and the
+#: local refusal a link is decided about in. The census reads this table, so a vector that goes
+#: red under its own mutation in either of them is a caught guard, and one that goes red
+#: anywhere else is a failure of the harness.
+DECISION_ASSERTION_OPS = ("expectSubject", "expectRefusal")
 
 #: The invite's token. A decision vector never reaches a server, so the token is a constant
 #: whose only job is to be the string `PROTOCOL.md` §13.10 says a rejoin keeps.
@@ -480,6 +494,39 @@ def session_key_of(fixture: Fixture, step: dict, where: str) -> str | None:
     return key.private.hex()
 
 
+def meta_of(step: dict, where: str) -> dict | None:
+    """What `GET /meta` answered, for the layer that opens no socket.
+
+    `PROTOCOL.md` §2 and §10 read one member of the body before a socket is opened, so a vector
+    that pins the rule carries it: `wire_versions`, the versions the server says it accepts. A
+    `start` with no `meta` is a `/meta` that could not be read, which is not an answer about
+    versions and is not what a client refuses on.
+    """
+    meta = step.get("meta")
+    if meta is None:
+        return None
+    if not isinstance(meta, dict):
+        raise PeerError(f"{where}: `meta` is the body `GET /meta` answered")
+    unknown = set(meta) - {"wire_versions"}
+    if unknown:
+        raise PeerError(f"{where}: `meta` names {sorted(unknown)}, which nothing here reads")
+    versions = meta.get("wire_versions")
+    if not isinstance(versions, list) or any(not isinstance(one, str) for one in versions):
+        raise PeerError(f"{where}: `meta.wire_versions` is the list the server advertises")
+    return {"wire_versions": list(versions)}
+
+
+def pin_of(step: dict, where: str) -> str | None:
+    """The wire version this client's own setting pins it to, or `None` for a client that has
+    pinned nothing (`PROTOCOL.md` §2)."""
+    pin = step.get("pin")
+    if pin is None:
+        return None
+    if pin not in ("selvage/1", "selvage/2"):
+        raise PeerError(f"{where}: `pin` is one of the two wire versions, not {pin!r}")
+    return pin
+
+
 def scenario_of(vector: dict) -> dict:
     """The scenario's known members, checked rather than trusted.
 
@@ -606,6 +653,11 @@ class DecisionRun:
     run: subject.Subject | None = None
     frames: int = 0
     assertions: int = 0
+    #: The link the last `start` was refused with, in the client's own words, and whether the
+    #: subject is seated. A refusal seats nobody, so the subject is free for the next `start`,
+    #: which is what lets one vector hold a refusal and its control leg.
+    refusal: str | None = None
+    seated: bool = False
 
     def drive(self) -> int:
         """Runs the vector's steps in order, returning its assertion steps."""
@@ -628,17 +680,32 @@ class DecisionRun:
             "deliver": self.deliver,
             "wait": self.wait,
             "expectSubject": self.expect,
+            "expectRefusal": self.expect_refusal,
         }.get(step.get("op"))
         if handler is None:
             raise PeerError(f"{where}: `{step.get('op')}` is not a step of a decision vector")
         handler(where, step)
 
     def start(self, where: str, step: dict) -> None:
-        """Seat the subject: the invite, the clock, the roster, and the session keypair."""
+        """Hand the subject the link it starts from: the invite, the clock, the roster, the
+        session keypair, and the two things §2 and §10 read before a socket.
+
+        The answer is either a seating or the client's own words for a link it refuses
+        (`PROTOCOL.md` §5.1's partial fragment, §10's version-1-only server), and the second is
+        a decision the vector asserts with `expectRefusal` rather than a failure of the run.
+
+        The guard this run removes is named **before** the join when it sits on the link, which
+        is where a client reads it, and after the join when it sits in a session; a subject that
+        cannot remove it refuses the command either way, which is a failure of the harness and
+        not a red run.
+        """
         if self.run is None:
             raise PeerError(f"{where}: the subject is not running")
         scenario = scenario_of(self.vector)
-        self.run.join(
+        on_the_link = self.mutation in subject.LINK_MUTATIONS
+        if on_the_link:
+            self.run.mutate(self.mutation)
+        answer = self.run.join_or_refusal(
             invite_of(self.fixture, step),
             path=step.get("path"),
             offline=True,
@@ -647,8 +714,16 @@ class DecisionRun:
             roster=roster_of(self.vector),
             session_key=session_key_of(self.fixture, step, where),
             relay_withholds=scenario.get("relay_withholds") or None,
+            meta=meta_of(step, where),
+            pin=pin_of(step, where),
         )
-        if self.mutation is not None:
+        if isinstance(answer, subject.Refusal):
+            self.refusal = answer.words
+            self.seated = False
+            return
+        self.refusal = None
+        self.seated = True
+        if self.mutation is not None and not on_the_link:
             self.run.mutate(self.mutation)
 
     def stop(self, where: str, step: dict) -> None:
@@ -661,6 +736,11 @@ class DecisionRun:
         """Seal the recipe and hand the frame over, as the relay would."""
         if self.run is None:
             raise PeerError(f"{where}: the subject is not running")
+        if not self.seated:
+            raise PeerError(
+                f"{where}: the subject is not seated, so there is nothing to hand a frame to "
+                f"({self.refusal!r})"
+            )
         raw = sealed.seal(self.fixture, step["recipe"]).bytes()
         _same_bytes(where, step, raw)
         report = self.run.deliver(raw)
@@ -687,11 +767,45 @@ class DecisionRun:
         ends, so a step whose members already hold waits the whole of it.
         """
         self.assertions += 1
+        if not self.seated:
+            raise PeerError(
+                f"{where}: the subject is not seated, so it has no report to read "
+                f"({self.refusal!r})"
+            )
         within = step.get("within_ms")
         deadline = None if within is None else time.monotonic() + within / 1000
         report = self.settle(where, step, deadline)
         if "frozen" in step:
             self.freeze(where, step, report, deadline)
+
+    def expect_refusal(self, where: str, step: dict) -> None:
+        """One `expectRefusal`: the subject refused the link, and its own words name what the
+        vector says they must.
+
+        `PROTOCOL.md` §2 and §5.1 leave the sentence to the client — "the client's to word,
+        naming the server and the version it would need" — so what a vector can hold an
+        implementation to is the **naming**: every string `names` lists is in the refusal. A
+        subject that joined the link instead has answered the one question the step asks, and
+        its report is printed so a reader sees what it did instead.
+        """
+        self.assertions += 1
+        names = step.get("names")
+        if not isinstance(names, list) or not names:
+            raise PeerError(f"{where}: `names` is the list of strings the refusal must carry")
+        if self.seated:
+            raise PeerError(
+                f"{where}: the subject joined the link instead of refusing it, and reports "
+                f"{self.run.report()!r} — a client that can speak the wire's version refuses "
+                f"this link locally, before a socket"
+            )
+        if self.refusal is None:
+            raise PeerError(f"{where}: the subject has not been handed a link to refuse")
+        absent = [wanted for wanted in names if wanted not in self.refusal]
+        if absent:
+            raise PeerError(
+                f"{where}: the refusal must name {json.dumps(absent)} and it says "
+                f"{self.refusal!r}"
+            )
 
     def settle(self, where: str, step: dict, deadline: float | None) -> subject.Report:
         """The report the step asserts, polled to its deadline or refused at once."""
@@ -937,7 +1051,7 @@ def decision_census(
             f"FAIL           {name:<40} stays green under `{catches}`, the mutation it "
             "declares it catches"
         ], failures + 1
-    if "(`expectSubject`)" not in red:
+    if not any(f"(`{op}`)" in red for op in DECISION_ASSERTION_OPS):
         # A subject that refused to remove the guard, a recipe that drifted from its bytes or a
         # step the runner would not take is a failure of the harness, and counting one of them
         # as the red run would let a vector with no guard at all pass the census.

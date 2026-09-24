@@ -759,8 +759,9 @@ refuse an invite whose fragment is absent, whose `k` or `h` is missing, or whose
 `selvage/1` link carries no fragment, and that client joins the room it names, reading no key, as
 that version's peer. Without both values it can neither read a frame nor verify one, so there is no
 fallback and no plaintext mode: the honest refusal says the key is missing and asks for the whole
-link, `#` and all. What this document fixes is that the refusal happens; the sentence is the
-client's.
+link, `#` and all. What this document fixes is that the refusal happens and which of the two keys it
+is about — a refusal names the missing key, in this document's own spelling of the name the fragment
+gives it, `k` or `h`; the sentence is the client's.
 
 In `selvage/1` the fragment carries nothing and no `selvage/1` frame is sealed: a link that carries
 `k` and `h` joins the same room in the clear, and neither value is read.
@@ -2798,6 +2799,17 @@ needs a reason the vocabulary does not already name: each is a refusal one of th
 expiry (a set becomes empty, and no frame is dropped), an obligation about what a client sends, or an
 ending (`ended`).
 
+**A rule decided before a socket has a fifth observable, and it is a refusal of its own.** §5.1's
+fragment and §2/§10's version gate are decided about a **link** and not about a frame: the client
+refuses to join, in its own words, and seats nothing, so neither §6.1's ten reasons nor a report has
+anything to carry. What a test observes is that refusal — the corpus's decision layer asks for it
+with `expectRefusal` — and what it holds an implementation to in it is the **naming** and not the
+sentence, because §2 and §5.1 leave the sentence to the client: the refusal names the key of §5.1's
+two that is missing, in this document's own spelling of it, and it names the version the client would
+need where the server seats none at that major. A refusal and a seating are the two answers a link
+can be given, so a vector that pins one carries the other beside it: the other way to pass a corpus
+of refusals is to refuse everything.
+
 **What a client sends is two counts and not one.** A client's **publications** are the frames §13's
 rules are about: its session-key announcements, its document content, its holds messages, and the
 room states and closings a host publishes. Its **sync-handshake frames** are §7's — a `SyncStep1` or
@@ -2827,6 +2839,8 @@ assertion about them says.
 | A client that refused content re-syncs (§13.6) | a `SyncStep1` sent after the refused frame, at most one per `awareness_renew_ms` however many were refused; nothing published in answer | a content frame from a key no state commits, delivered twice inside one compressed window; a client that never re-syncs, and one that answers frame for frame, must each fail |
 | A verified closing ends; an unverified one does not (§13.10) | `ended` true for the first, false for the second and for a closing delivered to a subject holding no state | two `kind = 2` frames, one above the mark and one at it, and one delivered before any state; the mutation that drops the `issued` ordering must fail the first leg |
 | The room is gone, not retryable (§13.10) | the subject sends no second `session.hello` to the id; `published` shows the one hello | an absence scan over the transcript after `room_unknown`, as §6's scans are |
+| §5.1's fragment names one of its two keys and not the other | the refusal, naming the missing key; no session seated behind it | one link of each shape — `k` without `h`, and `h` without `k` — with the whole fragment beside them, which must join; the mutation that accepts a partial fragment must fail the refusal legs |
+| A reachable `/meta` names no version at major 2 for a client that speaks it (§2, §10) | the refusal, naming the version the client would need; no socket, and nothing seated | a link that would speak `selvage/2` against `/meta`'s list, and the link naming `selvage/1` that a client pinned there must join; the mutation that falls back to `selvage/1` must fail the refusal leg |
 | The invite's `viewer` parameter is not authoritative (§13.9) | a subject handed the parameter, then a state committing it as `guest`, behaves as a `guest` | a fixture state that contradicts the parameter; a client that trusts the URL must fail |
 
 **What a vector can pin.** The bytes: that a holds message is sealed and signed as §6.1 fixes, that
@@ -2836,15 +2850,20 @@ the mark ends while one at or below it does not. These are envelope facts, and a
 against the fixture keys pins them: the corpus holds nineteen of them for the frame layer — among
 them `vectors/peer/114` for the holds carrier and its replay, `105` and `108` for the session-key
 announcement, `110` for a plaintext that is not its kind's object, and `117` and `119` for a path §5
-refuses — and six decision vectors beside them, each red under the one mutation it declares
+refuses — and eight decision vectors beside them, each red under the one mutation it declares
 (`runner/run_peer.py --mutation-census`).
 
-**Two rules no vector reaches, and both are about a link.** §5.1's local refusal of an invite that
-carries no fragment or no key, and §10's no-fallback rule for a client that can speak `selvage/2`,
-are decided before a socket is opened: nothing is sent, so no byte-exact vector can pin either one,
-and none does. They are the decision layer's own subject, though, because that layer hands its
-subject the link it starts from: each is a decision vector that reports the refusal and shows that
-no connection was opened, and neither has one yet.
+**The two rules a link is decided about, and where they are pinned.** §5.1's local refusal of an
+invite whose fragment names one of its two keys and not the other, and §2/§10's no-fallback rule for
+a client that can speak `selvage/2`, are decided before a socket is opened: nothing is sent, so no
+byte-exact vector can pin either one, and the decision layer is where they are pinned instead,
+because that layer hands its subject the link it starts from. `vectors/peer/157` is the fragment, in
+both directions, with the whole fragment beside them as the leg that must join. `vectors/peer/158` is
+the version gate: a link that would speak `selvage/2` against a `/meta` whose list names no version
+at major 2, refused, and the `selvage/1` link a client pinned there joins. A refusal happens before a
+socket, so what a vector can show is that the client refused the link and seated nothing behind it;
+nothing about it reaches §11's vocabulary, and a subject answers it by refusing the `join` itself
+([`NOTES.md`](NOTES.md) §B.41).
 
 **What no vector can pin, and it is the lease's own limit.** A vector is byte-exact evidence and a
 clock is not. No vector can tell a client that renews on its own timer from one that renews on

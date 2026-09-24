@@ -31,6 +31,13 @@ one seam — the session keypair the vector wants it to use. Every frame after t
 relay the earlier text said was missing is therefore this runner: it reads the vector's
 recipes, seals them and hands them over, and it is the same code that replays a frame vector
 so the two layers seal one way.
+
+**A link the client refuses is an answer to `join` and not a failure.** `PROTOCOL.md` §5.1's
+partial fragment and §10's version-1-only server are decided before a socket, so there is no
+frame to decide about: the subject refuses the `join` itself, in its own words, and seats
+nothing. `join_or_refusal` reads that, `run_peer.py` records it, and the vector asserts it with
+`expectRefusal`. A subject left unseated is free to be handed another link, which is what lets
+one vector hold a refusal and the control leg beside it.
 """
 
 from __future__ import annotations
@@ -52,7 +59,9 @@ DEFAULT_TIMEOUT = 10.0
 #: The mutations a *subject* must be able to remove, one rule each, and the name a vector
 #: declares in its `catches`. `PROTOCOL.md` §13.11's table is the list of rules a conformance
 #: test observes; these are the wrong implementations it must fail. They are the counterpart
-#: of `sealed.MUTATIONS`, which removes a *receiver's* guard: these remove a client's.
+#: of `sealed.MUTATIONS`, which removes a *receiver's* guard: these remove a client's. The last
+#: two are guards on the **link**, which a client reads before any session exists; `LINK_MUTATIONS`
+#: names them, and the runner removes those before the `join` rather than after it.
 SUBJECT_MUTATIONS = {
     "ignore-roles": "§13.5: apply document content from a key the state gives role `viewer`",
     "ignore-issued": "§13.3: apply a room state that is not above the mark the client holds",
@@ -61,11 +70,36 @@ SUBJECT_MUTATIONS = {
     "any-closing": "§13.10: end the session on a closing that verifies, without requiring a "
     "verified state below it",
     "wait-for-ever": "§13.3: stay seated with no state applied and never end",
+    "accept-partial-fragment": "§5.1: join a link whose fragment names one of the two keys, "
+    "with the other one missing",
+    "fall-back-to-version-1": "§2, §10: connect to a server whose reachable `/meta` names no "
+    "version at major 2 by speaking `selvage/1` instead of refusing",
 }
+
+#: The guards of that table a client has read **before any session exists**, and which a caller
+#: therefore has to remove before the `join` that reads its link: §5.1's fragment and §2/§10's
+#: version gate are decided about the link itself, so a subject asked for one of these after it
+#: is seated could not have refused the link anyway. Every other guard sits in a session and is
+#: removed after the join.
+LINK_MUTATIONS = frozenset({"accept-partial-fragment", "fall-back-to-version-1"})
 
 
 class SubjectError(Exception):
     """A subject that will not start, will not answer within its deadline, or answers wrong."""
+
+
+@dataclass
+class Refusal:
+    """A link this client refused **locally**, in its own words.
+
+    `PROTOCOL.md` §5.1's fragment rule and §10's no-fallback rule are decided before a socket
+    is opened, so a client that holds them has no frame to report the refusal in and answers
+    the `join` itself: the subject protocol's `{"ok": false, "error": …}` is that answer, and
+    the words are the client's. A decision vector asserts them with `expectRefusal`, which
+    asserts the naming rather than the sentence.
+    """
+
+    words: str
 
 
 @dataclass
@@ -292,6 +326,19 @@ class Subject:
 
     def request(self, command: dict, wait: float | None = None) -> dict:
         """Send one command and read one reply. The runner does the waiting, always."""
+        reply = self.exchange(command, wait)
+        if not reply.get("ok"):
+            raise SubjectError(f"the subject refused `{command.get('cmd')}`: {reply.get('error')!r}")
+        return reply
+
+    def exchange(self, command: dict, wait: float | None = None) -> dict:
+        """Send one command and read one reply, whether the subject accepted it or refused it.
+
+        A refusal is part of the protocol — `{"ok": false, "error": …}` is what a client says
+        for a link it will not join with — and every other way a reply can be wrong is still a
+        named failure: a subject that answers rubbish, closes its stdout or misses its
+        deadline fails the vector rather than being read as a decision.
+        """
         if self.process is None or self.process.stdin is None:
             raise SubjectError("the subject is not running")
         self.asked += 1
@@ -308,19 +355,42 @@ class Subject:
             raise SubjectError(f"the subject answered something that is not JSON: {line!r}") from error
         if not isinstance(reply, dict):
             raise SubjectError(f"a reply is a JSON object, not {line!r}")
-        if not reply.get("ok"):
-            raise SubjectError(f"the subject refused `{command.get('cmd')}`: {reply.get('error')!r}")
         return reply
 
     # -- the commands of the protocol ------------------------------------------
 
     def join(self, invite: str, path: str | None = None, **options: object) -> Report:
-        """Seat the subject: the invite, and everything the runner plays the relay with.
+        """Seat the subject, and raise when it refused the link instead.
+
+        A refusal is a decision and not a failure, so a caller that has to read one asks for it
+        with `join_or_refusal`; this is the same command for a caller that needs a session.
+        """
+        answer = self.join_or_refusal(invite, path, **options)
+        if isinstance(answer, Refusal):
+            raise SubjectError(f"the subject refused `join`: {answer.words!r}")
+        return answer
+
+    def join_or_refusal(
+        self, invite: str, path: str | None = None, **options: object
+    ) -> "Report | Refusal":
+        """Hand the subject the link it starts from, and read what it did with it.
+
+        Both answers are decisions: a `Report` is a seated subject, and a `Refusal` is a link
+        this client will not join with, in its own words, with no session behind it — which is
+        what §5.1's partial fragment and §10's version-1-only server are. A subject left
+        unseated by one refusal is free to be handed another link, which is how a vector
+        carries a refusal and its control leg.
 
         The invite is the vector's template with `$room`, `$token`, `$room_key` and
         `$host_key` substituted. `offline` says the caller will hand the frames over with
         `deliver` instead of a socket, which is what a decision vector is: the runner is the
         relay, so no invite in this layer addresses a server at all.
+
+        `mutation` is not a member of this command: a guard is removed with `mutate`, and a caller
+        that removes one **before** the `join` is removing a guard on the link, which a client
+        reads before any session exists (`LINK_MUTATIONS`). `meta` is what `GET /meta` answered
+        and `pin` the version this client's own setting pins it to, both of which §2 and §10
+        read before a socket; the layer that opens none carries them here.
 
         `key` names a **fixture entry** — `"guest-1"` — and the runner resolves it to that
         keypair's 32-byte seed and sends it as `session_key`. It is a **test seam and not
@@ -342,7 +412,11 @@ class Subject:
         if path is not None:
             command["path"] = path
         command.update({name: value for name, value in options.items() if value is not None})
-        return self._report(self.request(command))
+        reply = self.exchange(command)
+        if not reply.get("ok"):
+            words = reply.get("error")
+            return Refusal(words=words if isinstance(words, str) else json.dumps(words))
+        return self._report(reply)
 
     def deliver(self, frame: bytes) -> Report:
         """One sealed frame's bytes, as the relay would hand them over.
@@ -370,7 +444,12 @@ class Subject:
 
     def mutate(self, name: str) -> Report:
         """Remove one guard, for the mutation census. A subject that cannot remove one says
-        so here rather than passing the census silently."""
+        so here rather than passing the census silently.
+
+        A guard may be asked for at any time: one that sits on the link has to be gone before the
+        link is read, and one that sits in a session is removed once there is a session
+        (`runner/run_peer.py` does both, from `LINK_MUTATIONS`).
+        """
         if name not in SUBJECT_MUTATIONS:
             raise SubjectError(f"no mutation is named {name!r}")
         return self._report(self.request({"cmd": "mutate", "name": name}))
