@@ -48,7 +48,7 @@ permissions: {}
 
 jobs:
   validate:
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
       contents: read
@@ -131,7 +131,7 @@ jobs:
     # A dry run ends with `validate`: nothing below it is needed, and nothing holding a write
     # token runs for it.
     if: inputs.dry_run != true
-    runs-on: blacksmith-4vcpu-ubuntu-2404
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     # `contents: write` creates and pushes the tag and the GitHub Release. Nothing else is
     # granted, and nothing in this job installs a package or runs the repository's Python.
