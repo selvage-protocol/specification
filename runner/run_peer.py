@@ -18,16 +18,15 @@ what a real client does with a frame it has already received — what it applied
 dropped and why, what it published, whether it ended — and the frames it would receive on a
 socket are the vector's own `deliver` steps, sealed here and handed over through the subject
 protocol (`runner/subject.py`). `start` seats it with the invite, the fixture session keypair,
-the roster, the session's clock, what `/meta` answered and any version it is pinned to;
-`expectSubject` is the decision channel. So a decision vector needs one thing and this runner
-names it: a subject.
+the roster and the session's clock; `expectSubject` is the decision channel. So a decision
+vector needs one thing and this runner names it: a subject.
 
-**A link is refused before a socket, and that is a decision too.** §5.1's partial fragment and
-§10's version-1-only server are decided about the link itself, so a client refuses the `join`
-in its own words and seats nothing; `expectRefusal` is the step that asserts what those words
-carry, and the subject stays free for the vector's next `start`. A guard on the link
-(`subject.LINK_MUTATIONS`) is removed before the `join` for the same reason: it has to be gone
-before the link is read.
+**A link is refused before a socket, and that is a decision too.** §5.1's fragment is
+decided about the link itself — a key absent, missing or not a key — so a client refuses the `join`
+in its own words and seats
+nothing; `expectRefusal` is the step that asserts what those words carry, and the subject stays
+free for the vector's next `start`. A guard on the link (`subject.LINK_MUTATIONS`) is removed
+before the `join` for the same reason: it has to be gone before the link is read.
 
 **The mutation census is what makes the corpus evidence rather than a list of assertions.** A
 conforming receiver and a wrong one both pass a vector that asserts nothing, so `--mutation-census`
@@ -494,39 +493,6 @@ def session_key_of(fixture: Fixture, step: dict, where: str) -> str | None:
     return key.private.hex()
 
 
-def meta_of(step: dict, where: str) -> dict | None:
-    """What `GET /meta` answered, for the layer that opens no socket.
-
-    `PROTOCOL.md` §2 and §10 read one member of the body before a socket is opened, so a vector
-    that pins the rule carries it: `wire_versions`, the versions the server says it accepts. A
-    `start` with no `meta` is a `/meta` that could not be read, which is not an answer about
-    versions and is not what a client refuses on.
-    """
-    meta = step.get("meta")
-    if meta is None:
-        return None
-    if not isinstance(meta, dict):
-        raise PeerError(f"{where}: `meta` is the body `GET /meta` answered")
-    unknown = set(meta) - {"wire_versions"}
-    if unknown:
-        raise PeerError(f"{where}: `meta` names {sorted(unknown)}, which nothing here reads")
-    versions = meta.get("wire_versions")
-    if not isinstance(versions, list) or any(not isinstance(one, str) for one in versions):
-        raise PeerError(f"{where}: `meta.wire_versions` is the list the server advertises")
-    return {"wire_versions": list(versions)}
-
-
-def pin_of(step: dict, where: str) -> str | None:
-    """The wire version this client's own setting pins it to, or `None` for a client that has
-    pinned nothing (`PROTOCOL.md` §2)."""
-    pin = step.get("pin")
-    if pin is None:
-        return None
-    if pin not in ("selvage/1", "selvage/2"):
-        raise PeerError(f"{where}: `pin` is one of the two wire versions, not {pin!r}")
-    return pin
-
-
 def scenario_of(vector: dict) -> dict:
     """The scenario's known members, checked rather than trusted.
 
@@ -687,11 +653,12 @@ class DecisionRun:
         handler(where, step)
 
     def start(self, where: str, step: dict) -> None:
-        """Hand the subject the link it starts from: the invite, the clock, the roster, the
-        session keypair, and the two things §2 and §10 read before a socket.
+        """Hand the subject the link it starts from: the invite, the clock, the roster and the
+        session keypair.
 
         The answer is either a seating or the client's own words for a link it refuses
-        (`PROTOCOL.md` §5.1's partial fragment, §10's version-1-only server), and the second is
+        (`PROTOCOL.md` §5.1's fragment, whose absent, missing or malformed key is refused before a
+        socket), and the second is
         a decision the vector asserts with `expectRefusal` rather than a failure of the run.
 
         The guard this run removes is named **before** the join when it sits on the link, which
@@ -714,8 +681,6 @@ class DecisionRun:
             roster=roster_of(self.vector),
             session_key=session_key_of(self.fixture, step, where),
             relay_withholds=scenario.get("relay_withholds") or None,
-            meta=meta_of(step, where),
-            pin=pin_of(step, where),
         )
         if isinstance(answer, subject.Refusal):
             self.refusal = answer.words
@@ -782,8 +747,8 @@ class DecisionRun:
         """One `expectRefusal`: the subject refused the link, and its own words name what the
         vector says they must.
 
-        `PROTOCOL.md` §2 and §5.1 leave the sentence to the client — "the client's to word,
-        naming the server and the version it would need" — so what a vector can hold an
+        `PROTOCOL.md` §5.1 leaves the sentence to the client — "the sentence is the client's" —
+        so what a vector can hold an
         implementation to is the **naming**: every string `names` lists is in the refusal. A
         subject that joined the link instead has answered the one question the step asks, and
         its report is printed so a reader sees what it did instead.

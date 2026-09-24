@@ -31,10 +31,10 @@ member order and prose are not pinned here; they would freeze legitimate evoluti
 replay in the reference server's suite is what checks them against a running server.
 
 A schema in this directory cannot forbid a *member*: tolerance is the rule (`CANONICAL.md` §3), so
-what the `selvage/2` files close is a *value*. Three of them are run here in both directions, because
-a constraint that refuses everything fails beside one that accepts what the version does not write:
-the fault vocabulary of the version's session layer (`session-v2.json`), the two sealed payloads a
-host signs, and the reasons a receiver reports a refused sealed frame in (`sealed.json`).
+what the shipped files close is a *value*. Two of them are run here in both directions, because a
+constraint that refuses everything fails beside one that accepts what the version writes: the two
+sealed payloads a host signs, and the reasons a receiver reports a refused sealed frame in
+(`sealed.json`).
 
 **The peer layer.** `vectors/peer/*.json` is the second corpus: `selvage/2`'s *client* rules, whose
 subject is a client implementation rather than the server, and whose bytes are sealed frames
@@ -49,12 +49,12 @@ the refusal vocabulary a vector asserts, the mutation each vector declares it ca
 absence rules below. It imports no crypto and knows no fixture value — the sealed bytes are
 `run_peer.py`'s, and this file only says which checks do not need them.
 
-**The absence scan.** No server-authored frame carries a path, a role or a byte of content in
-`selvage/2`, and that is checkable with no key at all. Three legs of it are here: the shipped
-`selvage/2` session shapes are scanned for the members the version deletes, every peer vector's
-sealed frames are scanned for the strings its own plaintext names, and the scan is run over the
-`selvage/1` corpus as its own positive control — a scan that read nothing reports zero, and the
-counts it finds there are pinned so that a walker which stopped walking is a red run.
+**The absence scan.** No server-authored frame carries a path, a role or a byte of content, and
+that is checkable with no key at all. Three legs of it are here: the shipped session shapes are
+scanned for those members, every peer vector's sealed frames are scanned for the strings its own
+plaintext names, and the scan is run over a document built to break every rule it states, whose
+violations are pinned — a scan that read nothing reports nothing, and a walker which stopped
+walking is a red run.
 
 Run it with a JSON Schema implementation available, from the repository root:
 
@@ -94,16 +94,16 @@ BASE = "https://dontblameme.dev/schema/1/"
 # run instead of a smaller number in a line of output. Update them in the same commit that changes
 # the corpus. The two layers are counted apart on purpose: they are committed and replayed by
 # different tools, and one number would let one layer's loss be paid by the other's gain.
-EXPECTED_WIRE_VECTORS = 36
-EXPECTED_PEER_VECTORS = 27
-EXPECTED_FRAME_CHECKS = 35022
-EXPECTED_ASSERTIONS = 8676
+EXPECTED_WIRE_VECTORS = 24
+EXPECTED_PEER_VECTORS = 26
+EXPECTED_FRAME_CHECKS = 33760
+EXPECTED_ASSERTIONS = 8387
 # The peer layer's own counts. `PEER_CHECKS` is one per peer step plus one per recipe, and
 # `PEER_ASSERTIONS` counts the assertion steps of the **frame** vectors, which is what
 # `runner/run_peer.py` runs without a client; a decision vector's `expectSubject` steps are checked
 # here and are not in this number, because they are asserted against a *subject* — a client named by
 # `--subject` — and are counted in that run's own summary rather than in a corpus-wide pin.
-EXPECTED_PEER_CHECKS = 222
+EXPECTED_PEER_CHECKS = 221
 EXPECTED_PEER_ASSERTIONS = 74
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
@@ -117,50 +117,36 @@ EXPECTED_CODES = {
     "001": [],
     "002": [],
     "003": [],
-    "004": [],
-    "005": ["close:4005", "close:4005", "close:4005", "error:unsupported_version",
-            "session.error:unsupported_version", "session.error:unsupported_version"],
-    "006": ["error:bad_params", "error:bad_params"],
-    "007": ["error:unknown_method", "error:unknown_method"],
+    "005": ["close:4000", "close:4000", "close:4000", "close:4000",
+            "session.error:bad_message", "session.error:bad_message",
+            "session.error:bad_message", "session.error:bad_message"],
+    "007": ["error:unknown_method", "error:unknown_method", "error:unknown_method"],
     "008": ["close:4000", "close:4000", "session.error:bad_message",
             "session.error:hello_required"],
     "009": [],
     "010": [],
-    "011": [],
-    "012": ["close:4001", "close:4003", "session.error:room_unknown"],
+    "012": ["close:4001", "session.error:room_unknown"],
     "013": ["close:4002", "close:4002", "session.error:token_invalid",
             "session.error:token_invalid"],
-    "014": ["close:4004", "session.error:host_present"],
     "015": ["error:already_seated"],
     "016": ["close:4000", "session.error:bad_message", "session.error:bad_message"],
     "017": ["close:4000", "close:4000", "session.error:bad_message",
             "session.error:bad_params"],
-    "018": [],
     "019": ["close:4000", "session.error:bad_params"],
     "020": ["error:bad_params"],
-    "021": [],
-    "022": [],
-    "023": ["error:bad_params", "error:bad_params", "error:bad_params",
-            "error:bad_params", "error:bad_params"],
-    "024": [],
-    "025": [],
     "026": ["close:4000", "session.error:x.room_full"],
-    "027": ["close:4005", "close:4005", "error:unsupported_version",
-            "session.error:unsupported_version"],
-    "028": ["close:4000", "close:4000", "close:4005", "error:unsupported_version",
+    "027": ["session.error:bad_message"],
+    "028": ["close:4000", "close:4000", "error:bad_params", "error:unknown_method",
             "session.error:bad_message", "session.error:bad_message"],
-    "029": ["close:4000", "close:4000", "error:bad_params", "error:bad_params",
-            "error:bad_params", "session.error:bad_params", "session.error:bad_params"],
+    "029": ["close:4000", "close:4000", "session.error:bad_params",
+            "session.error:bad_params"],
     "030": ["close:4000", "close:4000", "session.error:bad_message",
             "session.error:bad_message", "session.error:bad_message"],
     "031": ["close:4000", "session.error:bad_message", "session.error:bad_message",
             "session.error:bad_message"],
     "032": ["close:4002", "session.error:token_invalid"],
-    "033": ["error:bad_params", "error:bad_params", "error:bad_params",
-            "error:bad_params"],
-    "034": [],
     "035": [],
-    "036": ["session.error:bad_message", "session.error:bad_message"],
+    "036": ["session.error:bad_message"],
 }
 
 # The refusal reasons each peer vector asserts, in sorted order, and the mutation it must go red
@@ -201,7 +187,6 @@ EXPECTED_REFUSALS = {
     "155": [],
     "156": [],
     "157": [],
-    "158": [],
 }
 EXPECTED_MUTATIONS = {
     "101": None,
@@ -230,27 +215,68 @@ EXPECTED_MUTATIONS = {
     "155": "any-closing",
     "156": "wait-for-ever",
     "157": "accept-partial-fragment",
-    "158": "fall-back-to-version-1",
 }
 
-# The positive control of the absence scan, and the reason it is a control rather than a
-# comment: the rule is "no server-authored frame carries a path, a role or a byte of content",
-# and every `selvage/1` transcript carries one, so running the scan over the layer that exists
-# is how the scan is shown to read something. These are the counts it finds there. A scan that
-# read nothing reports zero and is a red run; a `selvage/1` vector deleted or re-baselined
-# moves one of these, which is a deliberate edit and not a silent one.
-EXPECTED_V1_MEMBERS = {"role": 8335, "documents": 397, "paths": 10}
-EXPECTED_V1_EVENTS = {
-    "doc.opened": 167,
-    "doc.closed": 13,
-    "doc.granted": 10,
-    "host.attached": 2,
-    "host.detached": 5,
+# The control of the absence scan: a document built to break every rule the scan states, and the
+# violations it must find in it. The rule is "no server-authored `selvage/2` frame carries a path,
+# a role, a byte of content, or an event this protocol does not have", and the corpus that this scan runs
+# over is a corpus of the version the rule is about, so the corpus can no longer be its own
+# positive control the way a corpus of the version the rule is about cannot be: a document that
+# breaks the rule is the
+# subject instead, and the pinned violations are what makes a walker that stopped walking a red
+# run rather than a shorter list.
+ABSENCE_CONTROL = {
+    "selvage": "selvage/2",
+    "steps": [
+        {
+            "op": "expect",
+            "text": '{"event":"room.joined","params":{"documents":[],"peers":[{"display_name":"Ada","peer_id":"p-1","role":"host"}],"room_id":"$room","self":{"display_name":"Bob","peer_id":"p-2","role":"guest"}},"v":"selvage/2"}',
+        },
+        {
+            "op": "expect",
+            "text": '{"event":"doc.opened","params":{"documents":["src/main.rs"],"path":"src/main.rs","peer_id":"p-1"},"v":"selvage/2"}',
+        },
+        {
+            "op": "expect",
+            "text": '{"event":"doc.granted","params":{"paths":["src/main.rs"]},"v":"selvage/2"}',
+        },
+        {
+            "op": "expect",
+            "text": '{"event":"host.detached","params":{"grace_ms":30000},"v":"selvage/2"}',
+        },
+        {
+            "op": "expect",
+            "text": '{"event":"host.attached","params":{"peer":{"display_name":"Ada","peer_id":"p-1","role":"host"}},"v":"selvage/2"}',
+        },
+        {"op": "sendBinary", "hex": "00 04 73 72 63 2f 6d 61 69 6e 2e 72 73"},
+    ],
+    "secret": ["src/main.rs"],
 }
-EXPECTED_V1_NEEDLES = {
-    "expect frames naming `src/main.rs`": 58,
-    "binary steps carrying its bytes": 6,
-}
+EXPECTED_CONTROL_VIOLATIONS = [
+    "step 0 (expect) carries ['documents', 'role']",
+    "step 1 (expect) carries ['documents', 'path']",
+    "step 1 (expect) is a `doc.opened`, an event this protocol does not have",
+    "step 2 (expect) carries ['paths']",
+    "step 2 (expect) is a `doc.granted`, an event this protocol does not have",
+    "step 3 (expect) is a `host.detached`, an event this protocol does not have",
+    "step 4 (expect) carries ['role']",
+    "step 4 (expect) is a `host.attached`, an event this protocol does not have",
+    "step 5 (sendBinary) carries 'src/main.rs' in its bytes",
+]
+
+# The schemas that describe a server-authored session frame. `sealed.json` is not here: a sealed
+# room state carries the roles the host signs, and one member name there is not the session layer's.
+SESSION_SCHEMA_FILES = (
+    "common.json",
+    "envelope.json",
+    "errors.json",
+    "events.json",
+    "meta.json",
+    "methods.json",
+    "negotiation.json",
+    "session.json",
+)
+
 
 # A step that reads or asserts something. Every other step only produces input for one, so
 # a vector made of them alone can pass while claiming nothing.
@@ -360,12 +386,11 @@ PEER_SUBJECT_MUTATIONS = frozenset(
         "any-closing",
         "wait-for-ever",
         "accept-partial-fragment",
-        "fall-back-to-version-1",
     }
 )
 
 #: The member names no server-authored `selvage/2` frame may carry, and the events the version
-#: deletes. `host` was in the corpus study's table of member names and is not one: `host` appears
+#: does not have. `host` was in the corpus study's table of member names and is not one: `host` appears
 #: in this corpus as the first half of an *event* name, `host.attached` and `host.detached`, and
 #: the study's 186 is a count of something else. A member census and an event census are two
 #: different measurements, so they are two, and the events are pinned as well as scanned.
@@ -377,9 +402,6 @@ FORBIDDEN_EVENTS = frozenset(
 METHOD_PARAMS = {
     "session.hello": f"{BASE}methods.json#/$defs/sessionHelloParams",
     "session.rename": f"{BASE}methods.json#/$defs/renameParams",
-    "doc.open": f"{BASE}methods.json#/$defs/docOpenParams",
-    "doc.close": f"{BASE}methods.json#/$defs/docCloseParams",
-    "doc.grant": f"{BASE}methods.json#/$defs/grantParams",
 }
 
 EVENT_PARAMS = {
@@ -388,11 +410,6 @@ EVENT_PARAMS = {
     "peer.joined": f"{BASE}events.json#/$defs/peerJoined",
     "peer.left": f"{BASE}events.json#/$defs/peerLeft",
     "peer.renamed": f"{BASE}events.json#/$defs/peerRenamed",
-    "doc.opened": f"{BASE}events.json#/$defs/docOpened",
-    "doc.closed": f"{BASE}events.json#/$defs/docClosed",
-    "doc.granted": f"{BASE}events.json#/$defs/docGranted",
-    "host.detached": f"{BASE}events.json#/$defs/hostDetached",
-    "host.attached": f"{BASE}events.json#/$defs/hostAttached",
     "room.gone": f"{BASE}events.json#/$defs/roomGone",
     "session.error": f"{BASE}events.json#/$defs/sessionError",
 }
@@ -412,7 +429,7 @@ def fail(where: str, problem: str) -> None:
 
 
 def close_codes() -> list[int]:
-    """The close codes `selvage/1` uses, read from the vocabulary that defines them."""
+    """The close codes the vocabulary defines, read from the schema that defines them."""
     schema = json.loads((SCHEMA_DIR / "errors.json").read_text())
     return schema["$defs"]["closeCode"]["enum"]
 
@@ -449,7 +466,7 @@ METHODS_SCHEMA = load_methods_schema()
 
 
 def known_methods() -> list[str]:
-    """The method names `selvage/1` defines, read from the schema that defines them."""
+    """The method names the schema defines, read from it."""
     if METHODS_SCHEMA is None:
         return []
     return METHODS_SCHEMA["$defs"]["knownMethod"]["enum"]
@@ -705,8 +722,8 @@ def check_vector(reg: Registry, document: object, name: str) -> tuple[int, list[
     for member in ("id", "title", "spec", "selvage", "canonical", "steps"):
         if member not in document:
             fail(where, f"missing {member!r}")
-    if document.get("selvage") != "selvage/1":
-        fail(where, "selvage must be `selvage/1`")
+    if document.get("selvage") != "selvage/2":
+        fail(where, "selvage must be `selvage/2`")
     if document.get("canonical") != "SJ-C/1":
         fail(where, "canonical must be `SJ-C/1`")
 
@@ -749,11 +766,11 @@ def check_vector(reg: Registry, document: object, name: str) -> tuple[int, list[
                     check_canonical(step["text"], at, "expect frame")
                     frame = parse_or_none(step["text"])
                     if isinstance(frame, dict):
-                        # A server writes its own version, never a tolerated spelling of
-                        # it (CANONICAL.md §2.5), so the vector has to claim that one.
+                        # A server writes the one version there is (CANONICAL.md §2.5),
+                        # so the vector has to claim it.
                         check(
                             reg,
-                            f"{BASE}negotiation.json#/$defs/canonicalWireVersion",
+                            f"{BASE}negotiation.json#/$defs/wireVersion",
                             frame.get("v"),
                             at,
                             "v",
@@ -1128,250 +1145,6 @@ SEALED_SITES = (
 )
 
 
-# `selvage/2`'s session-layer shapes, as `schema/session-v2.json` and `PROTOCOL.md`'s `selvage/2`
-# passages fix them. A `selvage/2` `/meta` body and its `session.hello` replies are not session
-# frames — `/meta` carries no `v`, and the transcripts are `selvage/1`'s until the corpus is
-# re-baselined — so nothing else here reaches them, and a `roles` made required again, a `documents`
-# readmitted, a peer record's `display_name` dropped, an advertisement naming `selvage/1`, a
-# `peer.joined` whose peer is not this version's record, a `host_present` readmitted to the fault
-# vocabulary, or a `keepalive` with no `room_grace_ms` would leave every other check in this suite
-# green. Both directions are checked, so a shape that refuses everything fails too. A *member* these
-# values carry and the shape does not define is deliberate: a receiver tolerates one (`PROTOCOL.md`
-# §4.1), so the model must not forbid it, and what holds a *server* to the member set of its version
-# is the corpus's exact comparison rather than a schema. A fault *code* is a closed value and not a
-# member, which is why the vocabulary is the one place one of these shapes refuses a value: see
-# `check_session_v2`'s last block, which checks that the two versions' vocabularies differ in exactly
-# the codes §11 says they do.
-SESSION_V2_KEEPALIVE = {
-    "ping_interval_ms": 30000,
-    "awareness_renew_ms": 15000,
-    "awareness_expire_ms": 30000,
-}
-SESSION_V2_ADVERTISED = {
-    "server": "selvaged/0.2.0",
-    "wire_versions": ["selvage/2"],
-    "capabilities": ["y-protocols/1", "awareness"],
-    "keepalive": {**SESSION_V2_KEEPALIVE, "room_grace_ms": 30000},
-}
-SESSION_V2_META_CONFORMING = {
-    "a server of this version": dict(SESSION_V2_ADVERTISED),
-    "a server that also accepts a later minor": {
-        **SESSION_V2_ADVERTISED,
-        "wire_versions": ["selvage/2", "selvage/2.1"],
-    },
-    "a server advertising a name of its own": {
-        **SESSION_V2_ADVERTISED,
-        "capabilities": ["y-protocols/1", "awareness", "x.selvage.demo"],
-    },
-    "a body that still advertises `roles`": {
-        **SESSION_V2_ADVERTISED,
-        "roles": ["host", "guest"],
-    },
-}
-SESSION_V2_META_REFUSED = {
-    "a body with no `keepalive`": {
-        key: value for key, value in SESSION_V2_ADVERTISED.items() if key != "keepalive"
-    },
-    "a body with no `server`": {
-        key: value for key, value in SESSION_V2_ADVERTISED.items() if key != "server"
-    },
-    "a body that advertises no version at all": {**SESSION_V2_ADVERTISED, "wire_versions": []},
-    "a body that advertises only `selvage/1`": {
-        **SESSION_V2_ADVERTISED,
-        "wire_versions": ["selvage/1"],
-    },
-    "a body whose `keepalive` has no `room_grace_ms`": {
-        **SESSION_V2_ADVERTISED,
-        "keepalive": SESSION_V2_KEEPALIVE,
-    },
-    "a body missing the `y-protocols/1` capability": {
-        **SESSION_V2_ADVERTISED,
-        "capabilities": ["awareness"],
-    },
-    "a body missing the `awareness` capability": {
-        **SESSION_V2_ADVERTISED,
-        "capabilities": ["y-protocols/1"],
-    },
-}
-
-SESSION_V2_PEER_CONFORMING = {
-    "a peer as this version writes one": {"peer_id": "p-3d33", "display_name": "Bob"},
-    "a peer with an awareness id": {
-        "peer_id": "p-3d33",
-        "display_name": "Bob",
-        "awareness_client_id": 42,
-    },
-    "a peer still carrying a role": {"peer_id": "p-3d33", "display_name": "Bob", "role": "guest"},
-}
-SESSION_V2_PEER_REFUSED = {
-    "a peer with no `display_name`": {"peer_id": "p-3d33"},
-    "a peer with no `peer_id`": {"display_name": "Bob"},
-    "a peer whose `display_name` is blank": {"peer_id": "p-3d33", "display_name": "  "},
-    "a peer whose `peer_id` is empty": {"peer_id": "", "display_name": "Bob"},
-}
-
-# The one event of the seven `PROTOCOL.md` §6 gives a `selvage/2` server whose params are this
-# version's peer record, and therefore the one that differs from `selvage/1`'s shape. `peer.left`,
-# `peer.renamed` and `room.gone` are `events.json`'s unchanged and are checked there; `session.error`
-# is the same event, and its params in this version are `session-v2.json#/$defs/errorObject`.
-SESSION_V2_PEER_JOINED_CONFORMING = {
-    "a `peer.joined`": {"peer": {"peer_id": "p-3d33", "display_name": "Bob"}},
-    "one whose peer carries an awareness id": {
-        "peer": {"peer_id": "p-3d33", "display_name": "Bob", "awareness_client_id": 42},
-    },
-    "one carrying a member this version does not define": {
-        "peer": {"peer_id": "p-3d33", "display_name": "Bob", "role": "guest"},
-    },
-}
-SESSION_V2_PEER_JOINED_REFUSED = {
-    "a `peer.joined` with no `peer`": {},
-    "one whose peer has no `display_name`": {"peer": {"peer_id": "p-3d33"}},
-    "one whose peer has no `peer_id`": {"peer": {"display_name": "Bob"}},
-}
-
-# The fault vocabulary of this version (`PROTOCOL.md` §11): `selvage/1`'s nine codes that survive,
-# and an implementation's own `x.` name. The two codes that go are the ones whose fault this
-# server's shape cannot produce, and the second set below is what makes that a difference between
-# two shipped schemas rather than a claim: the same value must still validate against
-# `errors.json#/$defs/errorObject`, or the version's enum would be a copy that happened to drop a
-# value rather than the version's vocabulary.
-SESSION_V2_FAULT_CONFORMING = {
-    "a refusal this version carries": {"code": "room_unknown", "message": "no such room"},
-    "a fault a seated connection is answered with": {
-        "code": "already_seated",
-        "message": "session.hello sent twice",
-    },
-    "a capacity code of the implementation's own": {
-        "code": "x.room_full",
-        "message": "the room is full",
-    },
-}
-SESSION_V2_FAULT_REFUSED = {
-    "`host_present`, whose fault this server cannot have": {
-        "code": "host_present",
-        "message": "a host is already connected",
-    },
-    "`doc_not_open`, reserved for a method this version does not have": {
-        "code": "doc_not_open",
-        "message": "no such error to raise",
-    },
-    "a name that is neither code nor `x.` name": {
-        "code": "cursor.teleport",
-        "message": "no such method",
-    },
-    "a fault with no `message`": {"code": "room_unknown"},
-}
-
-SESSION_V2_JOIN = {
-    "room_id": "r-a0bca377bb4e",
-    "self": {"peer_id": "p-3d33", "display_name": "Bob", "awareness_client_id": 42},
-    "peers": [{"peer_id": "p-852b", "display_name": "Ada"}],
-    "capabilities": ["y-protocols/1", "awareness"],
-    "keepalive": SESSION_V2_KEEPALIVE,
-}
-SESSION_V2_JOIN_CONFORMING = {
-    "a join reply": dict(SESSION_V2_JOIN),
-    "a reply carrying a member this version does not define": {
-        **SESSION_V2_JOIN,
-        "documents": ["src/main.rs"],
-    },
-}
-SESSION_V2_JOIN_REFUSED = {
-    "a reply with no `peers`": {
-        key: value for key, value in SESSION_V2_JOIN.items() if key != "peers"
-    },
-    "a reply whose `self` has no `display_name`": {
-        **SESSION_V2_JOIN,
-        "self": {"peer_id": "p-3d33"},
-    },
-    "a join reply carrying the token": {**SESSION_V2_JOIN, "token": "ab" * 16},
-}
-
-SESSION_V2_CREATED_CONFORMING = {"a mint reply": {**SESSION_V2_JOIN, "token": "ab" * 16}}
-SESSION_V2_CREATED_REFUSED = {"a mint reply with no `token`": dict(SESSION_V2_JOIN)}
-
-SESSION_V2_SITES = (
-    (
-        "a `selvage/2` `/meta`",
-        "session-v2.json#/$defs/meta",
-        SESSION_V2_META_CONFORMING,
-        SESSION_V2_META_REFUSED,
-    ),
-    (
-        "a `selvage/2` `PeerInfo`",
-        "session-v2.json#/$defs/peer",
-        SESSION_V2_PEER_CONFORMING,
-        SESSION_V2_PEER_REFUSED,
-    ),
-    (
-        "a `selvage/2` `peer.joined`",
-        "session-v2.json#/$defs/peerJoined",
-        SESSION_V2_PEER_JOINED_CONFORMING,
-        SESSION_V2_PEER_JOINED_REFUSED,
-    ),
-    (
-        "a `selvage/2` fault",
-        "session-v2.json#/$defs/errorObject",
-        SESSION_V2_FAULT_CONFORMING,
-        SESSION_V2_FAULT_REFUSED,
-    ),
-    (
-        "a `selvage/2` `room.joined`",
-        "session-v2.json#/$defs/roomJoined",
-        SESSION_V2_JOIN_CONFORMING,
-        SESSION_V2_JOIN_REFUSED,
-    ),
-    (
-        "a `selvage/2` `room.created`",
-        "session-v2.json#/$defs/roomCreated",
-        SESSION_V2_CREATED_CONFORMING,
-        SESSION_V2_CREATED_REFUSED,
-    ),
-)
-
-
-def check_session_v2(reg: Registry) -> int:
-    """Runs the shipped `session-v2.json` against `selvage/2`'s session-layer shapes.
-
-    Both directions, as for the sealed payloads: a shape that refuses everything this version
-    writes fails beside a shape that accepts what it does not. The fault vocabulary is the one
-    shape here that refuses a *value* rather than tolerating it, so its last block checks the other
-    half of that claim: the two codes this version drops must still validate against `selvage/1`'s
-    vocabulary, or the version's `enum` would be a copy that happens to be missing two entries.
-    """
-    checks = 0
-    for label, ref, conforming, refused in SESSION_V2_SITES:
-        validator = Draft202012Validator({"$ref": f"{BASE}{ref}"}, registry=reg)
-        for name, value in conforming.items():
-            checks += 1
-            errors = list(validator.iter_errors(value))
-            if errors:
-                fail("schema", f"{label} refuses the conforming {name}: {errors[0].message}")
-        for name, value in refused.items():
-            checks += 1
-            if not list(validator.iter_errors(value)):
-                fail(
-                    "schema",
-                    f"{label} accepts {name}, which `schema/session-v2.json` does not describe",
-                )
-
-    v1_fault = Draft202012Validator(
-        {"$ref": f"{BASE}errors.json#/$defs/errorObject"}, registry=reg
-    )
-    v2_fault = Draft202012Validator(
-        {"$ref": f"{BASE}session-v2.json#/$defs/errorObject"}, registry=reg
-    )
-    for code in ("host_present", "doc_not_open"):
-        value = {"code": code, "message": f"{code} as `selvage/1` carries it"}
-        checks += 1
-        if list(v1_fault.iter_errors(value)):
-            fail("schema", f"`selvage/1`'s fault vocabulary refuses its own code `{code}`")
-        checks += 1
-        if not list(v2_fault.iter_errors(value)):
-            fail("schema", f"`selvage/2`'s fault vocabulary accepts `{code}`")
-    return checks
-
-
 def check_sealed_payloads(reg: Registry) -> int:
     """Runs the shipped `sealed.json` against what `CANONICAL.md` §6.1 says it describes.
 
@@ -1486,7 +1259,8 @@ def absence_violations(document: object) -> list[str]:
     > `role`, or any byte of document content or cursor state.
 
     A frame carrying one of the five member names fails, and so does an `event` naming one of
-    the five events this version deletes: the member is what a receiver would read and the event
+    the five events this protocol does not have: the member is what a receiver would read and the
+    event
     is what would tell it to look. The three keys the server *does* author — the room id, the
     token, and a peer's `display_name` — are how a scan that read nothing is told apart from a
     scan that passed, which is why the caller asserts them separately.
@@ -1510,7 +1284,7 @@ def absence_violations(document: object) -> list[str]:
             if names:
                 violations.append(f"{at} carries {names}")
             if frame.get("event") in FORBIDDEN_EVENTS:
-                violations.append(f"{at} is a `{frame['event']}`, which this version deletes")
+                violations.append(f"{at} is a `{frame['event']}`, an event this protocol does not have")
         if "hex" not in step:
             continue
         try:
@@ -1526,36 +1300,37 @@ def absence_violations(document: object) -> list[str]:
 def check_absence() -> str:
     """The one negative class checkable with no key at all, and the control that it reads.
 
-    Three legs. **The shipped model**: every `selvage/2` session shape is walked for a member of
-    the forbidden list — a `role` made a *property* or a `required` entry of `session-v2.json`
-    is a red run, which is the structural half and the strongest of the three, because it
-    refuses the member rather than scanning for one. **The rule itself**: `absence_violations`
-    is run over every wire vector declaring `selvage/2` and over every peer vector's sealed
-    frames. **The control**: the same walk is run over the `selvage/1` corpus, where it must
-    find something, and the counts it finds are pinned — a scan that read nothing reports zero,
-    and a pinned zero is a check while an unpinned one is a green line.
+    Three legs. **The shipped model**: every session-layer shape is walked for a member of the
+    forbidden list — a `role` made a *property* or a `required` entry of a session schema is a
+    red run, which is the structural half and the strongest of the three, because it refuses the
+    member rather than scanning for one. **The rule itself**: `absence_violations` is run over
+    every wire vector and over every peer vector's sealed frames. **The control**: the same walk
+    is run over a document built to break every rule it states, and the violations it finds are
+    pinned — a scan that read nothing reports nothing, and a pinned nothing proves nothing, so
+    the control is a document that must be caught.
     """
-    # -- the shipped `selvage/2` session shapes --
+    # -- the shipped session shapes --
     shapes = 0
-    try:
-        session_v2 = json.loads((SCHEMA_DIR / "session-v2.json").read_text())
-    except (OSError, json.JSONDecodeError) as error:
-        fail("session-v2.json", f"not readable as JSON: {error}")
-        session_v2 = {}
-    for definition, shape in sorted(session_v2.get("$defs", {}).items()):
-        if not isinstance(shape, dict):
+    for name in sorted(SESSION_SCHEMA_FILES):
+        try:
+            schema = json.loads((SCHEMA_DIR / name).read_text())
+        except (OSError, json.JSONDecodeError) as error:
+            fail(name, f"not readable as JSON: {error}")
             continue
-        shapes += 1
-        declared = set(shape.get("properties", {})) | set(shape.get("required", []))
-        wrong = sorted(declared & set(FORBIDDEN_MEMBERS))
-        if wrong:
-            fail(
-                "session-v2.json",
-                f"`{definition}` declares {wrong}, which no server-authored `selvage/2` frame "
-                "may carry",
-            )
+        for definition, shape in sorted((schema.get("$defs") or {}).items()):
+            if not isinstance(shape, dict):
+                continue
+            shapes += 1
+            declared = set(shape.get("properties", {})) | set(shape.get("required", []))
+            wrong = sorted(declared & set(FORBIDDEN_MEMBERS))
+            if wrong:
+                fail(
+                    name,
+                    f"`{definition}` declares {wrong}, which no server-authored frame may "
+                    "carry",
+                )
 
-    # -- the rule, over the corpus that declares this version --
+    # -- the rule, over the corpus --
     live = 0
     for path in sorted(VECTOR_DIR.glob("*.json")) + sorted(PEER_VECTOR_DIR.glob("*.json")):
         try:
@@ -1567,51 +1342,15 @@ def check_absence() -> str:
             for problem in absence_violations(document):
                 fail(path.name, f"a server-authored frame breaks the absence rule: {problem}")
 
-    # -- the control: the same walk over `selvage/1`, where it must find something --
-    members = {name: 0 for name in EXPECTED_V1_MEMBERS}
-    events = {name: 0 for name in EXPECTED_V1_EVENTS}
-    needles = {name: 0 for name in EXPECTED_V1_NEEDLES}
-    wire_frames = 0
-    binary_steps = 0
-    for path in sorted(VECTOR_DIR.glob("*.json")):
-        try:
-            document = json.loads(path.read_text())
-        except (OSError, json.JSONDecodeError):
-            continue
-        for step in document.get("steps", []) or []:
-            if not isinstance(step, dict):
-                continue
-            if step.get("op") in ("expect", "expectBody"):
-                frame = parse_or_none(step.get("text"))
-                if frame is None:
-                    continue
-                wire_frames += 1
-                for name in sorted(_member_names(frame) & set(members)):
-                    members[name] += 1
-                if frame.get("event") in events:
-                    events[frame["event"]] += 1
-                if isinstance(step.get("text"), str) and "src/main.rs" in step["text"]:
-                    needles["expect frames naming `src/main.rs`"] += 1
-            elif step.get("op") in ("sendBinary", "expectBinary") and step.get("hex"):
-                binary_steps += 1
-                try:
-                    raw = bytes.fromhex(step["hex"].replace(" ", ""))
-                except ValueError:
-                    continue
-                if b"src/main.rs" in raw:
-                    needles["binary steps carrying its bytes"] += 1
-    for label, found, pinned in (
-        ("member names", members, EXPECTED_V1_MEMBERS),
-        ("deleted events", events, EXPECTED_V1_EVENTS),
-        ("needles", needles, EXPECTED_V1_NEEDLES),
-    ):
-        if found != pinned:
-            fail(
-                "vectors",
-                f"the absence scan finds {found} in the selvage/1 corpus for its {label}, and "
-                f"this suite pins {pinned}: the scan is shown to read something by finding what "
-                "that layer carries, and a walker that stopped walking finds nothing",
-            )
+    # -- the control: a document that breaks every rule the scan states --
+    found = absence_violations(ABSENCE_CONTROL)
+    if found != EXPECTED_CONTROL_VIOLATIONS:
+        fail(
+            "vectors",
+            f"the absence scan finds {found} in a document built to break it, and this suite "
+            f"pins {EXPECTED_CONTROL_VIOLATIONS}: the control is what shows the scan reads "
+            "what it walks",
+        )
 
     # -- the sealed frames, against the strings their own plaintext names --
     sealed_frames = 0
@@ -1652,10 +1391,8 @@ def check_absence() -> str:
                 "the scan proves nothing about this vector",
             )
     return (
-        f"{shapes} selvage/2 shapes, {live} vectors of this version, {wire_frames} selvage/1 "
-        f"frames ({sum(members.values())} carrying a deleted member, "
-        f"{sum(events.values())} a deleted event), {sealed_frames} sealed frames, "
-        f"{secrets} needle checks"
+        f"{shapes} session shapes, {live} vectors, {len(found)} control violations, "
+        f"{sealed_frames} sealed frames, {secrets} needle checks"
     )
 
 
@@ -1865,18 +1602,6 @@ def check_peer_step(at: str, step: dict, kind: str, fixture: dict, vocab: list[s
             check_recipe(at, step, fixture)
         if op == "start" and step.get("key") not in fixture.get("keys", []):
             fail(at, f"`key` names {step.get('key')!r}, which the fixture does not have")
-        if op == "start" and "pin" in step and step["pin"] not in ("selvage/1", "selvage/2"):
-            fail(at, f"`pin` is one of the two wire versions, not {step['pin']!r}")
-        if op == "start" and "meta" in step:
-            meta = step["meta"]
-            if not isinstance(meta, dict):
-                fail(at, "`meta` is the body `GET /meta` answered")
-            elif set(meta) - {"wire_versions"}:
-                fail(at, f"`meta` names {sorted(set(meta) - {'wire_versions'})}, which nothing reads")
-            elif not isinstance(meta.get("wire_versions"), list) or any(
-                not isinstance(one, str) for one in meta.get("wire_versions", [])
-            ):
-                fail(at, "`meta.wire_versions` is the list the server advertises")
         if op == "expectRefusal":
             names = step.get("names")
             if (
@@ -2070,7 +1795,6 @@ def main() -> int:
     refusals_by_the_rule = check_control_refusal(reg)
     sealed = check_sealed_payloads(reg)
     refusals = check_refusals(reg)
-    session_v2 = check_session_v2(reg)
     absence = check_absence()
     print(
         f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas, {refusals_by_the_rule} values "
@@ -2078,7 +1802,6 @@ def main() -> int:
     )
     print(f"sealed         {sealed} values checked against the sealed payloads of selvage/2")
     print(f"refusals       {refusals} values checked against selvage/2's local report vocabulary")
-    print(f"session v2     {session_v2} values checked against selvage/2's session layer")
 
     vectors = sorted(VECTOR_DIR.glob("*.json"))
     assertions = 0

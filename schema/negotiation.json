@@ -1,32 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dontblameme.dev/schema/1/negotiation.json",
-  "title": "Selvage Session Protocol — version and capability negotiation",
-  "description": "The parts of `selvage/1` that decide whether two peers can talk at all: the wire version grammar, the compatibility rule, capability names, and the advertised block (`capabilities` plus `keepalive`) that both `GET /meta` and the reply to `session.hello` carry. Valid against PROTOCOL.md §10; the canonical byte form is CANONICAL.md §2.5.",
+  "title": "Selvage Session Protocol — the version, capabilities and clocks a peer advertises",
+  "description": "The wire version, the capability grammar, and the advertised block (`capabilities` plus `keepalive`) that both `GET /meta` and the reply to `session.hello` carry. Valid against PROTOCOL.md §2; the canonical byte form is CANONICAL.md §2.5.",
   "$defs": {
     "wireVersion": {
       "type": "string",
-      "pattern": "^selvage/(0|[1-9][0-9]*)(\\.(0|[1-9][0-9]*))?$",
-      "description": "A wire version a receiver must accept as syntactically well formed: `selvage/` then a major, then optionally a minor. Leading zeros are not part of the grammar. The compatibility rule is separate: same major, and while at 0.x also the same minor (§10). `selvage/1`, `selvage/1.0` and `selvage/1.9` are all this implementation's version."
-    },
-    "canonicalWireVersion": {
-      "type": "string",
-      "pattern": "^selvage/(0|[1-9][0-9]*)(\\.[1-9][0-9]*)?$",
-      "description": "A wire version as a conforming producer writes it: `selvage/1` for the version the reference server speaks, never `selvage/1.0`. The minor is written only when it is not zero, because zero is the default (CANONICAL.md §2.5)."
-    },
-    "wireVersionAtLeastTwo": {
-      "allOf": [
-        { "$ref": "#/$defs/wireVersion" },
-        {
-          "pattern": "^selvage/2($|\\.)",
-          "description": "`selvage/2` or a later minor of it, and nothing below: a `selvage/2` server cannot seat a `selvage/1` peer, so a list offering one would be a downgrade (PROTOCOL.md §2). This is the grammar's constraint, not the compatibility rule's: acceptance is still same-major (§10)."
-        }
-      ]
+      "const": "selvage/2",
+      "description": "The one wire version this protocol has, as a producer writes it: `selvage/2`. The `v` member of every text frame and the whole of `GET /meta`'s `wire_versions` carry it, and a receiver that reads anything else is reading a frame that is not this protocol's (CANONICAL.md §2.5)."
     },
     "capabilityName": {
       "type": "string",
       "pattern": "^[a-z0-9][a-z0-9._/-]*$",
-      "description": "A capability name. Unknown names are ignored by both sides and there is no failure mode for one a peer cannot honour (§10; `NOTES.md` §B.9); there is therefore no schema that says a capability is mandatory."
+      "description": "A capability name. Unknown names are ignored by both sides and there is no failure mode for one a peer cannot honour (`NOTES.md` §B.9); there is therefore no schema that says a capability is mandatory."
     },
     "keepalive": {
       "type": "object",
@@ -45,7 +31,7 @@
         "awareness_renew_ms": {
           "type": "integer",
           "minimum": 1,
-          "description": "How often a client republishes its own awareness state."
+          "description": "How often a client republishes its own awareness state. It is also the clock a peer's holds lease is defined by: a hold not renewed inside a lease of the same length expires (§13.7)."
         },
         "ping_interval_ms": {
           "type": "integer",
@@ -55,7 +41,7 @@
         "room_grace_ms": {
           "type": "integer",
           "minimum": 1,
-          "description": "The server's default room grace period: how long a room survives its host disconnecting. Advertised in `GET /meta`'s `keepalive` (§2), and carried per room as `grace_ms` in `host.detached` (§9). A client reads it to size its reconnect retry so that it does not give up inside a window the room still exists for (§9.1); the number is policy. In `selvage/2` the same number is how long a room survives its **last** connection ending rather than its host's, and `/meta` is where a client of that version reads it (PROTOCOL.md §1.2, §2)."
+          "description": "The server's default room grace period: how long a room survives its **last** connection ending (§9). Advertised in `GET /meta`'s `keepalive` (§2), and `/meta` is where a client reads it, because the connection that has to size its retry budget to the grace is the one that is gone. A client reads it to size its reconnect retry so that it does not give up inside a window the room still exists for (§9.1); the number is policy."
         }
       }
     },
@@ -65,14 +51,7 @@
       "items": {
         "$ref": "#/$defs/wireVersion"
       },
-      "description": "The versions a server accepts, in `GET /meta`. Empty is not a valid advertisement: a server that accepts nothing has no reason to answer."
-    },
-    "advertisedVersionsAtLeastTwo": {
-      "allOf": [
-        { "$ref": "#/$defs/advertisedVersions" },
-        { "items": { "$ref": "#/$defs/wireVersionAtLeastTwo" } }
-      ],
-      "description": "An advertisement from a `selvage/2` server: every version it names is `selvage/2` or a later minor of it (PROTOCOL.md §2). Same-major acceptance still decides which of them a client may speak (§10)."
+      "description": "The versions a server accepts, in `GET /meta`. There is one version, so this is a list of one entry: the member stays a list, and a server that accepts nothing has no reason to answer."
     },
     "metaKeepalive": {
       "allOf": [
@@ -86,7 +65,7 @@
       "items": {
         "$ref": "#/$defs/capabilityName"
       },
-      "description": "An advertised capability list. Advertised additively and read additively: a peer ignores names it does not know, in `/meta` and in the handshake reply."
+      "description": "An advertised capability list. Advertised additively and read additively: a peer ignores names it does not know, in `/meta` and in the handshake reply. Two names are this protocol's: `y-protocols/1` and `awareness`."
     }
   }
 }

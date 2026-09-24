@@ -165,9 +165,9 @@ class TestPeers(unittest.TestCase):
     def test_a_string_array_in_another_order_is_the_same_array(self) -> None:
         # The prose promises no order for `capabilities` either, and it is built from a
         # constant here and from whatever an implementation holds elsewhere.
-        want = ["y-protocols/1", "awareness", "host-reclaim"]
+        want = ["y-protocols/1", "awareness", "x.example"]
         matches_unordered(
-            list(want), ["host-reclaim", "y-protocols/1", "awareness"], Bindings()
+            list(want), ["x.example", "y-protocols/1", "awareness"], Bindings()
         )
         with self.assertRaises(Mismatch):
             matches_unordered(list(want), ["y-protocols/1", "awareness"], Bindings())
@@ -186,7 +186,7 @@ class TestPeers(unittest.TestCase):
                         {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"},
                     ],
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         actual = canonical(
@@ -199,7 +199,7 @@ class TestPeers(unittest.TestCase):
                         {"display_name": "Ada", "peer_id": "p-1", "role": "host"},
                     ],
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         check_text(actual, expected, Bindings())
@@ -227,7 +227,7 @@ class TestPeers(unittest.TestCase):
         ada = {"display_name": "Ada", "peer_id": "$host_peer", "role": "host"}
         bob = {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"}
         expected = canonical(
-            {"event": "room.joined", "params": {"peers": [ada, bob], "room_id": "$room"}, "v": "selvage/1"}
+            {"event": "room.joined", "params": {"peers": [ada, bob], "room_id": "$room"}, "v": "selvage/2"}
         )
         actual = canonical(
             {
@@ -239,7 +239,7 @@ class TestPeers(unittest.TestCase):
                     ],
                     "room_id": "r-1",
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         bindings = Bindings()
@@ -251,7 +251,7 @@ class TestPeers(unittest.TestCase):
         ada = {"display_name": "Ada", "peer_id": "$host_peer", "role": "host"}
         bob = {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"}
         expected = canonical(
-            {"event": "room.joined", "params": {"peers": [ada, bob], "room_id": "$room"}, "v": "selvage/1"}
+            {"event": "room.joined", "params": {"peers": [ada, bob], "room_id": "$room"}, "v": "selvage/2"}
         )
         other = canonical(
             {
@@ -263,7 +263,7 @@ class TestPeers(unittest.TestCase):
                     ],
                     "room_id": "r-1",
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         with self.assertRaises(Mismatch):
@@ -278,7 +278,7 @@ class TestPeers(unittest.TestCase):
                     "capabilities": ["y-protocols/1", "awareness"],
                     "room_id": "$room",
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         actual = canonical(
@@ -288,7 +288,7 @@ class TestPeers(unittest.TestCase):
                     "capabilities": ["awareness", "y-protocols/1"],
                     "room_id": "r-1",
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         check_text(actual, expected, Bindings())
@@ -299,14 +299,14 @@ class TestPeers(unittest.TestCase):
             {
                 "event": "doc.opened",
                 "params": {"documents": ["a.rs", "b.rs"], "path": "a.rs"},
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         actual = canonical(
             {
                 "event": "doc.opened",
                 "params": {"documents": ["b.rs", "a.rs"], "path": "a.rs"},
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         with self.assertRaises(Mismatch):
@@ -337,38 +337,38 @@ class TestCheckText(unittest.TestCase):
     def test_a_canonical_frame_matches_and_binds_for_the_next_one(self) -> None:
         bindings = Bindings()
         first = canonical(
-            {"event": "room.created", "params": {"room_id": "$room", "token": "$token"}, "v": "selvage/1"}
+            {"event": "room.created", "params": {"room_id": "$room", "token": "$token"}, "v": "selvage/2"}
         )
         check_text(
             canonical(
-                {"event": "room.created", "params": {"room_id": "r-1", "token": "t-1"}, "v": "selvage/1"}
+                {"event": "room.created", "params": {"room_id": "r-1", "token": "t-1"}, "v": "selvage/2"}
             ),
             first,
             bindings,
         )
-        second = canonical({"event": "room.joined", "params": {"room_id": "$room"}, "v": "selvage/1"})
+        second = canonical({"event": "room.joined", "params": {"room_id": "$room"}, "v": "selvage/2"})
         check_text(
-            canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/1"}),
+            canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/2"}),
             second,
             bindings,
         )
         with self.assertRaises(Mismatch):
             check_text(
-                canonical({"event": "room.joined", "params": {"room_id": "r-2"}, "v": "selvage/1"}),
+                canonical({"event": "room.joined", "params": {"room_id": "r-2"}, "v": "selvage/2"}),
                 second,
                 bindings,
             )
 
     def test_a_frame_that_is_not_the_claimed_bytes_fails(self) -> None:
-        expected = canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/1"})
+        expected = canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/2"})
         # The same members, in the order the tables list them rather than sorted.
-        reordered = '{"v":"selvage/1","event":"room.joined","params":{"room_id":"r-1"}}'
+        reordered = '{"v":"selvage/2","event":"room.joined","params":{"room_id":"r-1"}}'
         with self.assertRaises(Mismatch) as caught:
             check_text(reordered, expected, Bindings())
         self.assertIn("canonical bytes", str(caught.exception))
 
     def test_insignificant_whitespace_is_still_a_byte_difference(self) -> None:
-        expected = canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/1"})
+        expected = canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/2"})
         spaced = expected.replace(":", ": ")
         with self.assertRaises(Mismatch):
             check_text(spaced, expected, Bindings())
@@ -377,13 +377,13 @@ class TestCheckText(unittest.TestCase):
         # `1.0` == `1` in every JSON reader, and `CANONICAL.md` §2.4 forbids it on the
         # wire: the structural comparison cannot see this, the byte comparison can.
         with self.assertRaises(Mismatch):
-            check_text('{"id":1.0,"result":{},"v":"selvage/1"}', canonical({"id": 1, "result": {}, "v": "selvage/1"}), Bindings())
+            check_text('{"id":1.0,"result":{},"v":"selvage/2"}', canonical({"id": 1, "result": {}, "v": "selvage/2"}), Bindings())
 
     def test_a_missing_member_names_it(self) -> None:
         with self.assertRaises(Mismatch) as caught:
             check_text(
-                canonical({"event": "room.gone", "params": {"room_id": "r-1"}, "v": "selvage/1"}),
-                canonical({"event": "room.gone", "params": {"reason": "x", "room_id": "$r"}, "v": "selvage/1"}),
+                canonical({"event": "room.gone", "params": {"room_id": "r-1"}, "v": "selvage/2"}),
+                canonical({"event": "room.gone", "params": {"reason": "x", "room_id": "$r"}, "v": "selvage/2"}),
                 Bindings(),
             )
         self.assertIn("reason", str(caught.exception))
@@ -560,8 +560,8 @@ class TestMethodsSchemaUnavailable(unittest.TestCase):
         hello = (
             '{"id":1,"method":"session.hello","params":{'
             '"awareness_client_id":77,"capabilities":["y-protocols/1"],'
-            '"client":"probe/1","display_name":"Ada","role":"host"},'
-            '"v":"selvage/1"}'
+            '"client":"probe/1","display_name":"Ada"},'
+            '"v":"selvage/2"}'
         )
         module.check_frame(reg, hello, "probe")
         self.assertEqual(module.FAILURES, [])
@@ -573,7 +573,7 @@ class TestMethodsSchemaUnavailable(unittest.TestCase):
         module = self.fresh_validate()
         reg = module.registry()
         module.check_frame(
-            reg, '{"id":1,"method":[],"params":{},"v":"selvage/1"}', "probe"
+            reg, '{"id":1,"method":[],"params":{},"v":"selvage/2"}', "probe"
         )
         self.assertTrue(
             any("session.json" in problem for problem in module.FAILURES),
@@ -656,14 +656,14 @@ class TestDesynchronisedQueue(unittest.IsolatedAsyncioTestCase):
             {
                 "event": "doc.opened",
                 "params": {"documents": ["late.txt"], "path": "late.txt"},
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         actual = canonical(
             {
                 "event": "peer.joined",
                 "params": {"peer": {"display_name": "Cyd", "role": "guest"}},
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         with self.assertRaises(Mismatch) as caught:
@@ -741,11 +741,10 @@ class TestStepVocabulary(unittest.TestCase):
 class TestTheTwoLinkRules(unittest.TestCase):
     """The two rules a link is decided about **before a socket**, driven against a stub client.
 
-    `PROTOCOL.md` §13.11 says these two are the decision layer's own subject, and no client in
-    this repository drives them, so what is checked here is the **vector**: each passes against a
-    subject that holds the rule, goes red under the one mutation it declares it catches, stays
-    green under the *other* link guard — a guard with a vector of its own and not this one's —
-    and fails a subject that refuses every link. That is the property the census asserts of a
+    `PROTOCOL.md` §13.11 says this one is the decision layer's own subject, and no client in
+    this repository drives it, so what is checked here is the **vector**: it passes against a
+    subject that holds the rule, goes red under the one mutation it declares it catches, and
+    fails a subject that refuses every link. That is the property the census asserts of a
     declared mutation, and it is the one a runner with no client cannot show.
     """
 
@@ -768,35 +767,22 @@ class TestTheTwoLinkRules(unittest.TestCase):
     def test_the_partial_fragment_vector_holds_and_catches_its_guard_alone(self) -> None:
         clean = self.link("157")
         self.assertIsNone(clean.failure)
-        self.assertEqual(clean.assertions, 3, "two refusals and the leg that must join")
+        self.assertEqual(clean.assertions, 5, "four refusals and the leg that must join")
         red = self.link("157", mutation="accept-partial-fragment")
         self.assertIn("(`expectRefusal`)", red.failure or "", red.failure)
-        other = self.link("157", mutation="fall-back-to-version-1")
-        self.assertIsNone(other.failure, other.failure)
-
-    def test_the_version_vector_holds_and_catches_its_guard_alone(self) -> None:
-        clean = self.link("158")
-        self.assertIsNone(clean.failure)
-        self.assertEqual(clean.assertions, 2, "the refusal and the pinned control")
-        red = self.link("158", mutation="fall-back-to-version-1")
-        self.assertIn("(`expectRefusal`)", red.failure or "", red.failure)
-        other = self.link("158", mutation="accept-partial-fragment")
-        self.assertIsNone(other.failure, other.failure)
 
     def test_a_subject_that_refuses_every_link_fails_the_control_leg(self) -> None:
-        # Both vectors carry the leg that must not be refused — 157's complete fragment and
-        # 158's pin to `selvage/1` — and a subject whose refusals are worded well enough to
-        # answer the refusal legs is caught by them and not by anything else.
-        for vector_id in ("157", "158"):
-            outcome = self.link(vector_id, behaviour="link-rules-refuse-all")
-            self.assertIn("(`expectSubject`)", outcome.failure or "", outcome.failure)
+        # The vector carries the leg that must not be refused — 157's complete fragment — and a
+        # subject whose refusals are worded well enough to answer the refusal legs is caught by
+        # it and not by anything else.
+        outcome = self.link("157", behaviour="link-rules-refuse-all")
+        self.assertIn("(`expectSubject`)", outcome.failure or "", outcome.failure)
 
     def test_the_mutation_each_vector_declares_is_the_one_the_census_removes(self) -> None:
         # The name in the vector is the name the stub removes, and the census sends the first as
         # the second: a vector whose `catches` named nothing the subject knows cannot be red, so
         # this is what makes the two cases above evidence rather than a coincidence.
-        for vector_id, declared in (("157", "accept-partial-fragment"),
-                                    ("158", "fall-back-to-version-1")):
+        for vector_id, declared in (("157", "accept-partial-fragment"),):
             for vector in run_peer.load_vectors():
                 if vector.get("id") == vector_id:
                     self.assertEqual(vector.get("catches"), declared)
@@ -816,7 +802,7 @@ class TestAbsenceRule(unittest.TestCase):
 
     A rule that only ever runs against a corpus that satisfies it is not a check: the scan has
     to be shown to catch the frame it is about. The control the corpus itself runs is the
-    `selvage/1` transcripts, which carry every one of these members; these cases are the same
+    `selvage/2` transcripts, which carry every one of these members; these cases are the same
     claim at the smallest size, and they are what makes the rule's own function trustworthy.
     """
 
@@ -893,23 +879,16 @@ class TestAbsenceRule(unittest.TestCase):
         }
         self.assertTrue(self.violations(document))
 
-    def test_the_rule_does_not_read_a_selvage_1_transcript(self) -> None:
-        # The selector is the version member: the transcripts that exist today carry every one
-        # of these members and are replayed by the wire layer, so the rule must not fire on
-        # them. The corpus-wide control is a separate scan and is what shows the walker reads.
-        document = {
-            "selvage": "selvage/1",
-            "steps": [{"op": "expect", "text": '{"v":"selvage/1","event":"doc.opened"}'}],
-        }
-        self.assertEqual(self.violations(document), [])
-
-    def test_the_scan_finds_what_the_wire_corpus_carries(self) -> None:
+    def test_the_scan_finds_what_its_control_carries(self) -> None:
         # The positive control, smaller: a walker that stopped walking finds nothing, so this
-        # asserts the corpus-wide counts are not zero. `schema/validate.py` pins them exactly.
+        # asserts the control document's violations are not empty and that every rule the scan
+        # states is one of them. `schema/validate.py` pins the list exactly.
         validate = validate_module()
-        self.assertGreater(sum(validate.EXPECTED_V1_MEMBERS.values()), 0)
-        self.assertGreater(sum(validate.EXPECTED_V1_EVENTS.values()), 0)
-        self.assertGreater(sum(validate.EXPECTED_V1_NEEDLES.values()), 0)
+        found = validate.absence_violations(validate.ABSENCE_CONTROL)
+        self.assertEqual(found, validate.EXPECTED_CONTROL_VIOLATIONS)
+        self.assertTrue(any("carries" in line for line in found))
+        self.assertTrue(any("does not have" in line for line in found))
+        self.assertTrue(any("bytes" in line for line in found))
 
 
 class TestUsablePath(unittest.TestCase):
@@ -1145,14 +1124,13 @@ def run_stub_subject(behaviour: str) -> int:
 def link_reply(behaviour: str, command: dict, state: dict) -> dict:
     """What the link-rule stub answers one command with.
 
-    It is a client for the two decisions a link carries **before a socket**, which is the layer
+    It is a client for the one decision a link carries **before a socket**, which is the layer
     the rest of the corpus has no subject for: `PROTOCOL.md` §5.1 refuses a fragment that names
-    one of its two keys and not the other, naming the missing one, and §2/§10 refuse a server
-    whose `/meta` names no version at major 2 rather than fall back to one that is seated.
+    one of its two keys and not the other, naming the missing one, and one whose `k` or `h` is not
+    a 32-byte value, naming that key.
 
     `state["mutation"]` is the guard this run removed, and it arrives before the `join`: a guard
-    on the link has to be gone before the link is read. Each of the two names makes this the
-    wrong implementation the census is about.
+    on the link has to be gone before the link is read.
     `link-rules-refuse-all` is the other way of passing a corpus of refusals: it refuses every
     link with words that answer the first leg of a refusal vector, and the control leg beside it
     is what catches that.
@@ -1178,47 +1156,29 @@ def link_reply(behaviour: str, command: dict, state: dict) -> dict:
 def link_refusal(behaviour: str, command: dict, mutation: str | None) -> str | None:
     """The words this stub refuses a link with, or `None` when it joins it."""
     invite = command.get("invite") if isinstance(command.get("invite"), str) else ""
-    base = invite.split("?", 1)[0].split("#", 1)[0]
-    fall_back = (
-        f"{base} advertises selvage/1: this client needs selvage/2 and does not fall back "
-        "to an earlier version"
-    )
     if behaviour == "link-rules-refuse-all":
-        # A superset of both refusal vectors' own words on purpose: this double passes every
+        # A superset of the refusal vector's own words on purpose: this double passes every
         # refusal leg and can only be caught by the control leg beside it, which is the leg that
         # exists to say "refusing everything is not answering".
-        return (
-            "the invite carries no room key (`k`) and no host key (`h`): this client needs "
-            "selvage/2 and refuses this link"
-        )
+        return "the invite carries no room key (`k`) and no host key (`h`)"
     fragment = invite.split("#", 1)[1] if "#" in invite else ""
-    names = {pair.split("=", 1)[0] for pair in fragment.split("&") if pair}
+    pairs = [pair.partition("=") for pair in fragment.split("&") if pair]
+    names = [name for name, _, _ in pairs]
     if mutation != "accept-partial-fragment":
         if "k" in names and "h" not in names:
             return "the invite carries no host key (`h`)"
         if "h" in names and "k" not in names:
             return "the invite carries no room key (`k`)"
-    meta = command.get("meta") if isinstance(command.get("meta"), dict) else {}
-    versions = meta.get("wire_versions") if isinstance(meta.get("wire_versions"), list) else []
-    offered = [one for one in versions if isinstance(one, str)]
-    if (
-        command.get("pin") is None
-        and offered
-        and not any(major_2(one) for one in offered)
-        and mutation != "fall-back-to-version-1"
-    ):
-        return fall_back
+        for name, _, value in pairs:
+            if name in ("k", "h") and not is_key(value):
+                return f"`{name}` is not a 32-byte key in the fragment's encoding"
     return None
 
 
-def major_2(version: str) -> bool:
-    """True for a version spelling at major 2, read the way `PROTOCOL.md` §10's grammar reads it.
-
-    The minor binds only while the major is 0, so what a `/meta` body has to name for the
-    encrypted wire is any spelling whose major is 2 (`selvage/2`, `selvage/2.1`).
-    """
-    parts = version.split("/", 1)
-    return len(parts) == 2 and parts[1].split(".", 1)[0] == "2"
+def is_key(value: str) -> bool:
+    """A §5.1 value: 32 bytes, base64url without padding, camel-case, and canonical — 43
+    characters, the last one carrying no non-zero padding bits."""
+    return len(value) == 43 and value[-1] in "AEIMQUYcgkosw048"
 
 
 def link_report(state: dict) -> dict:
@@ -1473,7 +1433,7 @@ def run_stub_server(behaviour: str) -> int:
         out.flush()
         time.sleep(60)
         return 0
-    out.write(b"error: unknown option --serve-version-1-only\nusage: selvaged [options]\n")
+    out.write(b"error: unknown option --room-grace-ms\nusage: selvaged [options]\n")
     out.flush()
     return 2
 

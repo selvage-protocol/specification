@@ -7,8 +7,7 @@
 #   scripts/check-release-version.sh 0.1.0    # silent, exit 0
 #   scripts/check-release-version.sh 1x2.3.4  # a reason on stderr, exit 1
 #
-# `X.Y.Z`, each component a plain decimal with no leading zero: the grammar
-# `schema/negotiation.json` writes a wire version's numbers in. The shape is not a
+# `X.Y.Z`, each component a plain decimal with no leading zero. The shape is not a
 # `case` glob. `case "$v" in [0-9]*.[0-9]*.[0-9]*)` looks like it enforces `X.Y.Z` and
 # does not: `*` matches `.` and `/`, so it admits `1x2.3.4`, `1.2.3.4`, `1.2.3-rc1` and
 # `1.2.3/../../evil`. That is what this replaced.

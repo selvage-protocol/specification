@@ -7,11 +7,9 @@ opens WebSocket connections, sends exactly the bytes a step names, and compares 
 comes back. Nothing here reads Rust; the only thing it needs from the reference
 implementation is a running server, whose path it takes from `SELVAGE_SELVAGED`.
 
-**The corpus is `selvage/1`'s**, and the server this runner spawns is started with
-`--serve-version-1-only` for that reason: two of the thirty-six vectors are claims about a
-server that seats that version alone (001's `/meta`, 005's refused `selvage/2` hello), and a
-server that seats both answers them differently. `replay` refuses any vector bound to another
-version, so the flag is right for every vector this file can run.
+**The corpus is `selvage/2`'s**, which is the protocol's only wire version, so the server
+this runner spawns is started with no version flag at all. `replay` refuses any vector bound
+to another version.
 
 Run it from this directory:
 
@@ -613,10 +611,8 @@ class Server:
         self._drain: threading.Thread | None = None
 
     def command(self) -> list[str]:
-        # The corpus is the version-1 one — `replay` refuses any vector that is not — so the
-        # server is told to seat `selvage/1` alone: vector 001's `/meta` advertises one
-        # version and vector 005 has a `selvage/2` hello refused, and both are claims about
-        # that server rather than about the default, which seats both. The Rust harness says
+        # One wire version, so there is nothing to select: the server seats `selvage/2` with
+        # no flag, and the grace period is the only per-vector setting. The Rust harness says
         # the same thing at its own spawn site (`tests/vectors/runner.rs`).
         return [
             self.binary,
@@ -624,7 +620,6 @@ class Server:
             "127.0.0.1:0",
             "--room-grace-ms",
             str(self.grace_ms),
-            "--serve-version-1-only",
         ]
 
     def start(self) -> None:
@@ -642,9 +637,8 @@ class Server:
             self.stop()
             raise ServerError(
                 f"`{self.binary}` did not print a listening address; it needs the\n"
-                "`--room-grace-ms` and `--serve-version-1-only` options (the vectors\n"
-                "set the grace period per transcript, and the corpus is `selvage/1`'s\n"
-                "alone), so rebuild `crates/selvaged` from the reference server\n"
+                "`--room-grace-ms` option (the vectors set the grace period per\n"
+                "transcript), so rebuild `crates/selvaged` from the reference server\n"
                 f"and point ${SERVER_ENV} at the new binary. It said: {line.strip()!r}"
             )
         self.host_port = match.group(1)
@@ -819,10 +813,10 @@ async def replay(vector: dict, binary: str) -> dict[str, list[Incoming]]:
     whose transcript reads every frame it is sent. `replay_all` fails the vector when the
     transcript leaves anything unread.
     """
-    if vector.get("selvage") != "selvage/1" or vector.get("canonical") != "SJ-C/1":
+    if vector.get("selvage") != "selvage/2" or vector.get("canonical") != "SJ-C/1":
         raise ReplayError(
             f"vector {vector.get('id')} is bound to {vector.get('selvage')} / "
-            f"{vector.get('canonical')}, but this runner speaks selvage/1 / SJ-C/1"
+            f"{vector.get('canonical')}, but this runner speaks selvage/2 / SJ-C/1"
         )
     harness = vector.get("harness") or {}
     server = Server(binary, harness.get("room_grace_ms", DEFAULT_GRACE_MS))

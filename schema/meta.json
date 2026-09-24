@@ -1,33 +1,28 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dontblameme.dev/schema/1/meta.json",
-  "title": "Selvage Session Protocol — the `GET /meta` negotiation body",
+  "title": "Selvage Session Protocol — the `GET /meta` body",
   "description": "The body `GET /meta` answers with, on the same listener as the session WebSocket. It is JSON but not a session frame: no `v`, no envelope, no `id`. Valid against PROTOCOL.md \u00a72.",
   "type": "object",
-  "required": ["server", "wire_versions", "capabilities", "keepalive", "roles"],
+  "required": ["server", "wire_versions", "capabilities", "keepalive"],
   "properties": {
     "capabilities": {
       "type": "array",
       "items": { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/capabilityName" },
-      "description": "The same list the handshake reply advertises."
+      "description": "The same list the handshake reply advertises: the two names this protocol defines for a server."
     },
     "keepalive": {
       "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/metaKeepalive",
       "description": "The session's clocks plus `room_grace_ms`, which `/meta` carries and the handshake reply does not (PROTOCOL.md §2)."
     },
-    "roles": {
-      "type": "array",
-      "items": { "$ref": "https://dontblameme.dev/schema/1/common.json#/$defs/role" },
-      "description": "The roles this server seats. `[\"host\", \"guest\"]`."
-    },
     "server": {
       "type": "string",
       "minLength": 1,
-      "description": "Free-form server identification, e.g. `selvaged/0.1.0`. Not stable; nothing may depend on it."
+      "description": "Free-form server identification, e.g. `selvaged/0.4.0`. Not stable; nothing may depend on it."
     },
     "wire_versions": {
       "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/advertisedVersions",
-      "description": "The wire versions this server accepts. A client that can speak none of them must not open the socket; an unreachable `/meta` decides nothing."
+      "description": "The wire versions this server accepts, which is `[\"selvage/2\"]`: a list with one entry, and a member that stays a list because a later version has to be able to say so."
     }
   }
 }

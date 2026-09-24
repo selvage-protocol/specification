@@ -2,11 +2,12 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://dontblameme.dev/schema/1/common.json",
   "title": "Selvage Session Protocol — the members every frame shares",
-  "description": "Scalars and small objects of `selvage/1`: the wire version, roles, peer records, document paths, request ids. Valid against PROTOCOL.md §4–§6. Every object here tolerates members it does not know (CANONICAL.md §3), so no schema in this directory forbids one.",
+  "description": "Scalars and small objects of `selvage/2`: the wire version, peer records, document paths, request ids. Valid against PROTOCOL.md §4–§6. Every object here tolerates members it does not know (CANONICAL.md §3), so no schema in this directory forbids one.",
   "$defs": {
     "version": {
-      "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/wireVersion",
-      "description": "The `v` member of every text frame: the wire version of the frame's sender. Required, checked on every frame, and refused at the handshake with `unsupported_version` when incompatible."
+      "type": "string",
+      "const": "selvage/2",
+      "description": "The `v` member of every text frame: the wire version of the frame's sender. The protocol has one wire version, so this is a constant and not a grammar: there is no version to negotiate, and a producer writes exactly this. The byte form is CANONICAL.md §2.5."
     },
     "requestId": {
       "type": "integer",
@@ -14,18 +15,10 @@
       "maximum": 9007199254740991,
       "description": "A client-assigned request id, unique per connection and never reused for the life of that connection. Bounded at 2^53-1 because a JavaScript receiver cannot hold a larger integer exactly (CANONICAL.md §2.4)."
     },
-    "role": {
-      "type": "string",
-      "enum": [
-        "host",
-        "guest"
-      ],
-      "description": "A claimed or assigned role. Minting a room makes a connection its host whatever it claims (§9)."
-    },
     "peerId": {
       "type": "string",
       "minLength": 1,
-      "description": "A server-assigned, opaque, room-unique identifier. It does not survive a reconnect: a reconnecting client is a new peer (§9.1). The reference server mints `p-<16 hex>`."
+      "description": "A server-assigned, opaque, room-unique identifier. It does not survive a reconnect: a reconnecting client is a new peer (§9.1). The reference server mints `p-<16 hex>`. It is the server's label for a seat, and the identity a room's contents are keyed by is the key that verified, in the host's sealed state (`PROTOCOL.md` §13.4)."
     },
     "roomId": {
       "type": "string",
@@ -35,7 +28,7 @@
     "token": {
       "type": "string",
       "minLength": 1,
-      "description": "The invite token: the permission (§9). Carried in the connection URL by a joiner and echoed exactly once, in `room.created`. The reference server mints 32 hex characters."
+      "description": "The invite token: the permission to join the room (§9). Carried in the connection URL by a joiner and echoed exactly once, in `room.created`. The reference server mints 32 hex characters. The permission to *read* the room is the key the invite's fragment carries, which the server never sees (§5.1)."
     },
     "documentPath": {
       "type": "string",
@@ -45,7 +38,7 @@
         "pattern": "[\\u0000-\\u001F\\u007F-\\u009F]",
         "description": "The `Cc` category, negated: C0 (U+0000–U+001F), DELETE (U+007F) and C1 (U+0080–U+009F). A `pattern` is a search and the dialect has no negation of its own, so the exclusion is `not` around one that matches a control character anywhere in the string. Anchoring a single pattern instead would have to agree with every implementation about `$` and a trailing newline, which Python's `re` does not: it matches `$` before one, so a path ending in LF would pass."
       },
-      "description": "A workspace-relative path: non-empty after trimming, free of control characters (the Unicode `Cc` category), and otherwise unvalidated in this slice (`PROTOCOL.md` §5, `NOTES.md` §B.8). The reference server answers `bad_params` for a blank one or one carrying a control character, and `doc.open` and `doc.close` carry the same field, as does each member of a grant's `paths`. Document identity is the path; it is not encoded inside the CRDT."
+      "description": "A workspace-relative path: non-empty after trimming, free of control characters (the Unicode `Cc` category), and otherwise unvalidated in this slice (`PROTOCOL.md` §5, `NOTES.md` §B.8). A path is a name and never a promise that a file exists or is readable. It is not read at a method — this version has none that carries one — so a receiver applies the rule where it meets a path, in the host's sealed listing and in a peer's sealed holds: it *drops the path* and applies the rest, refusing neither the frame nor the state (`PROTOCOL.md` §13.3, §13.7). The `not` above is the rule itself, and `common.json` is where `validate.py` drives it."
     },
     "awarenessClientId": {
       "type": "integer",
@@ -66,11 +59,10 @@
     },
     "peer": {
       "type": "object",
-      "description": "A participant, as the session layer sees one. Identity is the display name and nothing else.",
+      "description": "A participant, as the session layer sees one. Identity is the display name and nothing else: the server seats nobody as anything, and the roles a room has are the host's to assign and sign, in the sealed room state (`PROTOCOL.md` §1.2, §7.1).",
       "required": [
         "peer_id",
-        "display_name",
-        "role"
+        "display_name"
       ],
       "properties": {
         "awareness_client_id": {
@@ -82,21 +74,6 @@
         },
         "peer_id": {
           "$ref": "#/$defs/peerId"
-        },
-        "role": {
-          "$ref": "#/$defs/role"
-        }
-      }
-    },
-    "documentSet": {
-      "type": "object",
-      "description": "The result of `doc.open` and `doc.close`: the room's open-document set after the change, so a caller is told what its request did instead of assuming it.",
-      "required": [
-        "documents"
-      ],
-      "properties": {
-        "documents": {
-          "$ref": "#/$defs/documentList"
         }
       }
     },
@@ -105,7 +82,7 @@
       "items": {
         "$ref": "#/$defs/documentPath"
       },
-      "description": "A list of document paths. Where a frame names it `documents` it is the room's open-document set, in first-opened order (\u00a76.2); where it names it `paths` it is the room's grant, in the order its host published it, ascending by UTF-16 code unit (\u00a75). Those two are the only arrays whose order `selvage/1` promises, and the order always belongs to the frame that carries the list."
+      "description": "A list of document paths, in ascending order by UTF-16 code unit (CANONICAL.md §2.7). It is not carried by a session frame of this version: the room's listing is the `listing` of the host's sealed room state and the paths a peer holds are the set of its sealed holds (`PROTOCOL.md` §7.1, §13.7), and both are canonical under §2.7. That order is the only one this protocol promises for a list of paths."
     }
   }
 }

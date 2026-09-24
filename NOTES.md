@@ -52,12 +52,14 @@ The implementations this document describes:
   the ones a second implementation is most likely to get wrong because they are not all refusals of
   the same kind: a text envelope past `--max-envelope-bytes` (5 MiB) is refused `bad_message` with
   the connection left open, where a frame past the transport's 8 MiB bound is a drop with nothing on
-  the wire; a mint past `--max-rooms` is `x.server_full`, a join past `--max-peers-per-room` and an
-  open past `--max-documents-per-room` are `x.room_full`, a grant past its count, per-path or byte
-  bound is `bad_params`, and a connection past `--inbound-bytes-per-sec` / `--inbound-burst-bytes`
+  the wire; a mint past `--max-rooms` and a join past `--max-peers-per-room` are `x.server_full` and
+  `x.room_full`, and a connection past `--inbound-bytes-per-sec` / `--inbound-burst-bytes`
   is told `x.rate_limited` and closed 1013. `PROTOCOL.md` §2.1's table carries the numbers and the
   codes; `crates/harness/tests/session.rs` and `bounds.rs` pin the shapes. The corpus cannot, because
-  `harness` carries `room_grace_ms` alone (`B.29`).
+  `harness` carries `room_grace_ms` alone (`B.29`). The caps a room's *contents* took — the paths in
+  an open-document set and the paths in a grant — are gone with the server holding neither; a
+  listing's three (4096 bytes to a path, 100 000 paths, 4 MiB of path bytes) are a receiver's bound
+  now (`PROTOCOL.md` §13.3).
 
 ### A.2 The Rust client
 
@@ -74,7 +76,7 @@ The implementations this document describes:
   than an oversight (`B.20`).
 - A reconnecting client seeds a **new `Y.Doc`** carrying the outgoing replica's state on every
   handshake, so it never reuses an awareness client id.
-- The client's request surface is the handshake, `doc.open`, `doc.close`, `session.rename` and `doc.grant`;
+- The client's request surface is the handshake and `session.rename`;
   see `A.4`.
 
 ### A.3 The TypeScript client (VS Code, and the Neovim companion)
@@ -119,8 +121,8 @@ The implementations this document describes:
 
 `PROTOCOL.md` §10.1 says the wire is open: a server answers any method it does not implement with
 `unknown_method`, so an extension method travels like any other. A *client* is the constraint:
-both reference clients can send the handshake, `doc.open`, `doc.close`, `session.rename` and
-`doc.grant` and nothing else, so an editor adapter behind them cannot ask for an `x.` method at all.
+both reference clients can send the handshake and `session.rename` and nothing else, so an editor
+adapter behind them cannot ask for an `x.` method at all.
 An implementation that defines one has to expose a way to send a method whose params it does not
 interpret; neither reference client has made that decision. An `x.` **event** needs nothing of the
 sort, because events reach a client that has already promised to ignore the ones it does not know.
@@ -158,9 +160,21 @@ still undecided, and this draft exists so that it can be one.
 The project keeps an unpublished design record (`DESIGN.md`) that some of these decisions were
 taken in. Citations to it are kept here rather than in `PROTOCOL.md`, because a reader of the
 specification cannot obtain it: `PROTOCOL.md` §1's profile reservation (`DESIGN.md` §4.1, the
-`terminal/1` name and the "named optional profile" shape), §10's compatibility rule (§4.6), and
-§10.1's `x.` namespace (§4.7). The rest of the design's reasoning is inline in `PROTOCOL.md` or in
-`B` below.
+`terminal/1` name and the "named optional profile" shape) and §10.1's `x.` namespace (§4.7). The
+rest of the design's reasoning is inline in `PROTOCOL.md` or in `B` below.
+
+### A.9 The one value a `v` may name
+
+`PROTOCOL.md` §10 says `v` has one value, `selvage/2`, and that a frame naming anything else is an
+envelope the receiver does not read: `bad_message`, refused before seating and an event on a seated
+connection. The reference server's parser is more lenient than that in one respect:
+`crates/protocol/src/lib.rs`'s `is_compatible` reads `selvage/<major>[.<minor>]` and compares the
+**major**, so it seats `selvage/2.0` and `selvage/2.9` (its unit tests beside it assert that it
+does) where this document says they are not its version, and it refuses `selvage/1`, `selvage/3`,
+`selvage`, `selvage/x` and `other/2`, which are the values the corpus refuses. The minor at major 2
+is therefore the one disagreement between the two, and nothing in the corpus distinguishes the
+readings: `vectors/005` and `vectors/027` name `selvage/3`, `selvage`, `selvage/03`, no `v` at all
+and `selvage/1`, every one of which both readings refuse.
 
 ---
 
@@ -1556,6 +1570,14 @@ missing key — and decide the version against `/meta` with the pin included (`h
 path that mints a room; a link whose fragment names no key is joined by them as a `selvage/1` join
 rather than refused, which is B.42.
 
+**Revised 2026-09-24 by §B.45.** One rule now, not two: the version gate §B.41's second half
+describes is gone with version 1, and `fall-back-to-version-1` is no longer a mutation a subject
+declares. `vectors/peer/158`, which pinned that gate, is deleted with the rule. What §B.41 says about
+`157` — the guard it catches alone, and the two readers that refuse a partial fragment by name —
+still holds as written, and `157` carries two more legs since §B.45: a `k` and an `h` that are not
+32-byte values, which §5.1 refuses for the same reason and which no mutation removes a guard for
+(the subject has no such mutation, so the census stays silent about them).
+
 **B.42 A link whose fragment names neither of §5.1's two keys, for a client that can speak
 `selvage/2`.** §5.1 has two readings of one link and no vector pins it. Its refusal passage binds the
 client that would speak `selvage/2` on that join, and says in the same breath that a `selvage/1` link
@@ -1571,6 +1593,17 @@ consistent with §10. Which one the version means decides whether a guest handed
 truncated the `#` off is refused or seated in the clear, so it is a decision and not a wording.
 `vectors/peer/157` is about a fragment that names one of the two keys and its third leg is the whole
 fragment, so neither leg reaches this case. **Unresolved.**
+
+**Revised 2026-09-24 by §B.45.** The question is settled by the removal rather than answered in
+prose: there is one wire version and no pin, so a link whose fragment names neither of §5.1's two
+keys has nothing to be joined as, and §5.1's first sentence — an invite whose fragment is absent is
+refused — is the whole of the rule. The passage that made it a question was the one giving that link
+a version to be joined as, and that passage is gone. Nothing pins it: `157`'s legs are a fragment
+that names one key of the two, and `expectRefusal` holds a client to the **naming**, which for an
+absent fragment is not a key's name but an ask for the whole link (`crates/client/src/peer.rs`'s
+`MISSING_FRAGMENT` says so in those words). A vector for it would need a `names` entry a conforming
+client can be held to, and neither the runner nor the harness accepts an empty one; the rule is
+stated in §5.1 and its refusal is the subject's own sentence.
 
 **B.43 A review pass over §7.1's host, §13's peer side and the sealed frame's key.** Seven changes,
 none of them to a byte, a schema or a vector; the corpus counts are unchanged.
@@ -1716,3 +1749,78 @@ the room at once. No implementation persists host records yet, so that costs not
 - Tests: a reload continues the saved count plus the charge; a re-seat adds the charge; a record
   without a count closes the room at the first tick; the moving count is saved at least once a
   renewal interval; and both closing paths save a count that includes the closing.
+
+**B.45 One wire version: `selvage/1` removed, and the corpus re-baselined onto `selvage/2`.**
+`PROTOCOL.md`, `CANONICAL.md`, `README.md`, `schema/`, `runner/` and `vectors/`. **Decided**
+(2026-09-24) by the owner: *the protocol has one wire version, `selvage/2`; version 1 is removed.*
+There are no users to keep it for, and nothing may speak a wire version half the endpoints do not.
+
+**What went.** The version machinery, whole: §10's grammar, compatibility rule and refusal; the
+version gate a client made before a socket, and the `/meta` reading it was decided from; the pin a
+client's own setting could be (`?wire=`, `selvage.wireVersion`, `vim.g.selvage_wire_version`, and
+the `meta`/`pin` members a decision vector's `start` carried for it); the room-pinning rule; the
+`unsupported_version` code and close **4005**; the `host_present` code and close **4004** and the
+reserved `doc_not_open`, none of which has a fault left to name; `roles` in `/meta` and in a
+`PeerInfo`; the two capabilities version 1's server machinery needed (`open-document-set`,
+`host-reclaim`); `schema/session-v2.json`, whose shapes are the session layer's now and are stated
+by `common.json`, `events.json`, `methods.json`, `meta.json` and `errors.json`; the subject
+mutation `fall-back-to-version-1` and the link guard it removed; and `vectors/peer/158`, which
+pinned that guard.
+
+**The corpus is `selvage/2`'s, and every vector in it still pins a rule.** Twelve of the
+thirty-six wire vectors are deleted, each with the rule it pinned: `004` (same-major acceptance,
+which one value no longer allows — §A.9 records where the implementation still reads it), `006` and
+`033` (a refused `doc.*`), `011` and `018` (the open-document set), `014` (a second host claim),
+`021`–`023` (the grant), `024` (the reclaim), `025` (a close for an unheld path) and `034` (a
+repeated open). `005` and `027` are deleted *and restored*: what they pinned was never version 1
+but the one rule that outlives it — how a frame whose `v` the receiver does not read is refused —
+so they are re-baselined onto `selvage/2` with `bad_message` in place of `unsupported_version`, and
+`027` carries the seated leg that the split in §11 makes the interesting one. The other twenty-two
+are re-baselined: `v` moves to `selvage/2`, `role` and `documents` leave every frame,
+`capabilities` is the version's two names, and the legs that exercised a `doc.*` method became the
+version's own controls. `012` is the one split — the reclaim half is gone and what is left is the
+room's grace, armed by its **last** connection. `028` no longer pins version-before-method, which
+no longer exists; it pins envelope-before-method and method-before-params, which does.
+
+**Counts, re-derived from the runs and not from the old numbers.** The wire layer: 36 files →
+24, 35,022 frame checks → 33,760, 8,676 assertion steps → 8,387. The peer layer: 27 files → 26
+and 222 checks → 221, with its 74 assertion steps unchanged because a decision vector's steps are
+counted in its own run's summary. `schema/` is ten files rather than eleven. The absence scan no
+longer has a `selvage/1` corpus to be its own positive control — a corpus of the version the rule
+is about cannot be — so its control is a document built to break every rule it states, and the
+nine violations it must find are pinned in `validate.py`. Each number comes from a run:
+`python3 schema/validate.py` (`result OK`) and `runner/run_vectors.py`.
+
+**Four vectors the re-baseline damaged, repaired on the same branch.** The pass that rewrote the
+frame in each step's `text` parsed and re-serialised it, so it collapsed the repeated member that `031`
+exists to send: the vector sent a frame carrying no duplicate and still expected the refusal,
+which no conforming receiver can answer — `bad_message` for a repeated member is the rule §4
+states and the server correctly applies. `008`'s `chatty` leg lost the `send` a `doc.*` leg
+carried and kept its expectation, so it waited on the server's hello deadline, which is the
+runner's frame deadline to the tick, and passed or failed by a race. `015` and `030` lost the
+control request their own prose still claimed. Each is restored with a method this version has,
+`session.rename`: `031` carries both depths the rule names — a member of the envelope, where
+`session.rename` and `session.hello` are what a first-wins and a last-wins reader would each
+resolve the frame to, and one inside `params` — and each control is answered and announced. The
+counts above are the repaired corpus's, re-derived from the same two runs, with the replay green
+against `chore/drop-version-1` in `reference_server`: `24 files, 33760 frame checks, 24 vectors
+passed, 0 failed`.
+
+**What the corpus is not verified against.** The `selvaged` in this workspace is built from
+`reference_server`'s `main`, which seats **both** versions. It answers a pre-seating fault in
+`selvage/1` (`crates/protocol/src/lib.rs`'s `WIRE_VERSION`), its `/meta` advertises `selvage/1`
+beside `selvage/2`, and it refuses a `v` it does not read with `unsupported_version` and close
+**4005**, the code and close this corpus replaced. Against it the replay ends with `24 files,
+33760 frame checks, 9 vectors passed, 15 failed`, and every failure is that member or that code.
+The server this corpus is written for is `chore/drop-version-1` in `reference_server`, where
+`WIRE_VERSION` is `selvage/2` and the list holds one entry; the nine that pass today are the ones
+whose every assertion is a server-authored frame on a seated version-2 connection. The reference
+server's own `crates/harness/tests/vectors.rs` is the other half of the same gate, and it replays
+this corpus over its vendored copy.
+
+**The prose is one document now.** §1.2's entries, §2 and §2.1, §3, §4.1, §5's method surface and
+its handshake, §6's events and replies, §7.1, §8's awareness passage, §9, §9.1, §9.2, §10, §11's
+vocabulary, §12 and §13 are written for the one version: no sentence of `PROTOCOL.md` describes a
+second wire, and §10 is "The wire version, and capabilities" — the one value `v` has, the refusal a
+frame naming another is answered with, and the capability table. §10, §10.1 and §13 keep their
+numbers so that a citation in a dated record still lands.
