@@ -1105,6 +1105,15 @@ def run_stub_subject(behaviour: str) -> int:
             time.sleep(60)
         if behaviour == "close":
             return 0
+        if behaviour == "noisy":
+            # A debug log well past a pipe's buffer, written before each answer: the runner has
+            # to keep reading a subject's stderr or the subject blocks writing it.
+            sys.stderr.write("log line\n" * 20_000)
+            sys.stderr.flush()
+        if behaviour == "close-noisily":
+            sys.stderr.write("the subject's last words\n")
+            sys.stderr.flush()
+            return 0
         if behaviour == "garbage":
             sys.stdout.write("this is not JSON\n")
             sys.stdout.flush()
@@ -1356,6 +1365,19 @@ class TestSubjectProtocol(unittest.TestCase):
             self.subject("close").report()
         self.assertIn("closed its stdout", str(caught.exception))
 
+    def test_a_subject_that_logs_to_stderr_is_not_blocked_by_it(self) -> None:
+        # A subject's stderr is its own business, but a pipe nobody reads fills at 64 KiB and the
+        # subject then blocks mid-write: the runner would report a missed deadline for a client
+        # that was only logging.
+        peer = self.subject("noisy", timeout=5.0)
+        for _ in range(3):
+            self.assertEqual(peer.report().published, 2)
+
+    def test_a_subject_that_closes_its_stdout_reports_its_stderr(self) -> None:
+        with self.assertRaises(subject.SubjectError) as caught:
+            self.subject("close-noisily").report()
+        self.assertIn("the subject's last words", str(caught.exception))
+
     def test_a_subject_that_refuses_a_command_fails_by_name(self) -> None:
         with self.assertRaises(subject.SubjectError) as caught:
             self.subject("refuse").report()
@@ -1429,6 +1451,73 @@ def sealed_frame(signer: sealed.Key, shared_id: bytes, kind: int, plaintext: byt
     envelope = sealed.Envelope(shared_id, kind, epoch, counter, nonce, ciphertext)
     envelope.signature = signer.sign(sealed.signing_input(aad, envelope))
     return envelope.bytes()
+
+
+def run_stub_server(behaviour: str) -> int:
+    """A `selvaged` stand-in for `TestServerProcess`: what it prints, and when.
+
+    `noisy` prints its address and then a log far past a pipe's buffer, and exits once all of
+    it is written, which it can only do if the runner is reading. `partial` prints half an
+    address and stalls. `fails` prints two lines of refusal and exits, as a server run with
+    options it does not know would.
+    """
+    out = sys.stdout.buffer
+    if behaviour == "noisy":
+        out.write(b"selvaged listening on ws://127.0.0.1:9/session\n")
+        out.flush()
+        out.write(b"a log line\n" * 200_000)
+        out.flush()
+        return 0
+    if behaviour == "partial":
+        out.write(b"selvaged listening on ws://127.0")
+        out.flush()
+        time.sleep(60)
+        return 0
+    out.write(b"error: unknown option --serve-version-1-only\nusage: selvaged [options]\n")
+    out.flush()
+    return 2
+
+
+class StubServer(run_vectors.Server):
+    def __init__(self, behaviour: str) -> None:
+        super().__init__("stub-selvaged", 1000)
+        self.behaviour = behaviour
+
+    def command(self) -> list[str]:
+        return [sys.executable, str(pathlib.Path(__file__).resolve()), "--stub-server",
+                self.behaviour]
+
+
+class TestServerProcess(unittest.TestCase):
+    """The replay's server process: its address is read within the deadline, and its log is
+    read for as long as it runs, so that a server that logs is never blocked writing it."""
+
+    def server(self, behaviour: str) -> StubServer:
+        server = StubServer(behaviour)
+        self.addCleanup(server.stop)
+        return server
+
+    def test_a_server_that_logs_is_not_blocked_by_it(self) -> None:
+        server = self.server("noisy")
+        server.start()
+        self.assertEqual(server.host_port, "127.0.0.1:9")
+        # Two megabytes of log, then exit: a pipe nobody reads holds 64 KiB of it and the
+        # stub never gets to exit.
+        self.assertEqual(server.process.wait(timeout=10), 0)
+
+    def test_half_an_address_fails_within_the_deadline(self) -> None:
+        server = self.server("partial")
+        started = time.monotonic()
+        with mock.patch.object(run_vectors, "FRAME_TIMEOUT", 0.5):
+            with self.assertRaises(run_vectors.ServerError):
+                server.start()
+        self.assertLess(time.monotonic() - started, 5.0)
+
+    def test_a_server_that_exits_is_quoted_whole(self) -> None:
+        with self.assertRaises(run_vectors.ServerError) as caught:
+            self.server("fails").start()
+        self.assertIn("unknown option", str(caught.exception))
+        self.assertIn("usage: selvaged", str(caught.exception))
 
 
 class TestKeyIdCollision(unittest.TestCase):
@@ -1883,6 +1972,9 @@ class TestDecisionLayer(unittest.TestCase):
 
 if __name__ == "__main__" and "--stub-subject" in sys.argv:
     raise SystemExit(run_stub_subject(sys.argv[sys.argv.index("--stub-subject") + 1]))
+
+if __name__ == "__main__" and "--stub-server" in sys.argv:
+    raise SystemExit(run_stub_server(sys.argv[sys.argv.index("--stub-server") + 1]))
 
 
 if __name__ == "__main__":

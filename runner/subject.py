@@ -47,6 +47,7 @@ import os
 import select
 import shlex
 import subprocess
+import threading
 import time
 
 from dataclasses import dataclass, field
@@ -55,6 +56,11 @@ from dataclasses import dataclass, field
 #: deadline; a subject that misses one is a failure with the last report it gave, and not a
 #: hang.
 DEFAULT_TIMEOUT = 10.0
+
+#: How much of a subject's stderr the runner keeps, from the end, to quote when the subject
+#: fails. The rest is read and discarded: a subject's log is its own, and a pipe nobody reads
+#: blocks the subject once it fills.
+STDERR_TAIL = 16 * 1024
 
 #: The mutations a *subject* must be able to remove, one rule each, and the name a vector
 #: declares in its `catches`. `PROTOCOL.md` §13.11's table is the list of rules a conformance
@@ -244,6 +250,8 @@ class Subject:
     buffer: bytes = b""
     last: Report | None = None
     asked: int = 0
+    stderr_tail: bytes = b""
+    _stderr_reader: threading.Thread | None = None
 
     @classmethod
     def from_command(cls, command: str, **kwargs) -> "Subject":
@@ -266,6 +274,20 @@ class Subject:
             raise SubjectError(
                 f"the subject {self.command!r} could not be started: {error}"
             ) from error
+        # stderr is drained for the life of the process, so that a subject that logs is never
+        # blocked writing it, and only its tail is kept for a failure to quote.
+        self.stderr_tail = b""
+        self._stderr_reader = threading.Thread(
+            target=self._drain_stderr, args=(self.process.stderr,), daemon=True
+        )
+        self._stderr_reader.start()
+
+    def _drain_stderr(self, pipe) -> None:
+        try:
+            while chunk := os.read(pipe.fileno(), 65536):
+                self.stderr_tail = (self.stderr_tail + chunk)[-STDERR_TAIL:]
+        except (OSError, ValueError):
+            pass  # the pipe is gone; there is nothing left to keep
 
     def stop(self) -> None:
         if self.process is None:
@@ -277,7 +299,16 @@ class Subject:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait()
-        for pipe in (self.process.stdin, self.process.stdout, self.process.stderr):
+        pipes = [self.process.stdin, self.process.stdout, self.process.stderr]
+        if self._stderr_reader is not None:
+            # The child is gone, so its stderr reaches EOF and the reader ends. One that is still
+            # blocked means something the child spawned holds the pipe open; its descriptor is
+            # left to the reader rather than closed under it, where the number could be reused.
+            self._stderr_reader.join(timeout=1.0)
+            if self._stderr_reader.is_alive():
+                pipes.pop()
+            self._stderr_reader = None
+        for pipe in pipes:
             try:
                 if pipe is not None:
                     pipe.close()
@@ -311,10 +342,12 @@ class Subject:
                 continue
             chunk = os.read(stdout.fileno(), 65536)
             if not chunk:
+                # The stderr reader finishes once the subject's stderr closes; a subject that
+                # closed stdout and kept stderr open is not waited for past this bound.
+                if self._stderr_reader is not None:
+                    self._stderr_reader.join(timeout=1.0)
                 code = self.process.poll()
-                stderr = b""
-                if self.process.stderr is not None:
-                    stderr = self.process.stderr.read() or b""
+                stderr = self.stderr_tail
                 raise SubjectError(
                     f"the subject closed its stdout"
                     + (f" with {code}" if code is not None else "")
