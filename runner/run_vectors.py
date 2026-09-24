@@ -57,6 +57,8 @@ import re
 import select
 import subprocess
 import sys
+import threading
+import time
 from dataclasses import dataclass, field
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -608,14 +610,15 @@ class Server:
         self.grace_ms = grace_ms
         self.process: subprocess.Popen | None = None
         self.host_port: str | None = None
+        self._drain: threading.Thread | None = None
 
-    def start(self) -> None:
+    def command(self) -> list[str]:
         # The corpus is the version-1 one — `replay` refuses any vector that is not — so the
         # server is told to seat `selvage/1` alone: vector 001's `/meta` advertises one
         # version and vector 005 has a `selvage/2` hello refused, and both are claims about
         # that server rather than about the default, which seats both. The Rust harness says
         # the same thing at its own spawn site (`tests/vectors/runner.rs`).
-        command = [
+        return [
             self.binary,
             "--listen",
             "127.0.0.1:0",
@@ -623,18 +626,19 @@ class Server:
             str(self.grace_ms),
             "--serve-version-1-only",
         ]
+
+    def start(self) -> None:
+        command = self.command()
         self.process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
         )
-        ready, _, _ = select.select([self.process.stdout], [], [], FRAME_TIMEOUT)
-        line = self.process.stdout.readline() if ready else ""
-        match = re.search(r"ws://([^/\s]+)/session", line)
+        line = self._read(FRAME_TIMEOUT, whole=False)
+        match = re.search(r"ws://([^/\s]+)/session", line.partition("\n")[0])
         if match is None:
             if self.process.poll() is not None:
-                line += self.process.stdout.read()
+                line += self._read(1.0, whole=True)
             self.stop()
             raise ServerError(
                 f"`{self.binary}` did not print a listening address; it needs the\n"
@@ -644,6 +648,45 @@ class Server:
                 f"and point ${SERVER_ENV} at the new binary. It said: {line.strip()!r}"
             )
         self.host_port = match.group(1)
+        # Everything after the address is the server's log, which nothing here reads. It is
+        # still read, and dropped: a pipe nobody reads fills, and a server blocked writing its
+        # log stops answering in the middle of a vector.
+        self._drain = threading.Thread(
+            target=self._discard, args=(self.process.stdout,), daemon=True
+        )
+        self._drain.start()
+
+    def _read(self, wait: float, *, whole: bool) -> str:
+        """The server's output, read within `wait` seconds however it arrives.
+
+        `readline` after a `select` is not bounded: a server that writes half a line and stalls
+        would hold it past the deadline. This reads what is there until a newline (or, `whole`,
+        the end of the output), the end of the output, or the deadline — whichever comes first.
+        """
+        assert self.process is not None and self.process.stdout is not None
+        fd = self.process.stdout.fileno()
+        end = time.monotonic() + wait
+        data = b""
+        while whole or b"\n" not in data:
+            left = end - time.monotonic()
+            if left <= 0:
+                break
+            ready, _, _ = select.select([fd], [], [], left)
+            if not ready:
+                continue
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                break
+            data += chunk
+        return data.decode("utf-8", "replace")
+
+    @staticmethod
+    def _discard(pipe) -> None:
+        try:
+            while os.read(pipe.fileno(), 65536):
+                pass
+        except (OSError, ValueError):
+            pass  # the pipe is gone; there is nothing left to drop
 
     @property
     def ws_base(self) -> str:
@@ -663,6 +706,9 @@ class Server:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait()
+        if self._drain is not None:
+            self._drain.join(timeout=1.0)
+            self._drain = None
         self.process = None
 
 
