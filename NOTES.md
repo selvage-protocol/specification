@@ -76,7 +76,7 @@ The implementations this document describes:
   than an oversight (`B.20`).
 - A reconnecting client seeds a **new `Y.Doc`** carrying the outgoing replica's state on every
   handshake, so it never reuses an awareness client id.
-- The client's request surface is the handshake, `doc.open`, `doc.close`, `session.rename` and `doc.grant`;
+- The client's request surface is the handshake and `session.rename`;
   see `A.4`.
 
 ### A.3 The TypeScript client (VS Code, and the Neovim companion)
@@ -121,8 +121,8 @@ The implementations this document describes:
 
 `PROTOCOL.md` §10.1 says the wire is open: a server answers any method it does not implement with
 `unknown_method`, so an extension method travels like any other. A *client* is the constraint:
-both reference clients can send the handshake, `doc.open`, `doc.close`, `session.rename` and
-`doc.grant` and nothing else, so an editor adapter behind them cannot ask for an `x.` method at all.
+both reference clients can send the handshake and `session.rename` and nothing else, so an editor
+adapter behind them cannot ask for an `x.` method at all.
 An implementation that defines one has to expose a way to send a method whose params it does not
 interpret; neither reference client has made that decision. An `x.` **event** needs nothing of the
 sort, because events reach a client that has already promised to ignore the ones it does not know.
