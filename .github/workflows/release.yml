@@ -12,6 +12,13 @@ name: release
 # existing release gets the bundle refreshed rather than a second release.
 # A pull request runs validate.yml instead and can never publish or release.
 #
+# Two jobs, so that the one holding a write token runs no code it did not have to. `validate`
+# installs from PyPI and runs this repository's Python — the same checks as validate.yml, every
+# one of them — with a read-only token that is not left on disk. `release` runs only after it
+# passes, installs nothing, and does no more than zip the tree, check where the commit is, tag
+# it and attach the bundle. A release is only cut from a commit already on the default branch:
+# a dispatch can name any ref and a tag can be pushed at any commit, and neither is review.
+#
 # The wire version string is `selvage/1` and the canonical form is `SJ-C/1`.
 # Both are protocol CONSTANTS, not release versions; the release version is
 # the `version` input on dispatch, or the tag name on a tag push. The typo
@@ -36,37 +43,33 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
-# `contents: write` creates and pushes the tag and the GitHub Release. Nothing
-# else is granted.
-permissions:
-  contents: write
+# Nothing by default; each job names what it needs.
+permissions: {}
 
 jobs:
-  release:
+  validate:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     timeout-minutes: 15
-    # The checks import `schema/validate.py`, and an import writes a `__pycache__` beside it. The
-    # bundle is `zip -r schema vectors …`, so that bytecode cache rode into `v0.1.1`'s bundle: 38 KB
-    # of the runner's own Python in an artefact whose release notes say it holds the tag's commit.
+    permissions:
+      contents: read
+    # The checks import `schema/validate.py`, and an import writes a `__pycache__` beside it.
     # Nothing in this job needs a cache on disk.
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14.7"
 
-      # The release version comes from the dispatch input, or from the tag name on a tag
-      # push. It passes through `env` rather than a workflow expression inside `run:`, so
-      # no part of it is read as shell syntax, and the shape it must have lives in
-      # `scripts/check-release-version.sh` — where it has a test — rather than in a `case`
-      # here, because a `case` pattern's `*` matches `.` and `/`: the guard this replaced
-      # admitted `1.2.3-rc1`, `1.2.3.4`, `1x2.3.4` and a value carrying a newline, which
-      # `echo >> $GITHUB_ENV` would have written as a second line, setting a second
-      # variable for every later step.
-      - name: resolve the release version
+      # Refused here, before anything else runs, so a bad value costs nothing. The version
+      # passes through `env` rather than a workflow expression inside `run:`, so no part of it
+      # is read as shell syntax, and its shape lives in `scripts/check-release-version.sh`,
+      # where it has a test.
+      - name: check the release version
         env:
           DISPATCH_VERSION: ${{ inputs.version }}
         run: |
@@ -75,15 +78,13 @@ jobs:
           else
             version="${GITHUB_REF_NAME#v}"
           fi
-          # Silent, and refuses with the reason it gives on stderr.
           scripts/check-release-version.sh "$version"
-          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
 
       # Same pins as validate.yml, so a bundle that passes here cannot fail there.
       - name: install dependencies
-        run: python3 -m pip install jsonschema==4.26.0 referencing==0.37.0 websockets==16.1
+        run: python3 -m pip install jsonschema==4.26.0 referencing==0.37.0 websockets==16.1 cryptography==50.0.0
 
-      # The bundle must hold what CI proves: only released what is green.
+      # The bundle must hold what CI proves: every step of validate.yml, not a subset of it.
       - name: validate the schemas and the vectors
         run: python3 schema/validate.py
 
@@ -92,6 +93,15 @@ jobs:
 
       - name: check the binary decoder
         run: python3 runner/test_yprotocols.py
+
+      - name: replay the peer corpus's frame layer
+        run: python3 runner/run_peer.py
+
+      - name: require every peer vector to fail under the mutation it declares
+        run: python3 runner/run_peer.py --mutation-census
+
+      - name: re-derive the peer corpus's frames from its recipes
+        run: python3 runner/test_recipe.py
 
       - name: check the workflows and the release-version guard
         run: python3 scripts/check-workflows.py
@@ -103,20 +113,75 @@ jobs:
             exit 1
           fi
 
-      # The bundle is what a consumer pins: the machine-readable model, the
-      # conformance corpus, the two normative documents, and the licence the
-      # prose, schema and vectors are released under (CC-BY-4.0).
+      # The bundle is built here as well, read-only, so that a dry run — which never reaches
+      # the job below — still shows what a release would carry. `PYTHONDONTWRITEBYTECODE`
+      # keeps the checks above from leaving a `__pycache__` for it to pick up.
+      - name: build the bundle
+        run: |
+          zip -r bundle.zip schema vectors PROTOCOL.md CANONICAL.md LICENSE
+          unzip -l bundle.zip
+
+      - name: stop before tagging on a dry run
+        if: inputs.dry_run == true
+        run: |
+          echo "dry_run: validated and built the bundle, tagging and releasing nothing."
+
+  release:
+    needs: validate
+    # A dry run ends with `validate`: nothing below it is needed, and nothing holding a write
+    # token runs for it.
+    if: inputs.dry_run != true
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    timeout-minutes: 15
+    # `contents: write` creates and pushes the tag and the GitHub Release. Nothing else is
+    # granted, and nothing in this job installs a package or runs the repository's Python.
+    permissions:
+      contents: write
+    steps:
+      # The whole history, so that the commit can be placed on the default branch below.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # A release is a commit the default branch already carries. A dispatch from a feature
+      # branch, or a tag pushed at an unmerged commit, is refused here, before any script of
+      # that commit runs with this job's token, the bundle is built or anything is tagged.
+      - name: require the commit to be on the default branch
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          git fetch --no-tags origin "refs/heads/${DEFAULT_BRANCH}:refs/remotes/origin/${DEFAULT_BRANCH}"
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" "refs/remotes/origin/${DEFAULT_BRANCH}"; then
+            printf 'refusing: %s is not on %s; a release is cut from a reviewed commit\n' "$GITHUB_SHA" "$DEFAULT_BRANCH" >&2
+            exit 1
+          fi
+
+      # The version was refused or accepted by `validate`; it is resolved again here rather
+      # than handed across, and put through the same guard, because a value written into
+      # `$GITHUB_ENV` must never carry a second line.
+      - name: resolve the release version
+        env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+        run: |
+          if [ -n "$DISPATCH_VERSION" ]; then
+            version="$DISPATCH_VERSION"
+          else
+            version="${GITHUB_REF_NAME#v}"
+          fi
+          scripts/check-release-version.sh "$version"
+          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+
+      # The bundle is what a consumer pins: the machine-readable model, the conformance
+      # corpus, the two normative documents, and the licence the prose, schema and vectors
+      # are released under (CC-BY-4.0). It is zipped from this job's own checkout of the
+      # commit `validate` checked, and no Python has run in this tree, so no `__pycache__`
+      # rides into it (one rode into `v0.1.1`'s bundle when the two were one job).
       - name: build the bundle
         run: |
           bundle="selvage-spec-v${RELEASE_VERSION}.zip"
           zip -r "$bundle" schema vectors PROTOCOL.md CANONICAL.md LICENSE
           unzip -l "$bundle"
           echo "BUNDLE=$bundle" >> "$GITHUB_ENV"
-
-      - name: stop before tagging on a dry run
-        if: inputs.dry_run == true
-        run: |
-          echo "dry_run: built $BUNDLE, tagging and releasing nothing."
 
       # Tags are resolved against `origin`, not local refs: the checkout may
       # not have fetched them. An existing tag must point at this run's
@@ -125,7 +190,6 @@ jobs:
       # it names, so both the plain ref and its peeled `^{}` form are queried
       # and the peeled (commit) sha is preferred when present.
       - name: create and push the tag
-        if: inputs.dry_run != true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -145,7 +209,6 @@ jobs:
           fi
 
       - name: create the GitHub Release
-        if: inputs.dry_run != true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
