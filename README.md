@@ -32,7 +32,7 @@ and `result OK`:
 schema ok      10 schemas, 39 values checked against the control-character refusal
 sealed         48 values checked against the sealed payloads of selvage/2
 refusals       13 values checked against selvage/2's local report vocabulary
-vectors        24 files, 33728 frame checks, 8381 assertion steps
+vectors        24 files, 33760 frame checks, 8387 assertion steps
 peer vectors   26 files, 19 frame, 7 decision, 221 checks, 74 assertion steps
 absence        49 session shapes, 50 vectors, 9 control violations, 50 sealed frames, 100 needle checks
 result         OK
@@ -213,21 +213,21 @@ python3 runner/run_vectors.py
 Against a `selvaged` that implements every frame the corpus covers, it ends with:
 
 ```
-summary        24 files, 33728 frame checks, 24 vectors passed, 0 failed
+summary        24 files, 33760 frame checks, 24 vectors passed, 0 failed
 ```
 
-**That run has not happened here.** The only `selvaged` in this workspace is built from
-`reference_server`'s `main`, which seats **both** wire versions: it answers a pre-seating fault in
-`selvage/1`, and it refuses a `v` it does not read with a code and a close this corpus no longer
-has. Today, against that binary, the replay ends with:
+**The `selvaged` in this workspace is built from `reference_server`'s `main`**, which seats **both**
+wire versions: it answers a pre-seating fault in `selvage/1`, and it refuses a `v` it does not read
+with a code and a close this corpus no longer has. Today, against that binary, the replay ends with:
 
 ```
-summary        24 files, 33728 frame checks, 9 vectors passed, 15 failed
+summary        24 files, 33760 frame checks, 9 vectors passed, 15 failed
 ```
 
-The one-version server is `chore/drop-version-1` in `reference_server`, and the corpus is green
-against what that branch builds. The red line to expect is a vector that pins behaviour newer than
-the server you point it at; the summary names the file and the frame it disagreed about.
+The one-version server is `chore/drop-version-1` in `reference_server`, and the green line above
+is what the corpus gives against what that branch builds. The red line to expect is a vector that
+pins behaviour newer than the server you point it at; the summary names the file and the frame it
+disagreed about.
 
 It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS`: the grace
 period is per-vector (`vectors/012` waits out 400 ms), and a runner that spawns the server has no

@@ -1783,7 +1783,7 @@ room's grace, armed by its **last** connection. `028` no longer pins version-bef
 no longer exists; it pins envelope-before-method and method-before-params, which does.
 
 **Counts, re-derived from the runs and not from the old numbers.** The wire layer: 36 files →
-24, 35,022 frame checks → 33,728, 8,676 assertion steps → 8,381. The peer layer: 27 files → 26
+24, 35,022 frame checks → 33,760, 8,676 assertion steps → 8,387. The peer layer: 27 files → 26
 and 222 checks → 221, with its 74 assertion steps unchanged because a decision vector's steps are
 counted in its own run's summary. `schema/` is ten files rather than eleven. The absence scan no
 longer has a `selvage/1` corpus to be its own positive control — a corpus of the version the rule
@@ -1791,18 +1791,32 @@ is about cannot be — so its control is a document built to break every rule it
 nine violations it must find are pinned in `validate.py`. Each number comes from a run:
 `python3 schema/validate.py` (`result OK`) and `runner/run_vectors.py`.
 
-**What the corpus could not be verified against, and why.** The only `selvaged` in this workspace
-is built from `reference_server`'s `main`, which seats **both** versions, and it is older than that
-branch's tip as well (built before the duplicate-member refusal landed). It answers a pre-seating
-fault in `selvage/1` (`crates/protocol/src/lib.rs`'s `WIRE_VERSION`), its `/meta` advertises
-`selvage/1` beside `selvage/2`, and it refuses a `v` it does not read with `unsupported_version`
-and close **4005**, the code and close this corpus replaced. Against it the replay ends with
-`24 files, 33728 frame checks, 9 vectors passed, 15 failed`, and the failures are that member, that
-code and the one rule the stale binary predates. The server this corpus is written for is
-`chore/drop-version-1` in `reference_server`, where `WIRE_VERSION` is `selvage/2` and the list holds
-one entry; the nine that pass today are the ones whose every assertion is a server-authored frame
-on a seated version-2 connection. The reference server's own `crates/harness/tests/vectors.rs` is
-the other half of the same gate, and it replays this corpus over its vendored copy.
+**Four vectors the re-baseline damaged, repaired on the same branch.** The pass that rewrote the
+frame in each step's `text` parsed and re-serialised it, so it collapsed the repeated member that `031`
+exists to send: the vector sent a frame carrying no duplicate and still expected the refusal,
+which no conforming receiver can answer — `bad_message` for a repeated member is the rule §4
+states and the server correctly applies. `008`'s `chatty` leg lost the `send` a `doc.*` leg
+carried and kept its expectation, so it waited on the server's hello deadline, which is the
+runner's frame deadline to the tick, and passed or failed by a race. `015` and `030` lost the
+control request their own prose still claimed. Each is restored with a method this version has,
+`session.rename`: `031` carries both depths the rule names — a member of the envelope, where
+`session.rename` and `session.hello` are what a first-wins and a last-wins reader would each
+resolve the frame to, and one inside `params` — and each control is answered and announced. The
+counts above are the repaired corpus's, re-derived from the same two runs, with the replay green
+against `chore/drop-version-1` in `reference_server`: `24 files, 33760 frame checks, 24 vectors
+passed, 0 failed`.
+
+**What the corpus is not verified against.** The `selvaged` in this workspace is built from
+`reference_server`'s `main`, which seats **both** versions. It answers a pre-seating fault in
+`selvage/1` (`crates/protocol/src/lib.rs`'s `WIRE_VERSION`), its `/meta` advertises `selvage/1`
+beside `selvage/2`, and it refuses a `v` it does not read with `unsupported_version` and close
+**4005**, the code and close this corpus replaced. Against it the replay ends with `24 files,
+33760 frame checks, 9 vectors passed, 15 failed`, and every failure is that member or that code.
+The server this corpus is written for is `chore/drop-version-1` in `reference_server`, where
+`WIRE_VERSION` is `selvage/2` and the list holds one entry; the nine that pass today are the ones
+whose every assertion is a server-authored frame on a seated version-2 connection. The reference
+server's own `crates/harness/tests/vectors.rs` is the other half of the same gate, and it replays
+this corpus over its vendored copy.
 
 **The prose is one document now.** §1.2's entries, §2 and §2.1, §3, §4.1, §5's method surface and
 its handshake, §6's events and replies, §7.1, §8's awareness passage, §9, §9.1, §9.2, §10, §11's

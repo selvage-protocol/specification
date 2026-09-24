@@ -96,8 +96,8 @@ BASE = "https://dontblameme.dev/schema/1/"
 # different tools, and one number would let one layer's loss be paid by the other's gain.
 EXPECTED_WIRE_VECTORS = 24
 EXPECTED_PEER_VECTORS = 26
-EXPECTED_FRAME_CHECKS = 33728
-EXPECTED_ASSERTIONS = 8381
+EXPECTED_FRAME_CHECKS = 33760
+EXPECTED_ASSERTIONS = 8387
 # The peer layer's own counts. `PEER_CHECKS` is one per peer step plus one per recipe, and
 # `PEER_ASSERTIONS` counts the assertion steps of the **frame** vectors, which is what
 # `runner/run_peer.py` runs without a client; a decision vector's `expectSubject` steps are checked
