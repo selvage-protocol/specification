@@ -1611,3 +1611,48 @@ none of them to a byte, a schema or a vector; the corpus counts are unchanged.
 - **Two numbers.** §2.1's inbound-budget row now says each frame is charged at least 1 KiB, which
   `selvaged`'s `budget.rs` (`FRAME_COST_BYTES`) does and the table did not say; and §8.3's awareness
   query example said a 256 KiB frame of one-byte messages is 256 000 of them, which is 262 144.
+
+**What B.43 asks of each implementation.** Checked against every repository's `main` on
+2026-09-24; none of them has an open pull request. One item needs code, and it is the same change in
+four places. Everything else needs nothing or is optional.
+
+1. **The state re-send is conditional (§7.1). Needed in every client engine.** A non-host peer
+   re-sends the state frame it holds on `peer.joined` only when the seat its applied state's `host`
+   entry labels is not in the roster, or when the state has no `host` entry. It does not re-send
+   while the host's seat is seated. The host's own path, which publishes a fresh state, is
+   unchanged. The roster check comes *after* the joining seat is added, so a returning host's new
+   seat still triggers the re-send, because the old `host` entry labels a seat that has gone.
+   - `vscode_client` `src/engine/peer.ts`, `PeerSession.seatJoined` (the
+     `if (this.heldStateFrame !== undefined) this.republish(...)` branch): guard it with
+     `const seat = this.hostSeat(); if (seat === undefined || !this.roster.has(seat))`.
+   - `web_client` `src/engine/peer.ts`, `seatJoined`: the same guard. This is the same engine; keep
+     the files identical.
+   - `nvim_client` `vendor/engine/peer.ts`, `seatJoined`: the same guard. This is the vendored
+     engine, so re-sync it from `vscode_client` with `scripts/sync-engine.sh` rather than editing it
+     by hand.
+   - `reference_server` `crates/client/src/peer.rs`, `PeerSession::seat_joined` (the
+     `if let Some(frame) = self.held_state_frame.clone()` branch): guard it with
+     `self.host_seat().is_none_or(|s| !self.roster.contains(s))`. Leave `announce_holds` unguarded:
+     §13.7's holds re-announcement on `peer.joined` is still a **MUST**.
+   - Tests for each engine: (a) with the host's seat in the roster, a non-host `seatJoined`
+     publishes no state frame (the `published` count does not move for it); (b) after `seatLeft`
+     for the host's seat, a `seatJoined` for a new seat re-sends the held frame byte for byte;
+     (c) with a held state that has no `host` entry, it re-sends. No vector in this repository pins
+     either behaviour yet. A decision vector for (a) and (b) is a follow-up here.
+2. **The seat label (§7.1). Nothing to change.** `HostProducer.label`/`commit` in the three
+   TypeScript engines and `label`/`fallback_seat`/`commit` in `crates/client/src/host.rs` are the
+   order §7.1 now states. The code comments that say §7.1 "does not say which seat gives way" and
+   cite "*its own included*" can be re-pointed at §7.1's numbered list when the file is next
+   touched.
+3. **The viewer declaration (§7.1, §13.5). Nothing to change.** No host engine can place a key at a
+   seat, so the new **SHOULD** does not apply to any of them. A client UI that presents a `viewer`
+   invite as a read-only guarantee (`web_client`'s host invite, `vscode_client`'s share command)
+   **SHOULD** word it as a request the viewer's client honours, not as enforcement.
+4. **The frame key's 2³² frames (`CANONICAL.md` §6.1). Nothing required.** No realistic room
+   reaches it. Optional hardening for a host engine: count the sealed frames it verifies in a room
+   and close the room (a `kind = 2` closing) well before 2³², telling its person to mint a new one.
+5. **The no-state rejoin (§13.3). Nothing to change.** Every engine ends at the no-state window
+   (`Ending` `'no-state'` in `peer.ts`) and none rejoins, which the bounded **MAY** allows.
+6. **`selvaged` (`reference_server/crates/selvaged`). Nothing to change.** Every §2.1 number matches
+   `lib.rs`, `room.rs`, `budget.rs` and `net/`. The 1 KiB per-frame floor is now written down, and
+   the code already applies it.
