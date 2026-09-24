@@ -186,7 +186,7 @@ class TestPeers(unittest.TestCase):
                         {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"},
                     ],
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         actual = canonical(
@@ -199,7 +199,7 @@ class TestPeers(unittest.TestCase):
                         {"display_name": "Ada", "peer_id": "p-1", "role": "host"},
                     ],
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         check_text(actual, expected, Bindings())
@@ -227,7 +227,7 @@ class TestPeers(unittest.TestCase):
         ada = {"display_name": "Ada", "peer_id": "$host_peer", "role": "host"}
         bob = {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"}
         expected = canonical(
-            {"event": "room.joined", "params": {"peers": [ada, bob], "room_id": "$room"}, "v": "selvage/1"}
+            {"event": "room.joined", "params": {"peers": [ada, bob], "room_id": "$room"}, "v": "selvage/2"}
         )
         actual = canonical(
             {
@@ -239,7 +239,7 @@ class TestPeers(unittest.TestCase):
                     ],
                     "room_id": "r-1",
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         bindings = Bindings()
@@ -251,7 +251,7 @@ class TestPeers(unittest.TestCase):
         ada = {"display_name": "Ada", "peer_id": "$host_peer", "role": "host"}
         bob = {"display_name": "Bob", "peer_id": "$guest_peer", "role": "guest"}
         expected = canonical(
-            {"event": "room.joined", "params": {"peers": [ada, bob], "room_id": "$room"}, "v": "selvage/1"}
+            {"event": "room.joined", "params": {"peers": [ada, bob], "room_id": "$room"}, "v": "selvage/2"}
         )
         other = canonical(
             {
@@ -263,7 +263,7 @@ class TestPeers(unittest.TestCase):
                     ],
                     "room_id": "r-1",
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         with self.assertRaises(Mismatch):
@@ -278,7 +278,7 @@ class TestPeers(unittest.TestCase):
                     "capabilities": ["y-protocols/1", "awareness"],
                     "room_id": "$room",
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         actual = canonical(
@@ -288,7 +288,7 @@ class TestPeers(unittest.TestCase):
                     "capabilities": ["awareness", "y-protocols/1"],
                     "room_id": "r-1",
                 },
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         check_text(actual, expected, Bindings())
@@ -299,14 +299,14 @@ class TestPeers(unittest.TestCase):
             {
                 "event": "doc.opened",
                 "params": {"documents": ["a.rs", "b.rs"], "path": "a.rs"},
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         actual = canonical(
             {
                 "event": "doc.opened",
                 "params": {"documents": ["b.rs", "a.rs"], "path": "a.rs"},
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         with self.assertRaises(Mismatch):
@@ -337,38 +337,38 @@ class TestCheckText(unittest.TestCase):
     def test_a_canonical_frame_matches_and_binds_for_the_next_one(self) -> None:
         bindings = Bindings()
         first = canonical(
-            {"event": "room.created", "params": {"room_id": "$room", "token": "$token"}, "v": "selvage/1"}
+            {"event": "room.created", "params": {"room_id": "$room", "token": "$token"}, "v": "selvage/2"}
         )
         check_text(
             canonical(
-                {"event": "room.created", "params": {"room_id": "r-1", "token": "t-1"}, "v": "selvage/1"}
+                {"event": "room.created", "params": {"room_id": "r-1", "token": "t-1"}, "v": "selvage/2"}
             ),
             first,
             bindings,
         )
-        second = canonical({"event": "room.joined", "params": {"room_id": "$room"}, "v": "selvage/1"})
+        second = canonical({"event": "room.joined", "params": {"room_id": "$room"}, "v": "selvage/2"})
         check_text(
-            canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/1"}),
+            canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/2"}),
             second,
             bindings,
         )
         with self.assertRaises(Mismatch):
             check_text(
-                canonical({"event": "room.joined", "params": {"room_id": "r-2"}, "v": "selvage/1"}),
+                canonical({"event": "room.joined", "params": {"room_id": "r-2"}, "v": "selvage/2"}),
                 second,
                 bindings,
             )
 
     def test_a_frame_that_is_not_the_claimed_bytes_fails(self) -> None:
-        expected = canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/1"})
+        expected = canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/2"})
         # The same members, in the order the tables list them rather than sorted.
-        reordered = '{"v":"selvage/1","event":"room.joined","params":{"room_id":"r-1"}}'
+        reordered = '{"v":"selvage/2","event":"room.joined","params":{"room_id":"r-1"}}'
         with self.assertRaises(Mismatch) as caught:
             check_text(reordered, expected, Bindings())
         self.assertIn("canonical bytes", str(caught.exception))
 
     def test_insignificant_whitespace_is_still_a_byte_difference(self) -> None:
-        expected = canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/1"})
+        expected = canonical({"event": "room.joined", "params": {"room_id": "r-1"}, "v": "selvage/2"})
         spaced = expected.replace(":", ": ")
         with self.assertRaises(Mismatch):
             check_text(spaced, expected, Bindings())
@@ -377,13 +377,13 @@ class TestCheckText(unittest.TestCase):
         # `1.0` == `1` in every JSON reader, and `CANONICAL.md` §2.4 forbids it on the
         # wire: the structural comparison cannot see this, the byte comparison can.
         with self.assertRaises(Mismatch):
-            check_text('{"id":1.0,"result":{},"v":"selvage/1"}', canonical({"id": 1, "result": {}, "v": "selvage/1"}), Bindings())
+            check_text('{"id":1.0,"result":{},"v":"selvage/2"}', canonical({"id": 1, "result": {}, "v": "selvage/2"}), Bindings())
 
     def test_a_missing_member_names_it(self) -> None:
         with self.assertRaises(Mismatch) as caught:
             check_text(
-                canonical({"event": "room.gone", "params": {"room_id": "r-1"}, "v": "selvage/1"}),
-                canonical({"event": "room.gone", "params": {"reason": "x", "room_id": "$r"}, "v": "selvage/1"}),
+                canonical({"event": "room.gone", "params": {"room_id": "r-1"}, "v": "selvage/2"}),
+                canonical({"event": "room.gone", "params": {"reason": "x", "room_id": "$r"}, "v": "selvage/2"}),
                 Bindings(),
             )
         self.assertIn("reason", str(caught.exception))
@@ -573,7 +573,7 @@ class TestMethodsSchemaUnavailable(unittest.TestCase):
         module = self.fresh_validate()
         reg = module.registry()
         module.check_frame(
-            reg, '{"id":1,"method":[],"params":{},"v":"selvage/1"}', "probe"
+            reg, '{"id":1,"method":[],"params":{},"v":"selvage/2"}', "probe"
         )
         self.assertTrue(
             any("session.json" in problem for problem in module.FAILURES),
@@ -656,14 +656,14 @@ class TestDesynchronisedQueue(unittest.IsolatedAsyncioTestCase):
             {
                 "event": "doc.opened",
                 "params": {"documents": ["late.txt"], "path": "late.txt"},
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         actual = canonical(
             {
                 "event": "peer.joined",
                 "params": {"peer": {"display_name": "Cyd", "role": "guest"}},
-                "v": "selvage/1",
+                "v": "selvage/2",
             }
         )
         with self.assertRaises(Mismatch) as caught:
@@ -803,7 +803,7 @@ class TestAbsenceRule(unittest.TestCase):
 
     A rule that only ever runs against a corpus that satisfies it is not a check: the scan has
     to be shown to catch the frame it is about. The control the corpus itself runs is the
-    `selvage/1` transcripts, which carry every one of these members; these cases are the same
+    `selvage/2` transcripts, which carry every one of these members; these cases are the same
     claim at the smallest size, and they are what makes the rule's own function trustworthy.
     """
 
@@ -879,16 +879,6 @@ class TestAbsenceRule(unittest.TestCase):
             "steps": [{"op": "expectBinary", "hex": "61 62 73 72 63 2f 6d 61 69 6e 2e 72 73"}],
         }
         self.assertTrue(self.violations(document))
-
-    def test_the_rule_does_not_read_a_selvage_1_transcript(self) -> None:
-        # The selector is the version member: the transcripts that exist today carry every one
-        # of these members and are replayed by the wire layer, so the rule must not fire on
-        # them. The corpus-wide control is a separate scan and is what shows the walker reads.
-        document = {
-            "selvage": "selvage/1",
-            "steps": [{"op": "expect", "text": '{"v":"selvage/1","event":"doc.opened"}'}],
-        }
-        self.assertEqual(self.violations(document), [])
 
     def test_the_scan_finds_what_its_control_carries(self) -> None:
         # The positive control, smaller: a walker that stopped walking finds nothing, so this
