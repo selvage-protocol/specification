@@ -87,35 +87,50 @@ The implementations this document describes:
   shape (a bounded retry, an observable give-up, no retry of a refusal), and these numbers are
   policy. A server that advertises no grace (or an unreachable `/meta`) falls back to the previous
   five attempts, and a caller's own `maxAttempts` still wins; the budget is capped at about an hour
-  of backoff rather than retrying forever. The Rust client predates the advertised grace and still
-  uses the flat five attempts (§A.2), so the two engines currently differ here.
-- Bounds a request at ten seconds and fails every pending request when the socket goes.
-- **The outbound queue is unbounded** (a `QueuedFrame[]` drained when the socket opens).
-- Rotates its awareness client id on every reconnect (`rotateIdentity` before `session.hello`),
-  dropping the outgoing id's local state.
-- **Removes a departed peer's awareness state on `peer.left`** (`removeAwarenessStates`). The Rust
-  client does the same in `peer_left`, so both clients drop a departed peer's state rather than
-  leave it to expire on the advertised clock (`PROTOCOL.md` §8.4).
+  of backoff rather than retrying forever.
+- **Bounds the handshake, not a request.** `HANDSHAKE_TIMEOUT_MS`, ten seconds in
+  `vscode_client/src/engine/relay.ts`, covers the socket upgrade and the `session.hello` exchange
+  together, and no request after it has a bound of its own: `session.rename` is written and its
+  answer is not waited for. A request is not failed when the socket goes, because none is held —
+  the relay ends the session, or schedules §9.1's bounded re-dial for a guest.
+- **The outbound queue is unbounded.** It is `PeerSession`'s `Uint8Array[]`
+  (`vscode_client/src/engine/peer.ts`), handed out by `takeOutbound` and written by
+  `RelaySession.drainOutbound`, and nothing caps it. The `QueuedFrame[]` is the relay's *inbound*
+  queue (`vscode_client/src/engine/relay.ts`), and that one is bounded instead, at
+  `MAX_INBOX_FRAMES` (4096), past which the connection is dropped.
+- Rotates its awareness client id on every re-seat: `dial` mints a fresh one (`awarenessClientId`)
+  for each `session.hello`, and `PeerSession.reseat` points `awareness.clientID` at it and deletes
+  the outgoing id's state and meta entry.
+- **Leaves a departed peer's awareness state to expire rather than removing it on `peer.left`.**
+  The event runs `PeerSession.seatLeft`, which drops the seat from the roster and its holds and
+  publishes the state that follows; the state the departed seat's client id published stays in the
+  replica's `Awareness` — `presence()` still reports it, with no `peer`, because `peerInfos()` no
+  longer names the seat — until y-protocols' own `outdatedTimeout` (30 s) reaps it. `PROTOCOL.md`
+  §8.4 makes dropping it a SHOULD, and neither this client nor the Rust one does it: `seatLeft` and
+  `reference_server/crates/client/src/peer.rs`'s `seat_left` are the same shape and remove nothing.
 - **An incoming awareness query is dropped, not answered** (`MESSAGE_QUERY_AWARENESS` in
-  `src/engine/sync.ts`), and a frame of query messages draws no answer at all. `PROTOCOL.md` §8.3
-  allows that and bounds the answering form, because answering one per message made a legal 256 KiB
-  frame of one-byte query messages cost 256 000 replies carrying the whole awareness set. The Rust
-  client still answers through `yrs`'s own protocol handler — one reply per query message in the
-  frame, with no per-frame cap — so the two engines differ here and the Rust one carries the
-  amplification.
+  `vscode_client/src/engine/sync.ts`), and a frame of query messages draws no answer at all.
+  `PROTOCOL.md` §8.3 allows that and bounds the answering form, because answering one per message
+  made a legal 256 KiB frame of one-byte query messages cost 262 144 replies carrying the whole
+  awareness set. The Rust client still answers through `yrs`'s own protocol handler — one reply per
+  query message in the frame, with no per-frame cap — so the two engines differ here and the Rust
+  one carries the amplification.
 - **Its outgoing frames are not in SJ-C member order.** The envelope is serialised as
   `{v, id, method, params}`, and `session.hello`'s params as
-  `{display_name, role, awareness_client_id, capabilities, client}`, because the engine hands
-  `JSON.stringify` a plain object. `CANONICAL.md` §2.1 makes ascending member order a producer rule
-  for requests as for events; a receiver must tolerate any order (§4), and the corpus compares only
-  a server's frames, so nothing in this repository catches it.
-- **It permits more than one request in flight.** `pending` is a map keyed by request id and each
-  request goes out as it is made, and `test/engine.test.ts` pins two in flight together, each
-  answered by its own id. `PROTOCOL.md` §5 makes one request at a time a MUST, because a seated
-  `session.error{bad_message}` carries no `id` and a client that pipelined cannot tell which request
-  it sank; the engine emits a `sessionError` event and leaves whatever is outstanding to its
-  ten-second timeout rather than failing it. The Rust client queues instead (`waiting` and
-  `inflight`), so the two engines differ here as well.
+  `{display_name, awareness_client_id, capabilities, client}` (`client` only when the caller named
+  one), because the engine hands `JSON.stringify` a plain object. `CANONICAL.md` §2.1 makes
+  ascending member order a producer rule for requests as for events; a receiver must tolerate any
+  order (§4), and the corpus compares only a server's frames, so nothing in this repository catches
+  it.
+- **It permits more than one request in flight, and nothing bounds it.** The engine keeps no
+  registry of outstanding requests: `rename` (`vscode_client/src/engine/relay.ts`) writes its frame
+  at the next `id` and returns, and no answer is read — a response carrying a `result` or an `error`
+  and no `event` matches no case in the relay's dispatcher. Its whole request surface is the
+  handshake and `session.rename` (§A.4), and nothing waits for one answer before the next request
+  goes out. No test file pins it. `PROTOCOL.md` §5 makes one request at a time a MUST, because a
+  seated `session.error{bad_message}` carries no `id` and a client that pipelined cannot tell which
+  request it sank; the engine turns such an event into a `sessionError` and holds nothing
+  outstanding to fail.
 
 ### A.4 The `x.` method surface
 

@@ -339,7 +339,7 @@ what a subject shows for it is its refusal and that it seated nothing; the rest 
 What no vector here
 can show is that two clients **agree**: a vector can hold a client to a rule it states, and it
 cannot show that two implementations reach the same state. That stays the interop test's job
-(`vscode_client/test/interop.test.ts` against
+(`vscode_client/test/interop-v2.test.ts` against
 `reference_server/crates/harness/examples/interop_peer.rs`), which is a convergence proof and
 not a conformance one, and it is the reason neither is sufficient alone.
 
