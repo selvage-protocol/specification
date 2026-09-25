@@ -858,12 +858,12 @@ peer knows it. **Decided** (2026-09-22), after the frame's bytes (§B.31) and th
 (§B.33), and before the holds and the lease. **Implemented** by `reference_server`'s
 `crates/client/src/peer.rs` and `host.rs` and by each client's `src/engine/peer.ts` and `host.ts`,
 with §13's decision vectors behind them (`vectors/peer/104`, `106`, `111`, `118`, `151` and `152`).
-One rule of the item is not: the second **SHOULD** §B.46 records as its §13.3's — a host committing
-a key `viewer` because the invite it handed out was `viewer` alone — which no implementation does.
-It would take a host engine that can place a key at the seat its invite went to, and none can today:
-a host reads a role from the announcer's declaration alone, so `commit` writes
-`declared.unwrap_or("guest")`. **Revised 2026-09-22 by §B.36**, which binds a role to a key: where
-gives a role to a *peer*, read *key*.
+One rule of the item is not: the second **SHOULD** of §7.1's declaration passage, which §B.46
+records as its §13.3's — a host committing a key `viewer` because the invite it handed out was
+`viewer` alone. No implementation does it, and it would take a host engine that can place a key at
+the seat its invite went to: none can today, so a host reads a role from the announcer's declaration
+alone and `commit` writes `declared.unwrap_or("guest")`. **Revised 2026-09-22 by §B.36**, which binds
+a role to a key: where an item below gives a role to a *peer*, read *key*.
 
 What the passages settle:
 
