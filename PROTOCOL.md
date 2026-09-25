@@ -1504,7 +1504,7 @@ replaced and obey a closing it had already passed. What a client must know and d
   bounded, giving up **MUST** be a decision a caller can observe, and a refusal **MUST NOT** be
   retried. A client that has never had a session has nothing to recover, and a failure before the
   first connection is reported to whoever asked for one rather than retried behind its back. (The
-  reference client's backoff parameters are [`NOTES.md`](NOTES.md) §A.2.) A client that knows the
+  reference client's backoff parameters are [`NOTES.md`](NOTES.md) §A.3.) A client that knows the
   room's grace (`room_grace_ms` from `/meta` (§2)) **SHOULD** keep retrying at least until that
   window has passed, because the room survives its last connection's end for exactly that long, and
   a retry that gives up inside the window abandons a room that was still joinable. The grace is
@@ -1513,10 +1513,11 @@ replaced and obey a closing it had already passed. What a client must know and d
 - **A client has to be able to tell its user which of the two happened, and the wire vocabulary
   still cannot express it.** A refusal reaches an adapter as `session.error` (§6) and then, if the
   server closed the connection, as a disconnection. A recoverable drop the client is retrying is
-  now visible to an adapter as a local `reconnecting` event in both reference engines, so it no
-  longer has to be inferred from the silence; what the *wire* cannot express is the retry itself,
-  and one that gave up produces the same disconnection an orderly close produces. **Known gap** on
-  the wire, and the fix there is an event, not a change to any existing frame.
+  visible to an adapter as a local `reconnecting` event in the TypeScript client
+  ([`NOTES.md`](NOTES.md) §A.6), so it does not have to be inferred from the silence; the Rust
+  client has no in-process reconnect, so it reports no retry. What the *wire* cannot express is the
+  retry itself, and one that gave up produces the same disconnection an orderly close produces.
+  **Known gap** on the wire, and the fix there is an event, not a change to any existing frame.
 - **Nothing survives the room.** Once the room is destroyed there is no room to rejoin, on any URL,
   with any token (§9): no frame announces the destruction, and the same fact is the `room_unknown` a
   join naming it is refused with.
