@@ -36,9 +36,12 @@ The implementations this document describes:
   ping and awareness clocks, and no client can learn how long it has to send `session.hello`. That
   is the one bound a second implementation most needs, and the only negotiation surface the
   protocol has does not carry it.
-- The **awareness window** is 15 s / 30 s by default, and the conformance harness advertises 40 ms
-  and 250 ms instead so that expiry is tested in under a second. The vectors' `harness.room_grace_ms`
-  overrides the grace period per transcript (400 ms in `vectors/012`, four seconds in `011`).
+- The **awareness window** is 15 s / 30 s by default, and that is what a server advertises: the
+  conformance harness runs the server at those defaults, and a test that needs the window to pass
+  in seconds compresses the client's own clocks instead
+  (`reference_server/crates/harness/tests/relay_selvaged.rs` runs a 50 ms renewal and a 5 s
+  expiry). The vectors' `harness.room_grace_ms` overrides the grace period per transcript, and
+  `vectors/012-room-grace.json` is the only transcript that sets it (400 ms).
 - The **room's peer cap is the one number a vector depends on and cannot set.** `vectors/026` pins
   the refusal of a join to a full room by filling a room to the reference server's default cap of
   128 peers, because `harness` carries `room_grace_ms` alone: the server takes
@@ -48,34 +51,35 @@ The implementations this document describes:
   `schema/validate.py` spends its time on. It is therefore both the corpus's cost centre and the one
   vector a second implementation cannot replay if its cap is not 128. A `harness` knob for the cap
   would let the same claim be pinned with three peers.
-- The **envelope bound and the room-state caps** are the bounds the corpus cannot reach at all, and
+- The **envelope bound and the room-state caps** are the bounds a transcript cannot set, and
   the ones a second implementation is most likely to get wrong because they are not all refusals of
   the same kind: a text envelope past `--max-envelope-bytes` (5 MiB) is refused `bad_message` with
   the connection left open, where a frame past the transport's 8 MiB bound is a drop with nothing on
   the wire; a mint past `--max-rooms` and a join past `--max-peers-per-room` are `x.server_full` and
   `x.room_full`, and a connection past `--inbound-bytes-per-sec` / `--inbound-burst-bytes`
   is told `x.rate_limited` and closed 1013. `PROTOCOL.md` §2.1's table carries the numbers and the
-  codes; `crates/harness/tests/session.rs` and `bounds.rs` pin the shapes. The corpus cannot, because
-  `harness` carries `room_grace_ms` alone (`B.29`). The caps a room's *contents* took — the paths in
-  an open-document set and the paths in a grant — are gone with the server holding neither; a
+  codes, and the peer cap's refusal is pinned on the wire by
+  `vectors/026-full-room-refuses-join.json`; no transcript sets any of them, because `harness`
+  carries `room_grace_ms` alone (`B.29`). The caps a room's *contents* took — the paths in an
+  open-document set and the paths in a grant — are gone with the server holding neither; a
   listing's three (4096 bytes to a path, 100 000 paths, 4 MiB of path bytes) are a receiver's bound
   now (`PROTOCOL.md` §13.3).
 
 ### A.2 The Rust client
 
-- Bounded reconnection: 500 ms doubling to a 10 s ceiling, five attempts, and **no retry on the
-  first connection**. `PROTOCOL.md` §9.1 asks only for the shape (a bounded retry, an observable
-  give-up, no retry of a refusal), and these numbers are policy.
-- **No per-request timeout.** The client bounds the handshake (`HANDSHAKE_TIMEOUT`) and nothing
-  else: a server that holds the socket open and never answers leaves a caller waiting. The
-  TypeScript client bounds the wait at ten seconds, so the two clients differ where `PROTOCOL.md`
+- **No in-process reconnect.** A dropped socket ends the session and the client re-dials nothing:
+  the one return `reference_server/crates/client/src/host.rs` names is a reload from its store.
+  `PROTOCOL.md` §9.1's bounded policy is the TypeScript client's (`A.3`); this one has no backoff
+  numbers of its own.
+- **No per-request timeout.** The client bounds the handshake (`HANDSHAKE_TIMEOUT`, ten seconds in
+  `reference_server/crates/client/src/relay.rs`) and nothing else: a server that holds the socket
+  open and never answers leaves a caller waiting. The TypeScript client bounds its handshake the
+  same way and no request either (`A.3`), so neither client has a request bound where `PROTOCOL.md`
   §5 only says SHOULD.
-- **The outbound queue is unbounded.** `engine.rs` queues frames in a `VecDeque` and drains them
-  when the socket is writable; a peer that reads slowly grows it without limit. `PROTOCOL.md` §2.1
-  therefore states the client-side bound as a SHOULD, and that level is a settled decision rather
-  than an oversight (`B.20`).
-- A reconnecting client seeds a **new `Y.Doc`** carrying the outgoing replica's state on every
-  handshake, so it never reuses an awareness client id.
+- **The outbound queue is unbounded.** `reference_server/crates/client/src/peer.rs` queues frames in
+  a `VecDeque` and drains them when the socket is writable; a peer that reads slowly grows it
+  without limit. `PROTOCOL.md` §2.1 therefore states the client-side bound as a SHOULD, and that
+  level is a settled decision rather than an oversight (`B.20`).
 - The client's request surface is the handshake and `session.rename`;
   see `A.4`.
 
@@ -85,7 +89,7 @@ The implementations this document describes:
   server's advertised `room_grace_ms`** (`/meta`, §2) so the cumulative backoff spans the grace the
   room actually has: seven attempts, ≈35 s, for the 30 s default. `PROTOCOL.md` §9.1 asks for the
   shape (a bounded retry, an observable give-up, no retry of a refusal), and these numbers are
-  policy. A server that advertises no grace (or an unreachable `/meta`) falls back to the previous
+  policy. A server that advertises no grace (or an unreachable `/meta`) falls back to the default
   five attempts, and a caller's own `maxAttempts` still wins; the budget is capped at about an hour
   of backoff rather than retrying forever.
 - **Bounds the handshake, not a request.** `HANDSHAKE_TIMEOUT_MS`, ten seconds in
@@ -157,11 +161,13 @@ protocol's (`PROTOCOL.md` §2).
 
 ### A.6 Reconnection status, and what it costs
 
-Both clients implement the bounded policy of `PROTOCOL.md` §9.1 and both rotate their awareness
-client ids, so a reconnecting peer is never mistaken for the peer it replaces. Both reference
-engines now emit a local `reconnecting` event while a retry is in flight, so an adapter does not
-have to infer it from the silence; what remains a wire gap is the retry itself, because
-`selvage/1`'s event vocabulary has no name for it (`PROTOCOL.md` §9.1, *Known gap*).
+The TypeScript client implements the bounded policy of `PROTOCOL.md` §9.1 (`A.3`) and rotates its
+awareness client id on every re-seat, so a reconnecting peer is never mistaken for the peer it
+replaces; it emits a local `reconnecting` event while a retry is in flight, so an adapter does not
+have to infer it from the silence (`vscode_client/src/engine/relay.ts`). The Rust client has no
+in-process reconnect (`A.2`), so it retries nothing and reports no retry. What remains a wire gap is
+the retry itself, because the `selvage/2` event vocabulary has no name for it (`PROTOCOL.md` §9.1,
+*Known gap*).
 
 ### A.7 The second client
 
@@ -183,12 +189,13 @@ rest of the design's reasoning is inline in `PROTOCOL.md` or in `B` below.
 `PROTOCOL.md` §10 says `v` has one value, `selvage/2`, and that a frame naming anything else is an
 envelope the receiver does not read: `bad_message`, refused before seating and an event on a seated
 connection. The reference server reads it the same way and nothing wider:
-`crates/protocol/src/lib.rs`'s `speaks` is `version == WIRE_VERSION`, so `selvage/2.0`, `selvage/2.9`,
-`selvage/1`, `selvage/3`, `selvage`, `selvage/03` and `selvage/x` are every one of them a version it
-does not read. Nothing is matched by prefix and no major is compared, so no second spelling of the
+`reference_server/crates/protocol/src/lib.rs`'s `speaks` is `version == WIRE_VERSION`, so
+`selvage/2.0`, `selvage/2.9`, `selvage/1`, `selvage/3`, `selvage`, `selvage/03` and `selvage/x` are
+every one of them a version it does not read. Nothing is matched by prefix and no major is compared,
+so no second spelling of the
 one value is open between the two. The corpus pins both shapes the refusal takes: `vectors/005`
-refuses `selvage/3`, `selvage/1`, `selvage`, `selvage/03` and a frame carrying no `v` before
-seating, and `vectors/027` the same on a seated connection, which stays open.
+refuses `selvage/3`, `selvage`, `selvage/03` and a frame carrying no `v` before seating, and
+`vectors/027` refuses `selvage/1` on a seated connection, which stays open.
 
 ---
 
