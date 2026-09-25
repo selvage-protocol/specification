@@ -625,12 +625,15 @@ frame: the envelope's field list, the key schedule, the associated data, the sig
 key id, the counter and the replay rule, the two keys in the invite's fragment, and the two payloads
 `kind = 1` and `kind = 2` carry. **Decided** (2026-09-22), first of the revision's pieces because
 the corpus's vectors are byte-exact against these and cannot be written until they are frozen.
-**Nothing implements it**: no client seals, no server relays a sealed frame, the wire version is
-`selvage/1`, and every rule there was written from the design and measured on this host rather than
-observed on a wire. The measurement script lived in `.tmp/envelope/envelope.mjs` in this pass's
-worktree and is not committed, as `docs/studies/peer-corpus.md` §10's was not; it rebuilds that
-study's vector 101's ciphertext and signature byte for byte (apart from the three length bytes this
-layout drops), and exercises every refusal rule below.
+**Implemented** by `reference_server`'s `crates/client/src/sealed.rs`, which seals, opens and reads a
+frame to this layout, with `crates/selvaged` relaying a sealed frame without opening it and each
+client carrying the same module (`vscode_client`'s `src/engine/sealed.ts`, and its copies in
+`web_client` and in `nvim_client`'s vendored engine). The wire version is `selvage/2` (§A.9), and
+the peer corpus is written against these bytes. The measurement script lived in
+`.tmp/envelope/envelope.mjs` in this pass's worktree and is not committed, as
+`docs/studies/peer-corpus.md` §10's was not; it rebuilds that study's vector 101's ciphertext and
+signature byte for byte (apart from the three length bytes this layout drops), and exercises every
+refusal rule below.
 
 **The signature is Ed25519**, measured against ECDSA P-256 rather than preferred. The two are the
 same size on the wire once the encoding is pinned — 64 bytes either way — so "ECDSA P-256 has a
@@ -699,9 +702,12 @@ host's private key are open where `docs/studies/peer-corpus.md` §9 and `docs/st
 **B.32 `selvage/2`'s session layer: what is settled, and what is not.** `PROTOCOL.md` §1.1 names
 every passage of `selvage/2`, and this item's are the session layer's: what `/meta` advertises, the
 handshake, the version gate, and the invite's forms. **Decided** (2026-09-22), after §B.31 froze
-the frame's bytes and before the server's state leaves `selvage/1`. **Nothing implements it**: no
-server and no client speaks `selvage/2`, no vector is written against one, and every rule below
-was written from the design rather than observed on a wire.
+the frame's bytes and before the server's state leaves `selvage/1`. **Implemented**, except the
+version gate §B.45 removed: the reference server and every client speak `selvage/2`
+(`crates/protocol/src/lib.rs`'s `WIRE_VERSION`, `vscode_client/src/engine/envelope.ts` and its two
+copies), `/meta` advertises the one version and no `roles`, and both invite forms carry the
+fragment. The pre-socket `/meta` check, `unsupported_version` and close **4005** are gone with
+§B.45, so a frame whose `v` the receiver does not read is `bad_message` (§A.9).
 
 What the passages settle:
 
@@ -760,9 +766,11 @@ for the frames §2, §5 and §6.1 describe.
 §2.1, §3, §6, §9, §9.1, §9.2 and §11 now state the server of `selvage/2` as what it is, and
 `schema/session-v2.json` with `schema/validate.py`'s `check_session_v2` gained that version's
 `peer.joined` and the fault vocabulary it answers with. **Decided** (2026-09-22), after §B.32 wrote
-the version's session layer and before the corpus moves to it. **Nothing implements it**: no server
-and no client speaks `selvage/2`, the wire version stays `selvage/1` for every implementation here,
-and no vector is written against a version-2 frame.
+the version's session layer and before the corpus moves to it. **Implemented** by
+`reference_server`'s `crates/selvaged` — `room.rs` for a room and its grace, `budget.rs` and `net/`
+for the bounds, `main.rs` for seating — which seats `selvage/2` for every implementation here.
+§B.45 removed what a server of this version does not have: `roles`, `host_present` and close
+**4004**, `unsupported_version` and close **4005**, and every `doc.*` method.
 
 What that server is, positively:
 
@@ -847,10 +855,15 @@ stated the version's own facts where §3's negative duties are.
 `PROTOCOL.md` §3's closing account of the relay, §7.1's room-state passage, §9.1's return passage,
 §12's scoping lead-in and the new §13 state the peer side of the version: who may say what, and how a
 peer knows it. **Decided** (2026-09-22), after the frame's bytes (§B.31) and the server's state
-(§B.33), and before the holds and the lease. **Nothing implements it**: no client speaks `selvage/2`,
-no vector is written against one, and §13 is the version's first normative text no implementation has
-exercised at all. **Revised 2026-09-22 by §B.36**, which binds a role to a key: where an item below
-gives a role to a *peer*, read *key*.
+(§B.33), and before the holds and the lease. **Implemented** by `reference_server`'s
+`crates/client/src/peer.rs` and `host.rs` and by each client's `src/engine/peer.ts` and `host.ts`,
+with §13's decision vectors behind them (`vectors/peer/104`, `106`, `111`, `118`, `151` and `152`).
+One rule of the item is not: the second **SHOULD** of §7.1's declaration passage, which §B.46
+records as its §13.3's — a host committing a key `viewer` because the invite it handed out was
+`viewer` alone. No implementation does it, and it would take a host engine that can place a key at
+the seat its invite went to: none can today, so a host reads a role from the announcer's declaration
+alone and `commit` writes `declared.unwrap_or("guest")`. **Revised 2026-09-22 by §B.36**, which binds
+a role to a key: where an item below gives a role to a *peer*, read *key*.
 
 What the passages settle:
 
@@ -945,9 +958,11 @@ that shape is what the frozen layout corrects.
 `CANONICAL.md` §6.1 gained a fourth `kind` and a third sealed payload; `PROTOCOL.md` §1.2, §5.1, §7.1
 and §13.7–§13.11 complete §13; `schema/sealed.json` gained the holds payload and
 `schema/validate.py`'s `check_sealed_payloads` runs it. **Decided** (2026-09-22), after §B.34's
-authority model and before the corpus. **Nothing implements it**: no client speaks `selvage/2`, no
-vector is written against one, and every rule below was written from the design rather than observed
-on a wire. **Revised 2026-09-22 by §B.36**, which adds a second `kind` to the frozen layout.
+authority model and before the corpus. **Implemented** by `reference_server`'s
+`crates/client/src/peer.rs` and `host.rs` and by each client's `src/engine/peer.ts` and
+`presence.ts`: the holds and their lease, the presence clock and the two windows, with
+`vectors/peer/114` and `154` behind them. **Revised 2026-09-22 by §B.36**, which adds a second
+`kind` to the frozen layout.
 
 **The carrier is a fourth `kind`, and it amends the frozen bytes deliberately.** §B.34 left the
 choice between a fourth `kind` in `CANONICAL.md` §6.1 and a payload inside `kind = 0`, and this pass
@@ -1033,9 +1048,10 @@ version does not move.
 smaller fixes.** `PROTOCOL.md` §7.1, §8's awareness passage, §9.1 and the §13 subsections that
 name a key or a mark, `CANONICAL.md` §6.1 and `schema/sealed.json` now carry the version's second
 new sealed `kind` and the rules that depend on it. **Decided** (2026-09-22), in a fix pass over §B.34's text taken from
-an independent review of that pass. **Nothing implements it**: no client speaks `selvage/2`, no
-vector is written against one, and every rule below was written from the design rather than observed
-on a wire.
+an independent review of that pass. **Implemented**: the session-key announcement is `kind = 4` in
+`reference_server`'s `crates/client/src/sealed.rs`, `crates/client/src/host.rs` commits every
+announcement it accepts, the state's `peers` is keyed by the peer's public key, and each client's
+`src/engine/sealed.ts` and `host.ts` are the TypeScript half (`vectors/peer/105`, `108` and `153`).
 
 **The hole, and why the state had to be re-keyed.** §B.34 has the host commit each peer's session
 key, and §13.1 forbids a client to send any binary frame before a state commits its own — and
@@ -1132,9 +1148,11 @@ smaller fixes.** `PROTOCOL.md` §3, §5.1, §7.1, §13.1, §13.3, §13.10 and §
 §6.1, `schema/sealed.json`, `schema/validate.py` and `README.md` now carry what a second, focused
 review of §B.36 found. **Decided** (2026-09-22), from an independent re-review that confirmed
 §B.36's binding decision holds and the room bootstraps, and found two blocking defects and five
-smaller ones in its text. **Nothing implements it**: no client speaks `selvage/2`, no vector is
-written against one, and every rule below was written from the design rather than observed on a
-wire.
+smaller ones in its text. **Implemented**: the host's seat pairing is `crates/client/src/host.rs`'s
+`commit`, `label` and `fallback_seat` (and `HostProducer.commit` with `label` in each client's
+`src/engine/host.ts`), step 8's read of a payload's member set and each member's type is
+`crates/client/src/sealed.rs`'s `read_payload`, and the peer corpus pins the results
+(`vectors/peer/109`, `110` and `153`).
 
 **The host commits every announcement it accepts, and the label costs nothing.** §B.36 had a host
 commit each key it had accepted *that it can place in its roster* and **MUST NOT** commit one it
