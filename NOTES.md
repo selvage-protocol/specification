@@ -392,15 +392,16 @@ behaviour's: a truncated invite link (`room` lost to a chat client, a proxy or a
 documented in `PROTOCOL.md` §2.1 are the server's own configured values, not the WebSocket library's
 defaults. **Decided.**
 
-**B.19 Where the reference client's request surface ends.** See `A.4`: the client can express
-`session.hello`, `doc.open`, `doc.close`, `session.rename` and `doc.grant` and nothing else, so no `x.` method
-can be sent through it. **Unresolved**, and a client-API decision rather than a wire one.
+**B.19 Where the reference client's request surface ends.** See `A.4`: the client can express the
+handshake (`session.hello`) and `session.rename` and nothing else, so no `x.` method can be sent
+through it. **Unresolved**, and a client-API decision rather than a wire one.
 
 **B.20 A client's outbound bound is a SHOULD, deliberately.** `PROTOCOL.md` §2.1 asks a client to
 bound what it holds rather than queue without limit, and states it as a SHOULD. **Decided**: the
 level stays a SHOULD. All three implementations queue without bound: a `VecDeque` drained only
-when the socket is writable in the Rust client (`crates/client/src/engine.rs`), a `QueuedFrame[]`
-drained when the socket opens in the TypeScript engine, and the Neovim companion's byte-identical
+when the socket is writable in the Rust client (`reference_server/crates/client/src/peer.rs`), a
+`Uint8Array[]` handed out by `takeOutbound` and written by `RelaySession.drainOutbound` in the
+TypeScript engine (`vscode_client/src/engine/peer.ts`), and the Neovim companion's byte-identical
 vendored copy of it. So a MUST here would be a rule all three violate, and a rule no
 implementation honours teaches a reader to distrust the rest. Raising the level means bounding all
 three clients *and* deciding what a client does when it reaches the bound, whether it fails the
@@ -612,13 +613,15 @@ describes, is **unresolved**. A link is a handshake in the sense that one peer's
 other's entry point, and the two reference client families currently disagree about which form a
 human is given.
 
-**B.29 The corpus cannot pin a server's policy bounds.** Every capacity row of `PROTOCOL.md` §2.1
-is enforced by the reference server and covered by `crates/harness/tests/session.rs` and
-`bounds.rs`, and none of them can be pinned by a transcript: `harness` carries `room_grace_ms`
-alone (`A.1`), so `--max-envelope-bytes`, `--max-rooms`, `--max-peers-per-room`,
-`--max-documents-per-room` and the inbound budget are all at their defaults for every vector, and
-a transcript that needed a small one — the way `vectors/012` needs a 400 ms grace — has no way to
-ask. The shapes worth a vector are the ones where the *kind* of refusal differs: an oversized text
+**B.29 The corpus cannot set a server's policy bounds.** Every capacity row of `PROTOCOL.md` §2.1
+is enforced by the reference server, and none of them can be set by a transcript: `harness`
+carries `room_grace_ms` alone (`A.1`), so the capacity flags — `--max-connections`,
+`--max-rooms`, `--max-peers-per-room`, `--outbound-queue-bytes`, `--max-envelope-bytes` and the
+inbound budget (`--inbound-bytes-per-sec`, `--inbound-burst-bytes`) — are all at their defaults
+for every vector, and a transcript that needed a small one — the way `vectors/012` needs a 400 ms
+grace — has no way to ask. The one a vector reaches at that default is the room's peer cap, whose
+refusal `vectors/026` pins by filling a room to the reference server's 128 peers. The shapes worth
+a vector are the ones where the *kind* of refusal differs: an oversized text
 envelope (`bad_message`, connection open) against an oversized frame (a drop, nothing on the wire),
 and a capacity refusal (`x.room_full`, close 4000) against a malformed request (`bad_params`).
 Whether `harness` should carry those knobs — which is a change in `reference_server` plus a corpus
