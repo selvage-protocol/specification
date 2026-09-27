@@ -19,7 +19,8 @@ name: release
 # `validate` derives it once and `release` uses that, so the version is fixed for the whole run:
 # a re-run of `release` after a failure has to name the version the run already cut, and
 # recomputing it there would name the next one and cut a second release under the tag guard's
-# nose. A tag pushed by hand needs no computation — there the tag name is the version — and both
+# nose. A full re-run of a dispatch refuses for the same reason, at the step that derives the
+# version. A tag pushed by hand needs no computation — there the tag name is the version — and both
 # shapes go through `scripts/check-release-version.sh`, the rule for what a version is.
 #
 # Two jobs, so that the one holding a write token runs no code it did not have to. `validate`
@@ -93,11 +94,24 @@ jobs:
       # `scripts/bump-version.sh`'s and the shape it and a tag name must have is
       # `scripts/check-release-version.sh`'s, each with its own test. The version leaves as a
       # job output, so no second line can ride into `$GITHUB_ENV` here.
+      #
+      # A dispatch treats the release tags as its input, and a re-run moves them: an attempt that
+      # already pushed its tag would have this step compute the version *after* the one it cut and
+      # release that under the tag guard's nose, so a second attempt over a revision that already
+      # carries a release tag refuses instead. The tag cannot say whether it is this run's or an
+      # older release's cut from the same commit, so nothing is recovered from it; the ways on are
+      # the ones that keep this run's version. A tag push is unaffected: there the tag name is the
+      # version, and a re-run of one derives the same version it did the first time.
       - name: derive the release version
         id: version
         env:
           BUMP: ${{ inputs.bump }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
+          if [ -n "$BUMP" ] && [ "$RUN_ATTEMPT" -gt 1 ] && git tag --list 'v*' --points-at "$GITHUB_SHA" | grep -q .; then
+            printf 'refusing: attempt %s of a release whose commit already carries a release tag; the version this run cut cannot be recomputed from the tags. Re-run only the failed jobs, or dispatch a new release\n' "$RUN_ATTEMPT" >&2
+            exit 1
+          fi
           if [ -n "$BUMP" ]; then
             version=$(scripts/bump-version.sh "$BUMP")
           else
