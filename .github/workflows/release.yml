@@ -6,7 +6,7 @@ name: release
 # carrying the bundle IS the release.
 #
 # The owner triggers a release from this workflow. `workflow_dispatch` (with a `bump` choice of
-# `major`, `minor` or `patch`) is the manual button; pushing a tag `v*` runs the same job for a
+# `patch`, `minor` or `major`) is the manual button; pushing a tag `v*` runs the same job for a
 # release cut by hand. Either way the job is idempotent: an existing tag must point at this run's
 # commit before any asset is attached, and an existing release gets the bundle refreshed rather
 # than a second release. A pull request runs validate.yml instead and can never publish or
@@ -43,9 +43,9 @@ on:
         required: true
         type: choice
         options:
-          - major
-          - minor
           - patch
+          - minor
+          - major
       dry_run:
         description: "Validate and build the bundle without tagging or releasing"
         required: false
