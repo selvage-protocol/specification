@@ -4,7 +4,8 @@
 # host has no Docker or Podman, so `act` cannot run here).
 #
 #   scripts/ci-local.sh validate  # the `schemas` job: the schemas, the vectors, the runner,
-#                                 # the decoder, the peer layer, the workflows, the version bump
+#                                 # the decoder, the peer layer, the workflows, the version bump,
+#                                 # the workflows' dry_run gating
 #   scripts/ci-local.sh lint      # actionlint over the workflow files
 #   scripts/ci-local.sh all       # lint + validate
 #
@@ -13,9 +14,11 @@
 # mistakes statically; the workflow has no actionlint step of its own, so that one is local-only.
 #
 # `validate` is `nix build .#checks.<system>.{schemas,runner,yprotocols,peer,peer-census,recipes,`
-# `workflows,bump-version}`, one check per step. `flake.nix` supplies the pinned Python and the
+# `workflows,bump-version,dry-run-gating}`, one check per step. `flake.nix` supplies the pinned
+# Python and the
 # four packages the workflow installs with pip — at the versions that workflow pins — so this
-# needs no virtualenv, no `pip` and no network. Each
+# needs no virtualenv, no `pip` and no network. The `dry_run` guard is the one check whose Python
+# carries PyYAML as well. Each
 # check's store path is the report of the command it ran, which is what is printed here: a check
 # that had to be built says nothing until it is done, and a cached one still says what it found.
 # A failure exits this script with the check's own report, which nix prints as the log tail.
@@ -69,6 +72,7 @@ job_validate() {
   check recipes "the peer corpus's frames, re-derived from its recipes"
   check workflows "the workflows' pins and the release-version guard"
   check bump-version "the version bump the release computes from its tags"
+  check dry-run-gating "the workflows' dry_run gating"
 }
 
 job_lint() {

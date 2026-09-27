@@ -33,8 +33,12 @@ jobs:
       # runner because a dependency moved, and pinned to the version the flake's nixpkgs
       # ships, so the sandbox and the runner run the same one. It ships wheels for every
       # supported interpreter, so this installs nothing from source.
+      #
+      # `pyyaml` is the `dry_run` guard's, not the validator's: `scripts/check_dry_run_gating.py`
+      # reads the workflow files, and the flake gives that check an interpreter of its own with
+      # this in it (see `flake.nix`), pinned to the same version.
       - name: install dependencies
-        run: python3 -m pip install jsonschema==4.26.0 referencing==0.37.0 websockets==16.1 cryptography==50.0.0
+        run: python3 -m pip install jsonschema==4.26.0 referencing==0.37.0 websockets==16.1 cryptography==50.0.0 pyyaml==6.0.3
 
       - name: validate the schemas and the vectors
         run: python3 schema/validate.py
@@ -81,6 +85,19 @@ jobs:
       # needs neither the dependencies above nor a server.
       - name: check the workflows and the release-version guard
         run: python3 scripts/check-workflows.py
+
+      # The other half of what a workflow can promise and fail to deliver, and the half
+      # `actionlint` cannot see: `release.yml` declares a `dry_run` input, its plan step is the
+      # last step of its `validate` job, and the whole `release` job below it carries
+      # `inputs.dry_run != true` — the conditions that keep a rehearsal from tagging and
+      # attaching a bundle. `scripts/check_dry_run_gating.py` reads that back and refuses a step
+      # or job after the plan that a dry run would still run; `scripts/check-workflows.py` above
+      # reads the `uses:` pins only. It needs the PyYAML installed above, and the flake check
+      # `dry-run-gating` is the same two commands.
+      - name: the release workflow's dry_run gating
+        run: |
+          python3 -B scripts/test_check_dry_run_gating.py
+          python3 -B scripts/check_dry_run_gating.py .github/workflows
 
       # `release.yml` computes its version with `scripts/bump-version.sh`, which reads the
       # release tags this repository carries no version string without, so the computation is
