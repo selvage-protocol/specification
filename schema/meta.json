@@ -4,11 +4,18 @@
   "title": "Selvage Session Protocol — the `GET /meta` body",
   "description": "The body `GET /meta` answers with, on the same listener as the session WebSocket. It is JSON but not a session frame: no `v`, no envelope, no `id`. Valid against PROTOCOL.md \u00a72.",
   "type": "object",
-  "required": ["server", "wire_versions", "capabilities", "keepalive"],
+  "required": [
+    "server",
+    "wire_versions",
+    "capabilities",
+    "keepalive"
+  ],
   "properties": {
     "capabilities": {
       "type": "array",
-      "items": { "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/capabilityName" },
+      "items": {
+        "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/capabilityName"
+      },
       "description": "The same list the handshake reply advertises: the two names this protocol defines for a server."
     },
     "keepalive": {
@@ -18,7 +25,7 @@
     "server": {
       "type": "string",
       "minLength": 1,
-      "description": "Free-form server identification, e.g. `selvaged/0.4.0`. Not stable; nothing may depend on it."
+      "description": "Free-form server identification, e.g. `selvaged/x.y.z`. Not stable; nothing may depend on it."
     },
     "wire_versions": {
       "$ref": "https://dontblameme.dev/schema/1/negotiation.json#/$defs/advertisedVersions",
