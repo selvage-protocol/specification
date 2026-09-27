@@ -157,7 +157,9 @@ canonical member order (`CANONICAL.md` §2.1), which the server's `Meta` struct 
 its members in ascending order. With `--serve-page` the same listener serves a static page from
 `GET /` and every other plain path, on the same origin as `/session` and `/meta`, which is what
 makes a page-link invite (§5.1) open in a browser; that page is a deployment's and not this
-protocol's (`PROTOCOL.md` §2).
+protocol's (`PROTOCOL.md` §2). A page may also be served at the room's address by a process that
+forwards `/session` and `/meta` to the server behind it, so `--serve-page` is one of two ways rather
+than the way (`A.10`).
 
 ### A.6 Reconnection status, and what it costs
 
@@ -196,6 +198,32 @@ so no second spelling of the
 one value is open between the two. The corpus pins both shapes the refusal takes: `vectors/005`
 refuses `selvage/3`, `selvage`, `selvage/03` and a frame carrying no `v` before seating, and
 `vectors/027` refuses `selvage/1` on a seated connection, which stays open.
+
+### A.10 The two images, and the relay between them
+
+The project publishes two images rather than one. `ghcr.io/selvage-protocol/selvaged` is the server
+alone: `/session` and `/meta`, a `404` on any other path, and no page of its own.
+`ghcr.io/selvage-protocol/selvage-web` is the page, and, when `SELVAGE_SERVER` names a server as an
+`http://`, `https://` or bare `host:port` base, it also relays `/session` and `/meta` to that
+server, so one address serves both the page and the room. With the variable unset nothing is relayed
+and those two paths answer `404` at the page's address, as they did before the relay existed.
+`--serve-page` stays on the server's own command line, for an operator who mounts a page directory
+of their own (`A.5`).
+
+**A forwarding route is not the front `PROTOCOL.md` §12 requires.** That requirement is a set of
+properties rather than a shape — a connection cap, an idle deadline and a rate limit — and a plain
+forwarder supplies none of the three: nothing bounds how many sockets one source may hold at
+`/session`, nothing but the server's own ping ends an idle one, and nothing rate-limits the
+handshake. The shape in this project that does supply them is `reference_server/deploy/proxy/`.
+
+**What the two deployments do to an invite.** Both reference clients hand on the page link and
+nothing else (`nvim_client/lua/selvage/init.lua`, `vscode_client/src/adapter/extension.ts`), so a
+room an editor started has a page link as its invite and never the connection URL. A room on a
+server-only deployment is therefore reachable by an editor dialling its address directly, while a
+browser opening the invite gets a `404`; in a relaying deployment the invite reaches a browser only
+if the editor that minted it dials the room's address — the page's — rather than the server's.
+Whoever runs the relay is also the operator of the page, holding the server's own view of the
+traffic and serving the code the guest runs (`PROTOCOL.md` §3).
 
 ---
 
@@ -601,17 +629,20 @@ is the only side that can carry it: a `send` step's text can hold the escape, an
 §2 makes a lone surrogate unrepresentable, so the tooling's canonical check refuses to let a vector
 claim those bytes. Whether the model should refuse the value too, and where, is what is unresolved.
 
-**B.28 Which invite form a host hands on.** `PROTOCOL.md` §5.1 now states both forms: the
-connection URL a socket opens directly, and the page link whose origin is the server. The reference
-clients hand on the **page link** for every room, including a room on a server started without
+**B.28 Which invite form a host hands on.** `PROTOCOL.md` §5.1 now states both forms: the connection
+URL a socket opens directly, and the page link whose address is the room's. The reference clients
+hand on the **page link** for every room, including a room on a server started without
 `--serve-page`, where the link opens a `404` in a browser and joins only when pasted into a client
 that reads page links; the Rust reference client builds the connection URL and cannot read a page
-link at all. Whether a host whose server serves no page should hand on the connection URL instead,
-and whether §5.1's both-forms requirement is what settles that divergence (the Rust client would
-then owe a page-link reader) or the page form should stay a client convention this document merely
-describes, is **unresolved**. A link is a handshake in the sense that one peer's link is the
-other's entry point, and the two reference client families currently disagree about which form a
-human is given.
+link at all, which is the reason the divergence stands. What this note called the unusual case is
+now the published server image's normal shape — that image serves the protocol alone, and a page
+reaches the room's address through a relay or an operator's own `--serve-page` (`A.10`) — so the
+question below is live rather than theoretical. Whether a host whose server serves no page should
+hand on the connection URL instead, and whether §5.1's both-forms requirement is what settles that
+divergence (the Rust client would then owe a page-link reader) or the page form should stay a client
+convention this document merely describes, is **unresolved**. A link is a handshake in the sense
+that one peer's link is the other's entry point, and the two reference client families currently
+disagree about which form a human is given.
 
 **B.29 The corpus cannot set a server's policy bounds.** Every capacity row of `PROTOCOL.md` §2.1
 is enforced by the reference server, and none of them can be set by a transcript: `harness`
