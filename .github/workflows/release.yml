@@ -5,12 +5,23 @@ name: release
 # bundle. There is no registry and no image; the tag plus the GitHub Release
 # carrying the bundle IS the release.
 #
-# The owner triggers a release from this workflow. `workflow_dispatch` (with a
-# `version` input) is the manual button; pushing a tag `v*` runs the same job
-# for a release cut by hand. Either way the job is idempotent: an existing
-# tag must point at this run's commit before any asset is attached, and an
-# existing release gets the bundle refreshed rather than a second release.
-# A pull request runs validate.yml instead and can never publish or release.
+# The owner triggers a release from this workflow. `workflow_dispatch` (with a `bump` choice of
+# `major`, `minor` or `patch`) is the manual button; pushing a tag `v*` runs the same job for a
+# release cut by hand. Either way the job is idempotent: an existing tag must point at this run's
+# commit before any asset is attached, and an existing release gets the bundle refreshed rather
+# than a second release. A pull request runs validate.yml instead and can never publish or
+# release.
+#
+# This repository carries no version string in its tree, so a dispatch does not name the number
+# it cuts: `scripts/bump-version.sh <bump>` applies the bump to the highest release tag this
+# checkout carries — the tags order the versions, not the commit `git describe` reaches — and
+# prints the next version, which names the tag `v<version>`, the bundle and the Release.
+# `validate` derives it once and `release` uses that, so the version is fixed for the whole run:
+# a re-run of `release` after a failure has to name the version the run already cut, and
+# recomputing it there would name the next one and cut a second release under the tag guard's
+# nose. A full re-run of a dispatch refuses for the same reason, at the step that derives the
+# version. A tag pushed by hand needs no computation — there the tag name is the version — and both
+# shapes go through `scripts/check-release-version.sh`, the rule for what a version is.
 #
 # Two jobs, so that the one holding a write token runs no code it did not have to. `validate`
 # installs from PyPI and runs this repository's Python — the same checks as validate.yml, every
@@ -21,15 +32,20 @@ name: release
 #
 # The wire version string is `selvage/2` and the canonical form is `SJ-C/1`.
 # Both are protocol CONSTANTS, not release versions; the release version is
-# the `version` input on dispatch, or the tag name on a tag push. The typo
-# guard names the near-homophone `salvage/`, one keystroke away.
+# what `scripts/bump-version.sh` computes on a dispatch, or the tag name on a
+# tag push. The typo guard names the near-homophone `salvage/`, one keystroke
+# away.
 on:
   workflow_dispatch:
     inputs:
-      version:
-        description: "Release version, without the leading v (the tag v<version> is created)"
+      bump:
+        description: "Which part of the version to bump; the current version is this repository's highest release tag"
         required: true
-        default: "0.1.1"
+        type: choice
+        options:
+          - major
+          - minor
+          - patch
       dry_run:
         description: "Validate and build the bundle without tagging or releasing"
         required: false
@@ -52,33 +68,58 @@ jobs:
     timeout-minutes: 15
     permissions:
       contents: read
+    # The version the run cuts, derived here once and used by `release` below. See the step.
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     # The checks import `schema/validate.py`, and an import writes a `__pycache__` beside it.
     # Nothing in this job needs a cache on disk.
     env:
       PYTHONDONTWRITEBYTECODE: "1"
     steps:
+      # `fetch-tags` because `scripts/bump-version.sh` computes the version from the release
+      # tags, and a checkout that does not carry them cannot name one: they are not fetched by
+      # default, whatever the depth.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-tags: true
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: "3.14.7"
 
-      # Refused here, before anything else runs, so a bad value costs nothing. The version
-      # passes through `env` rather than a workflow expression inside `run:`, so no part of it
-      # is read as shell syntax, and its shape lives in `scripts/check-release-version.sh`,
-      # where it has a test.
-      - name: check the release version
+      # Derived and refused before any check, build or tag runs, so a bump word or a tag name
+      # that names no version costs nothing. The word passes through `env` rather than a workflow
+      # expression inside `run:`, so no part of it is read as shell syntax; the computation is
+      # `scripts/bump-version.sh`'s and the shape it and a tag name must have is
+      # `scripts/check-release-version.sh`'s, each with its own test. The version leaves as a
+      # job output, so no second line can ride into `$GITHUB_ENV` here.
+      #
+      # A dispatch treats the release tags as its input, and a re-run moves them: an attempt that
+      # already pushed its tag would have this step compute the version *after* the one it cut and
+      # release that under the tag guard's nose, so a second attempt over a revision that already
+      # carries a release tag refuses instead. The tag cannot say whether it is this run's or an
+      # older release's cut from the same commit, so nothing is recovered from it; the ways on are
+      # the ones that keep this run's version. A tag push is unaffected: there the tag name is the
+      # version, and a re-run of one derives the same version it did the first time.
+      - name: derive the release version
+        id: version
         env:
-          DISPATCH_VERSION: ${{ inputs.version }}
+          BUMP: ${{ inputs.bump }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
         run: |
-          if [ -n "$DISPATCH_VERSION" ]; then
-            version="$DISPATCH_VERSION"
+          if [ -n "$BUMP" ] && [ "$RUN_ATTEMPT" -gt 1 ] && git tag --list 'v*' --points-at "$GITHUB_SHA" | grep -q .; then
+            printf 'refusing: attempt %s of a release whose commit already carries a release tag; the version this run cut cannot be recomputed from the tags. Re-run only the failed jobs, or dispatch a new release\n' "$RUN_ATTEMPT" >&2
+            exit 1
+          fi
+          if [ -n "$BUMP" ]; then
+            version=$(scripts/bump-version.sh "$BUMP")
           else
             version="${GITHUB_REF_NAME#v}"
           fi
           scripts/check-release-version.sh "$version"
+          printf 'release version: %s\n' "$version"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       # Same pins as validate.yml, so a bundle that passes here cannot fail there.
       - name: install dependencies
@@ -156,20 +197,19 @@ jobs:
             exit 1
           fi
 
-      # The version was refused or accepted by `validate`; it is resolved again here rather
-      # than handed across, and put through the same guard, because a value written into
-      # `$GITHUB_ENV` must never carry a second line.
+      # The version `validate` derived, put through the same shape guard here rather than
+      # trusted across the job boundary: a value that carried a second line would otherwise
+      # reach `$GITHUB_ENV` and, from there, the tag, the bundle's name and the Release's.
+      # Deriving it again in this job — which is what it used to do to the dispatch input, and
+      # what recomputing from the tags now would mean — computes from the tags as they stand
+      # *now*, so a re-run after a failure that had already pushed its tag would name the next
+      # version instead of the one it cut, and cut a second release.
       - name: resolve the release version
         env:
-          DISPATCH_VERSION: ${{ inputs.version }}
+          VERSION: ${{ needs.validate.outputs.version }}
         run: |
-          if [ -n "$DISPATCH_VERSION" ]; then
-            version="$DISPATCH_VERSION"
-          else
-            version="${GITHUB_REF_NAME#v}"
-          fi
-          scripts/check-release-version.sh "$version"
-          echo "RELEASE_VERSION=$version" >> "$GITHUB_ENV"
+          scripts/check-release-version.sh "$VERSION"
+          echo "RELEASE_VERSION=$VERSION" >> "$GITHUB_ENV"
 
       # The bundle is what a consumer pins: the machine-readable model, the conformance
       # corpus, the two normative documents, and the licence the prose, schema and vectors

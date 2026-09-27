@@ -36,11 +36,15 @@
         # failed. The command's output goes to stderr as the build runs; `$out` gets one stable
         # line, because the runner prints per-test timings and a derivation whose output differs
         # from build to build is one `nix build --rebuild` rightly calls non-deterministic.
-        # `bash` is here for the workflows check, which drives a shell guard; the other two need
-        # only the interpreter.
-        mkCheck = name: command:
+        # `bash` is here for the checks that drive a shell guard over a table of values — the
+        # workflows check and the version bump — and `extra` is whatever else a check needs.
+        mkCheck = mkCheckUsing [];
+
+        # `extra` is for a check that needs a tool the others do not: the version bump runs
+        # `git` over the throwaway repositories it builds for itself.
+        mkCheckUsing = extra: name: command:
           pkgs.runCommand "specification-${name}" {
-            nativeBuildInputs = [python pkgs.bash];
+            nativeBuildInputs = [python pkgs.bash] ++ extra;
           } ''
             cd ${self}
             # The source tree is the store's, which is read-only; a bytecode cache belongs
@@ -87,6 +91,9 @@
           # Every `uses:` in the workflows pinned to a commit sha, and the release-version
           # guard of `release.yml` driven over the values it must take and refuse.
           workflows = mkCheck "workflows" "python3 scripts/check-workflows.py";
+          # The version bump `release.yml` computes its version with, driven over the words it
+          # takes and the tags it refuses, in git repositories the check builds for itself.
+          bump-version = mkCheckUsing [pkgs.git] "bump-version" "python3 scripts/test_bump_version.py";
         };
       }
     );

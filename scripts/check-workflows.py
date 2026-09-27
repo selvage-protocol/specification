@@ -13,9 +13,11 @@ running its own tests:
   is that release is checked against the tag by hand (`gh api repos/<owner>/<repo>/git/ref/
   tags/<tag>`, whose `.object.sha` is the value a `uses:` must carry), because this check
   runs where the network does not reach.
-- **The release version a dispatch or a tag names is `X.Y.Z`**, which is
+- **The release version a run names is `X.Y.Z`** — the tag name on a tag push, and what
+  `scripts/bump-version.sh` computes from the release tags on a dispatch — which is
   `scripts/check-release-version.sh`'s rule and is driven here over a table of values
-  rather than trusted to a `case` glob.
+  rather than trusted to a `case` glob. What the computation does with a tag is the flake
+  check beside this one, `scripts/test_bump_version.py`.
 
 The scan is line-based on purpose: the flake's Python has no YAML parser, and both
 relationships are readable without one — a `uses:` line, and a shell command's exit status.

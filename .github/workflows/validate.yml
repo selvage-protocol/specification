@@ -81,3 +81,11 @@ jobs:
       # needs neither the dependencies above nor a server.
       - name: check the workflows and the release-version guard
         run: python3 scripts/check-workflows.py
+
+      # `release.yml` computes its version with `scripts/bump-version.sh`, which reads the
+      # release tags this repository carries no version string without, so the computation is
+      # checked here too: `scripts/test_bump_version.py` builds throwaway git repositories and
+      # drives the three bump words, the carry and every refusal against them. It needs `git`
+      # (the runner has it) and reads none of this checkout's own tags.
+      - name: check the version bump
+        run: python3 scripts/test_bump_version.py
