@@ -221,11 +221,11 @@ These words carry obligations, and the protocol uses them precisely.
   while creating nothing would be a lie.
 
   Other paths return `404`. An implementation **MAY** serve a static page there
-  instead — the reference server does, from `--serve-page`, on the same origin
-  as `/session` and `/meta` — which is what lets an invite link, whose origin is
-  the server (§5.1), open in a browser. That page is outside this protocol: §1
-  covers no HTTP surface but `GET /meta`, and the protocol gives a room exactly
-  one wire endpoint.
+  instead — the reference server can, from `--serve-page`, on the same origin
+  as `/session` and `/meta` — which is what lets an invite link, whose address
+  is the room's (§5.1), open in a browser. That page is outside this protocol:
+  §1 covers no HTTP surface but `GET /meta`, and the protocol gives a room
+  exactly one wire endpoint.
 
 - **Frame types.** Text frames carry the JSON session envelope (§4–§6). Binary
   frames are sealed frames carrying y-protocols payloads (§7, §8). The server
@@ -676,26 +676,27 @@ first is the connection URL above, exactly as it stands:
 `ws://host:port/session?room=<room_id>&token=<tok>`. A socket can be opened on
 it directly, and it is the form an implementation that serves no page names. The
 second is the **page link**, which is what the reference clients hand a guest,
-because a link a browser can open is one that works for every guest: the page
-the room's server serves — an implementation **MAY** serve one (§2) — over the
-scheme a browser speaks, with the same host, port and path prefix and nothing
-else in it:
+because a link a browser can open is one that works for every guest: a page
+served at the room's address — an implementation **MAY** serve one (§2) —
+over the scheme a browser speaks, with the same host, port and path prefix and
+nothing else in it:
 
 ```
 https://host/page/?room=<room_id>&token=<tok>
 http://host:port/?room=<room_id>&token=<tok>
 ```
 
-Its origin **is** the server, so no member of the link names a second address
-and a link cannot point at a page that dials another. A receiver derives the
-connection URL from it by reading the scheme back — `http://` as `ws://`,
-`https://` as `wss://` — and appending `/session`, and the rules above apply to
-the page link's query unchanged: `room` and `token` are percent-decoded by RFC
-3986, each appears at most once, and any other parameter, including a `server`
-written by an implementation that predates this form, is ignored. **A receiver
-MUST accept either form and join the room it names**, and a host **MAY** hand on
-either; a link that truncates either form is the truncated-invite case the
-`token`-without-`room` rule above describes.
+Its host, port and path prefix **are** the room's address, the one at which the
+room's `/session` and `/meta` answer, whatever stands behind it, so no member of
+the link names a second address and a link cannot point at a page that dials
+another. A receiver derives the connection URL from it by reading the scheme
+back — `http://` as `ws://`, `https://` as `wss://` — and appending `/session`,
+and the rules above apply to the page link's query unchanged: `room` and `token`
+are percent-decoded by RFC 3986, each appears at most once, and any other
+parameter, including a `server` written by an implementation that predates this
+form, is ignored. **A receiver MUST accept either form and join the room it
+names**, and a host **MAY** hand on either; a link that truncates either form is
+the truncated-invite case the `token`-without-`room` rule above describes.
 
 The two forms carry the same secret and differ only in which scheme names the
 same address, so §12's rule about an invite URL covers both.
