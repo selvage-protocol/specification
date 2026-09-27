@@ -32,19 +32,30 @@
           ps.cryptography
         ]);
 
+        # The one check that is not the validator's or the runner's: the `dry_run` guard reads the
+        # workflow files, and PyYAML is what reads YAML. `validate.yml` installs it with pip in
+        # the step that runs that check.
+        pythonWithPyYaml = pkgs.python3.withPackages (ps: [ ps.pyyaml ]);
+
         # One check per step of `scripts/ci-local.sh validate`, so a failure names the step that
         # failed. The command's output goes to stderr as the build runs; `$out` gets one stable
         # line, because the runner prints per-test timings and a derivation whose output differs
         # from build to build is one `nix build --rebuild` rightly calls non-deterministic.
         # `bash` is here for the checks that drive a shell guard over a table of values — the
         # workflows check and the version bump — and `extra` is whatever else a check needs.
-        mkCheck = mkCheckUsing [];
+        mkCheck = mkCheckWith python [];
 
         # `extra` is for a check that needs a tool the others do not: the version bump runs
         # `git` over the throwaway repositories it builds for itself.
-        mkCheckUsing = extra: name: command:
+        mkCheckUsing = mkCheckWith python;
+
+        # The interpreter comes first because one check needs one the others do not: the `dry_run`
+        # guard reads the workflow files, so it needs PyYAML — and giving it to the interpreter
+        # the validator's checks use would make `scripts/check-workflows.py`'s "the flake's Python
+        # has no YAML parser" something it would have to stop saying.
+        mkCheckWith = interpreter: extra: name: command:
           pkgs.runCommand "specification-${name}" {
-            nativeBuildInputs = [python pkgs.bash] ++ extra;
+            nativeBuildInputs = [interpreter pkgs.bash] ++ extra;
           } ''
             cd ${self}
             # The source tree is the store's, which is read-only; a bytecode cache belongs
@@ -94,6 +105,17 @@
           # The version bump `release.yml` computes its version with, driven over the words it
           # takes and the tags it refuses, in git repositories the check builds for itself.
           bump-version = mkCheckUsing [pkgs.git] "bump-version" "python3 scripts/test_bump_version.py";
+          # The guard around what a workflow's `dry_run` input promises
+          # (`scripts/check_dry_run_gating.py`). `release.yml` declares the input, its plan step
+          # is the last step of the `validate` job and the whole `release` job below it carries
+          # `inputs.dry_run != true`, which is what keeps a rehearsal from tagging and attaching
+          # a bundle; a step added below the plan with no condition does what the plan said it
+          # would not. `actionlint` lints that file clean, because the defect is the condition a
+          # step does *not* carry. It reads the workflow files, so it runs under its own Python
+          # with PyYAML; the second command is this repository's own workflows.
+          dry-run-gating =
+            mkCheckWith pythonWithPyYaml [] "dry-run-gating"
+              "python3 -B scripts/test_check_dry_run_gating.py && python3 -B scripts/check_dry_run_gating.py .github/workflows";
         };
       }
     );
