@@ -1,10 +1,10 @@
 # Replaying the vectors against a server
 
 `schema/validate.py` checks the shape of every schema-eligible frame; it cannot check that a server
-produces the bytes. `runner/run_vectors.py` does, and needs no Rust toolchain: it starts a `selvaged` on an
-ephemeral port, replays each transcript against it over a real WebSocket, and compares what comes
-back, the text frames structurally and then byte for byte, the binary frames byte for byte, and the
-document and awareness state once a frame is applied.
+produces the bytes. `runner/run_vectors.py` does, and needs no Rust toolchain: it starts a `selvaged`
+on an ephemeral port, replays each transcript against it over a real WebSocket, and compares what
+comes back, the text frames structurally and then byte for byte, the binary frames byte for byte, and
+the document and awareness state once a frame is applied.
 
 It needs Python 3 and four packages:
 
@@ -24,7 +24,7 @@ nix develop . -c cargo build -p selvaged
 export SELVAGE_SELVAGED=$PWD/target/debug/selvaged
 ```
 
-Then, from this directory:
+Then, from the repository root:
 
 ```
 python3 runner/run_vectors.py

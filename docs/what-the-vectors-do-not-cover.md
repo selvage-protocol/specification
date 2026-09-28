@@ -29,5 +29,5 @@ them is weak evidence.
 Client behaviour beyond that (renewal, expiry, reconnection, the adapter seam, the two clients'
 agreement) is tested in the reference server's
 [`crates/harness/tests/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests)
-and in the clients' own suites. The cases these vectors do not reach are listed in
-[`NOTES.md`](../NOTES.md) §B, and a second implementation will find more.
+and in the clients' own suites. The cases these vectors do not reach are listed in `NOTES.md` §B,
+and a second implementation will find more.
