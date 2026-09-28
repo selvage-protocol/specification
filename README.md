@@ -67,7 +67,7 @@ workflow files. It needs `nix`:
 
 ```
 scripts/ci-local.sh all      # lint + validate
-scripts/ci-local.sh validate # the flake checks alone
+scripts/ci-local.sh validate # the flake checks and the link check
 ```
 
 Its `validate` half refuses to run when `schema/`, `vectors/`, `runner/` or the flake files differ
