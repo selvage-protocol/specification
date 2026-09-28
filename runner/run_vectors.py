@@ -27,7 +27,7 @@ attempted** and where it is run, so a corpus with two layers cannot be read as o
 passed; `--layer peer` refuses rather than attempting nothing and exiting zero. The peer
 directory is not a glob this file reaches, so nothing about the wire replay changes.
 
-The comparison rules are the ones `README.md` lists: member sets are exact in both
+The comparison rules are the ones `docs/comparison-rules.md` lists: member sets are exact in both
 directions, `peers` is a set, and a text frame is compared twice — structurally, so a
 failure names the member, and then as whole bytes, because the vector is written in
 the canonical form. A `$name` placeholder binds the first value it sees and must be
