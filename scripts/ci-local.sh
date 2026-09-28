@@ -27,8 +27,7 @@
 # `links` is not a flake check: it is `lychee` over `README.md` and `docs/`, the reader-facing prose
 # this repository writes itself (`PROTOCOL.md` and `NOTES.md` are read as documents rather than
 # swept here with it). The runner has no nix, so it installs the pinned lychee release and calls
-# this mode; lychee comes from `PATH` when it is there and from `nix shell` otherwise. That is why
-# the flake's system is read inside `validate` rather than at the top of this file.
+# this mode; lychee comes from `PATH` when it is there and from `nix shell` otherwise.
 #
 # What the checks read is the tracked tree at its working-tree content: a file that is
 # new and untracked is invisible to them, while a modified or deleted tracked file is
