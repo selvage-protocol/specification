@@ -62,8 +62,8 @@ produces those bytes. To replay the corpus against a real server, see [Replaying
 a server](docs/replaying-the-wire-vectors.md).
 
 `scripts/ci-local.sh` runs the same commands as `.github/workflows/validate.yml`, one flake check per
-step, plus the link check over this file and `docs/` with `lychee`, and actionlint over the workflow
-files. It needs `nix`:
+step, plus the link check over this file and the `docs` tree with `lychee`, and actionlint over the
+workflow files. It needs `nix`:
 
 ```
 scripts/ci-local.sh all      # lint + validate

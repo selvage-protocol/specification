@@ -1,6 +1,6 @@
 # What the link check covers, and what it cannot fetch.
 #
-# The scope is `README.md` and `docs/`: this repository's reader-facing front matter, the spine and
+# The scope is `README.md` and the `docs` tree: this repository's reader-facing front matter, the spine and
 # the topic documents it links to. That is what `scripts/ci-local.sh links` and the matching step in
 # `.github/workflows/validate.yml` pass to lychee. `PROTOCOL.md` and `NOTES.md` are deliberately not
 # in that list: they are the specification and its notes, their links are read where the documents

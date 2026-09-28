@@ -107,7 +107,7 @@ jobs:
       - name: check the version bump
         run: python3 scripts/test_bump_version.py
 
-      # The reader-facing prose: `README.md` and the `docs/` tree it links to, checked with the
+      # The reader-facing prose: `README.md` and the `docs` tree it links to, checked with the
       # `lychee.toml` a developer runs and the same pinned lychee release. The runner has no nix, so
       # the release archive is installed here and `scripts/ci-local.sh links` takes lychee from
       # `PATH`; `$RUNNER_TEMP` rather than this host's RAM-backed `/tmp`.
