@@ -301,7 +301,7 @@ ignore an unknown query parameter, which is the whole of what such a parameter c
 learns its own role authoritatively from the state. It is implemented when the revision's
 implementations land; until then `DESIGN.md` §4.2's inversion stands in full — every holder of the
 invite token edits the session CRDT — and the page's claim gate keeps refusing "guests are read-only"
-for the reason it gives (`site/README.md`).
+for the reason it gives (`site/docs/must-not-say.md`).
 
 **B.4 Selections are published with `assoc: 0`.** A selection endpoint is a yjs `RelativePosition`
 object, no index reaches the wire, and offsets are local to a client's adapter seam. Both reference
