@@ -1185,8 +1185,8 @@ def check_refusals(reg: Registry) -> int:
     check green. The census below is that table in the order the table reads — `bad_payload` at
     §6.1's step 8, before `stale_issued` at step 9 — and the two bad ones are the two ways a
     vocabulary like this goes wrong in practice: a reason no conforming receiver can produce
-    (`bad_tag`, which the signature's coverage of the ciphertext makes unreachable, measured in
-    `docs/studies/peer-corpus.md` §5.4) and a misspelling of one that exists.
+    (`bad_tag`, which the signature's coverage of the ciphertext makes unreachable) and a
+    misspelling of one that exists.
     """
     expected = [
         "bad_envelope",
@@ -1251,9 +1251,9 @@ def _member_names(value: object) -> set[str]:
 def absence_violations(document: object) -> list[str]:
     """What a `selvage/2` transcript breaks the absence rule with, if anything.
 
-    The rule, as `docs/studies/peer-corpus.md` §6 corrects it — the study's own sentence said
-    "no server-authored frame contains a path, a role, a file name or a character of text",
-    which the reference server fails on a `display_name` — is:
+    The rule, corrected where a plain statement of it would fail the reference server — "no
+    server-authored frame contains a path, a role, a file name or a character of text" fails on a
+    `display_name` — is:
 
     > No server-authored frame carries a `path`, a `documents`/`paths`/`grant` member, a
     > `role`, or any byte of document content or cursor state.
