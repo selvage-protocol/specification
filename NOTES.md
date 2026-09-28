@@ -280,8 +280,7 @@ signature verifiable against a key the room's host has committed (`PROTOCOL.md` 
 [`CANONICAL.md`](CANONICAL.md) §6.1), and a client **MUST NOT** apply content from a sender it cannot
 authenticate, nor document content from a sender the host's state commits as `viewer` (§13.2,
 §13.4, §13.5), reporting the second `unauthorised_content`. Nothing implements either yet — no client
-speaks `selvage/2` — so what they still lack is a vector, which is **step 4b** of
-`docs/studies/e2ee-plan.md` §11.
+speaks `selvage/2` — so what they still lack is a vector, which is **step 4b** of the plan.
 
 **The residual, stated as it is.** Even with both, the honest sentence is "no conforming client
 applies a viewer's content", not "a viewer cannot edit": a viewer holds the room key once there is
@@ -290,8 +289,8 @@ applies it. Endpoint enforcement is a denial between conforming peers, not a bou
 
 **The accepted cost of the next revision, in this item's own terms.** Verifying a sender costs every
 client a verification state machine and a key exchange that is not a person's, which is the one place
-the project's "a stranger can implement a client from the spec" property is genuinely strained
-(`docs/studies/e2ee-plan.md` §8). It buys what this item wanted without asking anything of the server:
+the project's "a stranger can implement a client from the spec" property is genuinely strained.
+It buys what this item wanted without asking anything of the server:
 a role a peer cannot forge and a sender no relay can mislabel.
 
 **Not implemented, and what triggers it.** The role is specified and unimplemented. `viewer` is a
@@ -686,10 +685,9 @@ frame to this layout, with `crates/selvaged` relaying a sealed frame without ope
 client carrying the same module (`vscode_client`'s `src/engine/sealed.ts`, and its copies in
 `web_client` and in `nvim_client`'s vendored engine). The wire version is `selvage/2` (§A.9), and
 the peer corpus is written against these bytes. The measurement script lived in
-`.tmp/envelope/envelope.mjs` in this pass's worktree and is not committed, as
-`docs/studies/peer-corpus.md` §10's was not; it rebuilds that study's vector 101's ciphertext and
-signature byte for byte (apart from the three length bytes this layout drops), and exercises every
-refusal rule below.
+`.tmp/envelope/envelope.mjs` in this pass's worktree and is not committed; it rebuilds vector 101's
+ciphertext and signature byte for byte (apart from the three length bytes this layout drops), and
+exercises every refusal rule below.
 
 **The signature is Ed25519**, measured against ECDSA P-256 rather than preferred. The two are the
 same size on the wire once the encoding is pinned — 64 bytes either way — so "ECDSA P-256 has a
@@ -735,25 +733,24 @@ The two sealed payloads are JSON and inherit §2 and §3, with no `v` of their o
 theirs, and `schema/validate.py` runs `sealed.json` against conforming and refused values, so the
 member set cannot be relaxed with every other check still green.
 
-**The fixture.** `docs/studies/peer-corpus.md` §5 rests on a fixture room key, fixture host keys and
-fixed nonces, and no word in this file described one until now, because nothing here had a place
-for it. A fixture is a set of **public test values** — a room id, a room key, three Ed25519 keypairs
-and one nonce a frame — whose job is to make a sealed frame a constant two implementations can be
-held to; it lives in a public repository and is never a room's. Its authority is reproducibility and
-not secrecy, and `test_recipe.py` re-derives what is derivable and asserts the bytes a vector
+**The fixture.** The corpus rests on a fixture room key, fixture host keys and fixed nonces, and no
+word in this file described one until now, because nothing here had a place for it. A fixture is a
+set of **public test values** — a room id, a room key, three Ed25519 keypairs and one nonce a frame —
+whose job is to make a sealed frame a constant two implementations can be held to; it lives in a
+public repository and is never a room's. Its authority is reproducibility and not secrecy, and
+`test_recipe.py` re-derives what is derivable and asserts the bytes a vector
 carries. One thing a fixture cannot make derivable is the signature: Safari's Ed25519 **randomises**
 signatures (its compat data says so, citing the noise draft; Node, Chrome, Firefox and Rust follow
 RFC 8032), so a conforming implementation need not produce the bytes a vector carries. A sealed
-vector therefore asserts that a signature verifies and carries its own as literal hex, which is
-`docs/studies/peer-corpus.md` §5.1's "`hex` is a checked cache" rule applied to the one part of the
-envelope that has no derivation at all.
+vector therefore asserts that a signature verifies and carries its own as literal hex — the one part
+of the envelope with no derivation at all, where the `hex` is a checked cache and not the source of
+truth.
 
 **What is not here.** The holds and their lease (whose carrier is a `kind` this version leaves
 unused) and `selvage/2`'s session layer, which is §B.32. The resume, the rule that refuses a
 committed `viewer`'s content and the client-behaviour section that stands where the server no longer
 enforces anything are §B.34; `dropped`, the mutation switches and whether a client persists the
-host's private key are open where `docs/studies/peer-corpus.md` §9 and `docs/studies/e2ee-plan.md`
-§14 left them.
+host's private key are open.
 
 **B.32 `selvage/2`'s session layer: what is settled, and what is not.** `PROTOCOL.md` §1.1 names
 every passage of `selvage/2`, and this item's are the session layer's: what `/meta` advertises, the
@@ -790,33 +787,30 @@ What the passages settle:
 - **Both invite forms carry the fragment** (§5.1), and a client refuses locally when it is absent,
   has a value missing, or has one that is not 32 bytes. That refusal has **no wire form** — no
   `session.error`, no close code, no §11 code — and the sentence said is the clients' own: the
-  shared rows live in `docs/studies/client-command-parity.md` §5 and are pinned by a test in each
-  client. A **handover** (the two values said separately, beside a link that lost its fragment) is
-  allowed and **NOT RECOMMENDED**; it is not a second flow.
+  shared rows are pinned by a test in each client. A **handover** (the two values said separately,
+  beside a link that lost its fragment) is allowed and **NOT RECOMMENDED**; it is not a second flow.
 
 **What is not here, and which step owns it.** The three `doc.*` methods with the open-document set
 and the grant, the host machinery, the roles and the full-set echo are deleted from `selvage/1`
 rather than restated in `selvage/2`'s terms. That step has two halves and §B.33 is the first of
 them, the specification's; the second, deleting version 1's text, schema members and vectors and
-re-baselining the corpus, is **step 8** of the same plan (`docs/studies/e2ee-plan.md` §11) and lands
-after the release wave. The holds and the lease that replace the set are **step 4b**'s and not step
-4's, and so is the clock the lease runs on (`docs/studies/e2ee-plan.md` §8, §11). What step 4 wrote —
-the resume, the rule that refuses a committed `viewer`'s content and the client-behaviour section that
-stands where the server no longer enforces anything — is §B.34. The lease's clock may want a number
-`keepalive` does not carry today (`docs/studies/relay-only-spec.md` §8). The wire version itself does
-not move: `v: "selvage/1"` is what every implementation writes until the revision's implementations
+re-baselining the corpus, is **step 8** of the plan and lands after the release wave. The holds and
+the lease that replace the set are **step 4b**'s and not step 4's, and so is the clock the lease runs
+on. What step 4 wrote — the resume, the rule that refuses a committed `viewer`'s content and the
+client-behaviour section that stands where the server no longer enforces anything — is §B.34. The
+lease's clock may want a number `keepalive` does not carry today. The wire version itself does not
+move: `v: "selvage/1"` is what every implementation writes until the revision's implementations
 land together.
 
 **Two things this pass found rather than settled.** The capability *mechanism* is left with two
 names, both of which the version already fixes, so the array now tells a peer nothing it did not
-already know; whether it stays at all is open (`docs/studies/relay-only-spec.md` §2.6). And
-`docs/studies/relay-only-spec.md` §6's "the schema is the check" is right about the intent and
-wrong as written: no schema in this directory forbids a member, because tolerance is the rule
-(`CANONICAL.md` §3), so a server-authored frame carrying a `role` or a `documents` does **not**
-fail `schema/session.json`. What holds a server to the member set of its version is the corpus's
-exact member comparison in the replay; the model's part is that the version's own shape validates
-at all, which is what `schema/session-v2.json` and `schema/validate.py`'s `check_session_v2` add
-for the frames §2, §5 and §6.1 describe.
+already know; whether it stays at all is open. And the claim that "the schema is the check" is right
+about the intent and wrong as written: no schema in this directory forbids a member, because
+tolerance is the rule (`CANONICAL.md` §3), so a server-authored frame carrying a `role` or a
+`documents` does **not** fail `schema/session.json`. What holds a server to the member set of its
+version is the corpus's exact member comparison in the replay; the model's part is that the version's
+own shape validates at all, which is what `schema/session-v2.json` and `schema/validate.py`'s
+`check_session_v2` add for the frames §2, §5 and §6.1 describe.
 
 **B.33 `selvage/2`'s server, and the `selvage/1` passages that stay.** `PROTOCOL.md` §1.1, §1.2,
 §2.1, §3, §6, §9, §9.1, §9.2 and §11 now state the server of `selvage/2` as what it is, and
@@ -862,14 +856,13 @@ What that server is, positively:
 
 - **`room.gone` has no recipient in `selvage/2`.** The plan and the corpus study both keep the
   event, with its cause changed from "the host did not return" to "the last connection ended
-  `grace_ms` ago" (`docs/studies/relay-only-spec.md` §2.4, `docs/studies/e2ee-plan.md` §6.1). Those
-  two cannot both hold: a room is destroyed only when the grace after its last connection has run
-  out, so at the deadline no connection is seated and there is nobody to tell. The event stays in
-  the vocabulary — it names the ending, and the close 4003 that goes with it — and a `selvage/2`
-  server produces none; a room's being gone is learned as `room_unknown` by the next connection that
-  names it, which is also the observable a new harness test gets. The plan's own sentence "a room
-  with nobody in it survives the window and then is destroyed (`room.gone`, close 4003)" is the one
-  it contradicts.
+  `grace_ms` ago". Those two cannot both hold: a room is destroyed only when the grace after its last
+  connection has run out, so at the deadline no connection is seated and there is nobody to tell. The
+  event stays in the vocabulary — it names the ending, and the close 4003 that goes with it — and a
+  `selvage/2` server produces none; a room's being gone is learned as `room_unknown` by the next
+  connection that names it, which is also the observable a new harness test gets. The plan's own
+  sentence "a room with nobody in it survives the window and then is destroyed (`room.gone`, close
+  4003)" is the one it contradicts.
 - **§9.1 is not `selvage/1`'s whole.** Two of its rules are that version's — the reclaim by a
   connection claiming `role: "host"`, and inheriting a room's documents from `room.joined` — and
   the rest is the reconnect policy neither version owns alone. So it is scoped sentence by
@@ -895,12 +888,11 @@ What that server is, positively:
   the transcripts are still `selvage/1`'s.
 
 **What is not here, and which step owns it.** The removal of `selvage/1` — its text, its schema
-members, its vectors and `check_vector`'s version pin — is **step 8** of
-`docs/studies/e2ee-plan.md` §11 and not this step: those vectors pin the live behaviour of the
-reference server and of the released clients, and nothing may go red while the specification runs
-ahead of the implementations, so version 1's passages stay where they are and are read as that
-version's (§1.1). Step 8 lands after the release wave, when no published client speaks `selvage/1`
-any more, and it is where the corpus is re-baselined onto version 2 and version 1's sections,
+members, its vectors and `check_vector`'s version pin — is **step 8** of the plan and not this step:
+those vectors pin the live behaviour of the reference server and of the released clients, and nothing
+may go red while the specification runs ahead of the implementations, so version 1's passages stay
+where they are and are read as that version's (§1.1). Step 8 lands after the release wave, when no
+published client speaks `selvage/1` any more, and it is where the corpus is re-baselined onto version 2
 schema members, vectors and glossary entries are deleted rather than scoped. The peer-side rules
 the version needs — the holds and their lease — are step 4b, and the clock they run on with them; the
 resume, the refusal of a committed `viewer`'s frames and the client-behaviour section are step 4's and
@@ -933,8 +925,7 @@ What the passages settle:
   a receiver resolves it by verifying, the frame belongs to the key that verified, the role is the one
   the applied state gives that peer, and a key no state commits is `uncommitted_key`. The two
   authorities are named: the server's roster decides *seated*, the host's state decides *keys and
-  roles* (`docs/studies/relay-only-spec.md` §7's demand, answered for the half that does not need the
-  lease).
+  roles*, which answers the half that does not need the lease.
 - **The viewer rule is two obligations and a residual.** §13.5: a `viewer` **MUST NOT** send document
   content — a `kind = 0` frame carrying a SyncStep2 or an Update, while its SyncStep1 and its
   awareness are still sent, answered and applied — and a receiver **MUST NOT** apply such a frame from
@@ -946,8 +937,7 @@ What the passages settle:
   `resume` frame and no new carrier. What replaces it is a persistence rule: the host key is minted at
   share time and **must be persisted** for as long as the host means to keep hosting, with its
   `issued` beside it, and a client that does not persist it ends its own hosting on reload. That
-  retires the open question `docs/studies/e2ee-plan.md` §14 and
-  `docs/studies/relay-revision-brief.md` §7 leave as "where the host's private key lives".
+  retires the open question "where the host's private key lives".
 - **The tie is first-wins, and the divergence is stated.** §13.3: two connections of one host can
   publish different states at one `issued`, and nothing tells a receiver which is later, so the
   strictly-greater rule `CANONICAL.md` §6.1 had already fixed makes the first state a receiver accepts
@@ -959,16 +949,16 @@ What the passages settle:
 - **§12 is `selvage/1`'s**, its deployment duties hold in both versions, and the three wire properties
   it states that version 2 does not share are named at its head. `selvage/2`'s own security facts are
   where §3's negative duties are: what the relay cannot do, and what it still learns.
-- **The client-behaviour section is §13.** It holds the order of operations at a join — which answers
-  the question `docs/studies/relay-only-spec.md` §3 left open, because frames from a key no state has
-  committed are **dropped** and the client **MUST** re-run §7's handshake after its first verified
-  state, which is what makes the drop safe — verify-before-apply with a local report of every refusal,
-  the room state as a receiver, attribution, the viewer rule, and what a client owes convergence.
+- **The client-behaviour section is §13.** It holds the order of operations at a join — frames from
+  a key no state has committed are **dropped** and the client **MUST** re-run §7's handshake after its
+  first verified state, which is what makes the drop safe — verify-before-apply with a local report of
+  every refusal, the room state as a receiver, attribution, the viewer rule, and what a client owes
+  convergence.
 
 What this pass found rather than settled:
 
-- **Only the host can re-announce a state.** `docs/studies/e2ee-plan.md` §7.2 has "the host (and any
-  peer holding a verified state)" re-announce the state "sealed and signed", and a guest cannot sign
+- **Only the host can re-announce a state.** The plan has "the host (and any peer holding a verified
+  state)" re-announce the state "sealed and signed", and a guest cannot sign
   one: `CANONICAL.md` §6.1 refuses a `kind = 1` frame from any key but the host's. What a guest can do
   is re-send the host's own bytes, which verify because they are the host's; §7.1 says that, and makes
   the re-send a **SHOULD** rather than a second flow.
@@ -981,7 +971,7 @@ What this pass found rather than settled:
   `CANONICAL.md` §6.1's table, and the only one that is not a property of the envelope's bytes.
   `schema/sealed.json` now carries the vocabulary as a closed *value* and `validate.py`'s
   `check_refusals` pins it against that table in both directions, so `bad_tag` — the reason a reader
-  expects and no conforming receiver can produce (`docs/studies/peer-corpus.md` §5.4) — is a red run
+  expects and no conforming receiver can produce — is a red run
   rather than a line in a vector. The counts did not move: `EXPECTED_VECTORS` is 36,
   `EXPECTED_FRAME_CHECKS` 35022, `EXPECTED_ASSERTIONS` 8676 and `EXPECTED_CODES` is untouched, because
   no vector was added, deleted or re-pointed.
@@ -994,7 +984,7 @@ What this pass found rather than settled:
   receiver of this version refuses `unknown_kind`; and §7's message table is y-protocols', whose free
   values are not this protocol's to define. So a hold announcement is neither a `kind` this version
   has nor a message inside a `kind = 0` frame, and the two studies disagree about which it is:
-  `docs/studies/e2ee-plan.md` §7.3 has it as "a sealed session message" and §B.31 as "a `kind` this
+  the plan has it as "a sealed session message" and §B.31 as "a `kind` this
   version leaves unused". Either answer is a change to a frozen file — a fourth `kind` in
   `CANONICAL.md` §6.1, or a payload inside `kind = 0` — and the choice is step 4b's, because it is
   made by the holds' text rather than by this pass's. What this pass fixes is that nothing here
@@ -1003,12 +993,12 @@ What this pass found rather than settled:
 What is not here, and which step owns it: the holds and their lease, the presence clock a client runs
 on, the lifecycle rules that need it, and the viewer's own behaviour, which is where the convention
 above belongs if it is specified at all. Each is a further subsection of §13's subject, all of them
-**step 4b** of `docs/studies/e2ee-plan.md` §11. The sealed sub-corpus is 4b's too, and what this pass
+**step 4b** of the plan. The sealed sub-corpus is 4b's too, and what this pass
 constrains is its fixture: a committed `viewer` whose frame verifies, two states at one `issued` with
 different listings, a state below and a state at the mark, a key no state commits, and a host entry
-whose key is not the host key. `docs/studies/peer-corpus.md` §5.3 was written before the bytes were
-frozen and its room states carry a `key_id` per peer where `CANONICAL.md` §6.1 fixes a 32-byte `key`;
-that shape is what the frozen layout corrects.
+whose key is not the host key. The corpus's room states, written before the bytes were frozen, carry
+a `key_id` per peer where `CANONICAL.md` §6.1 fixes a 32-byte `key`; that shape is what the frozen
+layout corrects.
 
 **B.35 `selvage/2`'s holds, their lease, the presence clock and the client's lifecycle.**
 `CANONICAL.md` §6.1 gained a fourth `kind` and a third sealed payload; `PROTOCOL.md` §1.2, §5.1, §7.1
@@ -1040,7 +1030,7 @@ tick, so a set is forgotten within `awareness_expire_ms + awareness_renew_ms`. N
 `keepalive`. The reuse is honest because a hold's life has the same shape as a cursor's and §8.2's
 clock is the session's only one; the cost, recorded rather than hidden, is that a hold lapses exactly
 as a cursor does, so a throttled tab loses both. Whether a hold should outlive a cursor is the
-measurement §B.34 and `docs/studies/e2ee-plan.md` §14 still leave open.
+measurement §B.34 still leaves open.
 
 **Renewal is one explicit message on the holder's own clock, not any verified frame.** The two rules
 on record were "any verified frame from that peer renews, with an unconditional tick for a silent
@@ -1090,14 +1080,14 @@ Nothing in the corpus moved: `EXPECTED_VECTORS` is 36, `EXPECTED_FRAME_CHECKS` 3
 `EXPECTED_ASSERTIONS` 8676 and `EXPECTED_CODES` is untouched, because no vector was added, deleted
 or re-pointed and the transcripts are still `selvage/1`'s.
 
-**What is not here, and which step owns it.** The corpus and the vectors are **step 4b**'s
-(`docs/studies/e2ee-plan.md` §11): this pass fixes what a fixture must express and nothing more —
+**What is not here, and which step owns it.** The corpus and the vectors belong to **step 4b** of
+the plan: this pass fixes what a fixture must express and nothing more —
 `PROTOCOL.md` §13.11 lists the shapes, and they add to §B.34's list a holds message (and its replay,
 and one from an uncommitted key), a set that changes between announcements, holds from a `viewer`
 and a `guest` under one state, a room whose `keepalive` compresses the awareness window, and a host
-peer's `peer.left` with no state above it naming a seated host. `docs/studies/peer-corpus.md` §5.3
-predates the frozen layout and its room states carry a `key_id` per peer where §6.1 fixes a 32-byte
-`key`: a fixture for this layer follows §6.1. Every implementation is later still, and the wire
+peer's `peer.left` with no state above it naming a seated host. The corpus's room states, written
+before the bytes were frozen, carry a `key_id` per peer where §6.1 fixes a 32-byte `key`: a fixture
+for this layer follows §6.1. Every implementation is later still, and the wire
 version does not move.
 
 **B.36 `selvage/2`'s key binding: the session-key announcement, a state keyed by key, and nine
@@ -1194,10 +1184,10 @@ red). The listing's 4096-byte path bound is the one rule here with no schema beh
 `CANONICAL.md` §2.8 keeps a value over a bound canonical, so the model must not refuse it, and the
 checkable half is the receiver's drop (`PROTOCOL.md` §13.3).
 
-**What is not here, and which step owns it.** The corpus still is **step 4b**'s
-(`docs/studies/e2ee-plan.md` §11), and §13.11's fixture list gains what this pass added: an
-announcement signed by the key it names and one that is not, and a `kind = 1` plaintext that is not
-the room state's object. The wire version does not move, and no implementation speaks it.
+**What is not here, and which step owns it.** The corpus still belongs to **step 4b** of the plan,
+and §13.11's fixture list gains what this pass added: an announcement signed by the key it names and
+one that is not, and a `kind = 1` plaintext that is not the room state's object. The wire version
+does not move, and no implementation speaks it.
 
 **B.37 `selvage/2`'s authority text, second pass: the host's seat pairing, step 8's read, and five
 smaller fixes.** `PROTOCOL.md` §3, §5.1, §7.1, §13.1, §13.3, §13.10 and §13.11, `CANONICAL.md`
@@ -1319,20 +1309,19 @@ altogether (against a hold that is not a string), `sealedPeerKey`'s pattern back
 trailing-newline refusals), and a `sealedPeer` that no longer requires `peer_id` (against a peer with
 no seat).
 
-**What is not here, and which step owns it.** The corpus still is **step 4b**'s
-(`docs/studies/e2ee-plan.md` §11). §13.11's fixture list grows with the pass's shapes. The wire
-version does not move, and no implementation speaks it.
+**What is not here, and which step owns it.** The corpus still belongs to **step 4b** of the plan.
+§13.11's fixture list grows with the pass's shapes. The wire version does not move, and no
+implementation speaks it.
 
 **B.38 The peer corpus: `vectors/peer/`, the runner that replays its frame layer, and the seeds
 of the decision layer.** `CANONICAL.md` §6.1's bytes had been frozen since §B.31 and there was
-nothing in the corpus that read them: `docs/studies/peer-corpus.md` designed the corpus, priced
-the tooling and wrote six vectors into a study, and no vector, no runner and no check in this
-repository touched a sealed frame. This pass is that corpus's first artifact, and it is the peer
-layer's frame half — the evidence that makes a client implementation checkable, runnable where
-the specification is read. **Decided** (2026-09-22), the implementation phases' step 4b, and
-recorded as it stands rather than as it was planned. **Nothing implements `selvage/2` on a
-wire**: no server speaks it, no client seals a frame, and the decision vectors in the corpus are
-written, declared and **not run**.
+nothing in the corpus that read them: the corpus had been designed, its tooling priced and six
+vectors written, and no vector, no runner and no check in this repository touched a sealed frame.
+This pass is that corpus's first artifact, and it is the peer layer's frame half — the evidence that
+makes a client implementation checkable, runnable where the specification is read. **Decided**
+(2026-09-22), the implementation phases' step 4b, and recorded as it stands rather than as it was planned.
+**Nothing implements `selvage/2` on a wire**: no server speaks it, no client seals a frame, and the
+decision vectors in the corpus are written, declared and **not run**.
 
 *What the tooling does now.* `runner/sealed.py` is `CANONICAL.md` §6.1 in Python: the envelope's
 layout and both its byte strings, the key schedule, the fragment's encoding, the four sealed
@@ -1925,8 +1914,7 @@ one a place where the prose and the code say different things rather than a deci
 taken. What they sit under is sound: the room id, the kind, the epoch and the key id are inside
 §6.1's associated data and the counter is inside the signed input, so a relay cannot move a frame
 between rooms, between kinds or between senders, and truncating one breaks its signature. None of the
-six below lets a relay change what a conforming receiver *does* with a frame. The review that found
-them is `ai_notes/docs/review-one-wire-2026-09-24.md`.
+six below lets a relay change what a conforming receiver *does* with a frame.
 
 - **A receiver that holds no mark yet accepts an old `kind = 0` or `3` frame.** §6.1's mark starts
   at `0` for a key, and `Reader::replayed` is

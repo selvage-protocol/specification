@@ -10,9 +10,9 @@ and it reads a frame the way §6.1 says, reporting the first step that refuses i
 **What this is and is not.** It is a format check and a self-consistency check. It is not a
 second implementation in the sense this project means elsewhere: a Python verifier and a
 TypeScript one written from the same prose can share a reading, so agreement between them is
-weak evidence (`docs/studies/peer-corpus.md` §4). What it buys is that the envelope's bytes
-are pinned at all, in the repository that reads the specification, and that a stranger can
-run the pin without reading an implementation.
+weak evidence. What it buys is that the envelope's bytes are pinned at all, in the repository
+that reads the specification, and that a stranger can run the pin without reading an
+implementation.
 
 **One dependency.** AES-256-GCM, HKDF-SHA256 and Ed25519 come from `cryptography`; hand-
 rolling any of them is a few hundred lines of security code in the repository whose whole
@@ -20,11 +20,10 @@ claim is that a stranger can trust its bytes. Everything else here is the standa
 and [`yprotocols.py`](yprotocols.py), which reads a `kind = 0` plaintext.
 
 **The mutations.** `Reader(mutations=...)` removes one guard each, and the reason is the
-corpus's: a vector that no wrong receiver fails is not evidence (`docs/studies/peer-corpus.md`
-§7). Each name below is a rule of §6.1's table with the rule taken out, and `run_peer.py
---mutation-census` requires every vector to go red under the one it declares. They are not a
-test-only build of anything: they are a switch on this reader, which is the reader the corpus
-is replayed by.
+corpus's: a vector that no wrong receiver fails is not evidence. Each name below is a rule of
+§6.1's table with the rule taken out, and `run_peer.py --mutation-census` requires every vector
+to go red under the one it declares. They are not a test-only build of anything: they are a
+switch on this reader, which is the reader the corpus is replayed by.
 """
 
 from __future__ import annotations

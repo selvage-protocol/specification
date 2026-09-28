@@ -6,8 +6,7 @@
 #
 # This repository carries no version string in its tree: nothing in `PROTOCOL.md`, the
 # schema, the vectors or the flake is a release version, and the tag is the only record of
-# the number the release is named by (`docs/versioning.md` here; `docs/runbook-release.md`
-# §1 names this repository as the one whose version lives nowhere in the tree). So the
+# the number the release is named by (`docs/versioning.md` here). So the
 # current version is this repository's release tags, and the next one is computed from
 # them rather than written into a manifest:
 #

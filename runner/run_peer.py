@@ -218,11 +218,11 @@ def _same_bytes(where: str, step: dict, raw: bytes) -> None:
     """A vector that carries bytes claims they are these bytes.
 
     Where the frame is derivable — every `seal` step, and every `corrupt` step derived from
-    one — this is `docs/studies/peer-corpus.md` §5.1's rule: the `hex` is a checked cache and
-    not the source of truth, so a recipe that drifts from the bytes it claims is a red run and
-    not a quietly different frame. A conforming implementation with a signature that is not
-    these 64 bytes — Safari's Ed25519 randomises — is held to the same frame everywhere but
-    the signature, and to a signature that verifies (`NOTES.md` §B.31).
+    one — the `hex` is a checked cache and not the source of truth, so a recipe that drifts
+    from the bytes it claims is a red run and not a quietly different frame. A conforming
+    implementation with a signature that is not these 64 bytes — Safari's Ed25519 randomises —
+    is held to the same frame everywhere but the signature, and to a signature that verifies
+    (`NOTES.md` §B.31).
     """
     want = _bytes_of(step, "hex")
     if want != raw:
