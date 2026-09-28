@@ -1,0 +1,17 @@
+# What the link check covers, and what it cannot fetch.
+#
+# The scope is `README.md` and `docs/`: this repository's reader-facing front matter, the spine and
+# the topic documents it links to. That is what `scripts/ci-local.sh links` and the matching step in
+# `.github/workflows/validate.yml` pass to lychee. `PROTOCOL.md` and `NOTES.md` are deliberately not
+# in that list: they are the specification and its notes, their links are read where the documents
+# are read, and sweeping the whole tree here would make this check something else.
+#
+# Every `exclude` entry is an address that is right in the prose and unfetchable from a runner. A
+# link that is genuinely dead does not belong here; it belongs fixed or removed.
+exclude = [
+  # The contact address a licence section may carry. The check runs lychee without
+  # `--include-mail`, so a `mailto:` is skipped whether or not it is named here, and no fetch can
+  # follow it to a live destination in any case. Naming it says that on purpose rather than by
+  # default, and keeps the address a thing a person can write to.
+  "^mailto:",
+]
