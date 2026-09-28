@@ -44,10 +44,10 @@ checks.
 
 **The corpus has two layers.** The **wire** layer is a transcript and the server is the subject:
 `vectors/*.json`, `runner/run_vectors.py`, and everything this file said before the peer layer
-existed. The **peer** layer holds a client to the rules a server cannot enforce (verify before
-apply, a counter mark, a signature, a lease, a role), and it is `vectors/peer/*.json` with two
+existed. The **peer** layer holds a client to the rules a server cannot enforce — verify before
+apply, a counter mark, a signature, a lease, a role — and it is `vectors/peer/*.json` with two
 runners: `runner/run_peer.py`, which replays its frame vectors with no client at all, and the same
-runner driving its decision vectors against a **subject**, a client named by a command.
+runner driving its decision vectors against a **subject** — a client, named by a command.
 `schema/validate.py` checks both layers and needs no key for either. The runner is the relay for
 the decision layer: it seals each vector's recipes and hands the bytes over, so the only thing
 that layer still needs is a subject, and without one it reports those vectors as **not attempted**

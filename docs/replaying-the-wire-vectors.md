@@ -1,10 +1,10 @@
 # Replaying the vectors against a server
 
 `schema/validate.py` checks the shape of every schema-eligible frame; it cannot check that a server
-produces the bytes. `runner/run_vectors.py` does, and needs no Rust toolchain: it starts a `selvaged`
-on an ephemeral port, replays each transcript against it over a real WebSocket, and compares what
-comes back, the text frames structurally and then byte for byte, the binary frames byte for byte, and
-the document and awareness state once a frame is applied.
+produces the bytes. `runner/run_vectors.py` does, and needs no Rust toolchain: it starts a `selvaged` on an
+ephemeral port, replays each transcript against it over a real WebSocket, and compares what comes
+back, the text frames structurally and then byte for byte, the binary frames byte for byte, and the
+document and awareness state once a frame is applied.
 
 It needs Python 3 and four packages:
 
@@ -51,10 +51,11 @@ disagreed about.
 
 It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS`: the grace
 period is per-vector (`vectors/012` waits out 400 ms), and a runner that spawns the server has no
-other way to set it. There is no version to select (the protocol has one), so the runner starts the
-server with no flag at all. `SELVAGE_VECTORS=DIR` reads the transcripts from another directory, the
-same escape `schema/validate.py` honours, and the replay holds the same pin on the file count before
-it starts. `--schema-only` is exactly `python3 schema/validate.py` and starts no server.
+other way to set it. There is no version to select — the protocol has one — so the runner starts the
+server with no flag at all. `SELVAGE_VECTORS=DIR` reads the transcripts
+from another directory, the same escape `schema/validate.py` honours, and the replay holds the
+same pin on the file count before it starts. `--schema-only` is exactly
+`python3 schema/validate.py` and starts no server.
 
 `python3 runner/test_runner.py` checks the replay's comparison code (`matches`,
 `expected_bytes`, `check_text` and `check_frame_spec`) with frames whose answer is known, in

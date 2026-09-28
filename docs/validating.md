@@ -28,12 +28,12 @@ in every vector against them. It prints a line for the schemas, a line for the c
 - that the error and close codes each vector asserts are the ones `EXPECTED_CODES` pins for it, so
   a substitution inside a closed vocabulary (`unknown_method` for `bad_params`, say) is a red run
   rather than a corpus that keeps every count and quietly asserts something else;
-- that `schema/sealed.json` describes what `selvage/2` carries sealed (the room state, the
-  closing, the holds and the session-key announcement) by running it against values that must
+- that `schema/sealed.json` describes what `selvage/2` carries sealed — the room state, the
+  closing, the holds and the session-key announcement — by running it against values that must
   validate and values that must not, and, beside them, the vocabulary a receiver reports a refused
   sealed frame in, which `PROTOCOL.md` §13.2 binds a client to produce. Step 8 is read as
-  `CANONICAL.md` §6.1 reads it (an object of the members its `kind` fixes, each member of the type
-  that kind gives it), so a value a rule elsewhere re-homes is one of the values that **must**
+  `CANONICAL.md` §6.1 reads it — an object of the members its `kind` fixes, each member of the type
+  that kind gives it — so a value a rule elsewhere re-homes is one of the values that **must**
   validate: a listing whose path carries a control character and a holds message whose set does,
   because `PROTOCOL.md` §13.3 and §13.7 have a receiver drop such a path rather than refuse the frame
   or the state, and a model that refused it would put two conforming receivers at odds about one
@@ -52,22 +52,22 @@ in every vector against them. It prints a line for the schemas, a line for the c
   record is, and the fault vocabulary of a server that seats nobody as the host, are validated by
   every wire vector's frames, because the transcripts are the one version's.
 - every peer vector's steps, recipes and refusals: the version and layer it declares, a `kind` of
-  `frame` or `decision` with the step vocabulary that kind has, each `seal`/`deliver` recipe's shape
-  (a fixture key that exists, a count, a nonce of twelve bytes, exactly one of `plaintext` and
-  `payload`), every `expectReject` reason against §6.1's closed vocabulary, an `expectRefusal`'s
+  `frame` or `decision` with the step vocabulary that kind has, each `seal`/`deliver` recipe's
+  shape — a fixture key that exists, a count, a nonce of twelve bytes, exactly one of `plaintext`
+  and `payload` — every `expectReject` reason against §6.1's closed vocabulary, an `expectRefusal`'s
   `names`, and the mutation in `catches` against the layer's own table. It also pins the peer layer's
   own counts and two censuses: `EXPECTED_REFUSALS`, which vector asserts which reasons, and
-  `EXPECTED_MUTATIONS`, which vector must go **red** under which removed guard. The second is the one
-  pin in this corpus that is a statement about what the corpus catches rather than what it contains,
-  and it is `runner/run_peer.py --mutation-census` that drives it.
+  `EXPECTED_MUTATIONS`, which vector must go **red** under which removed guard.
+  The second is the one pin in this corpus that is a statement about what the corpus catches rather
+  than what it contains, and it is `runner/run_peer.py --mutation-census` that drives it.
 - the absence rule, three ways. **The model**: every session-layer shape is walked for a member no
-  server-authored frame may carry: a `role` made a property or a required entry of a session schema
+  server-authored frame may carry — a `role` made a property or a required entry of a session schema
   is a red run, which is the structural half and the strongest of the three. **The frames**: every
   peer vector declares the strings its own plaintext names, and none of them may appear in the bytes
   of a frame it seals, which needs no key because the ciphertext is in the vector. **The control**:
-  the same walk is run over a document built to break every rule the scan states (a `role` on a
+  the same walk is run over a document built to break every rule the scan states — a `role` on a
   peer record, a `documents` list, a path, a `paths` grant and the five events this protocol does
-  not have), and the nine violations it must find are pinned, because a scan that read nothing
+  not have — and the nine violations it must find are pinned, because a scan that read nothing
   reports nothing and an unpinned nothing is a green line rather than a check.
 
 Testing a refusal means sending a frame the server must reject. Such a frame carries

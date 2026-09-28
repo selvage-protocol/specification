@@ -10,12 +10,12 @@ Same file, same conventions, two things different.
    whose `catches` is `null` is the **positive control** and must instead stay green under *every*
    mutation there is, because the other way to pass a corpus of refusals is to refuse everything.
 2. **A vector carries a recipe when the frame is derivable and `hex` when it is not, and the two
-   must agree.** `seal` carries the recipe (the fixture key, the `kind`, the counter, the nonce, the
-   plaintext as hex or as the JSON object it is), and the step also carries the `hex` that
+   must agree.** `seal` carries the recipe — the fixture key, the `kind`, the counter, the nonce,
+   the plaintext as hex or as the JSON object it is — and the step also carries the `hex` that
    recipe produces; `runner/test_recipe.py` re-derives every frame in the corpus and asserts the
    two are the same, for the vector as it is written and for the corruption a `corrupt` step
    applies. A frame that is *not* derivable is a corruption of one, and `corrupt` names the source,
-   the byte it flips or the bytes it appends, and the result, so even the literal bytes in the
+   the byte it flips or the bytes it appends, and the result — so even the literal bytes in the
    corpus are re-derived. The one thing nothing re-derives is the signature itself, and the reason
    is in `NOTES.md` §B.31: Safari's Ed25519 randomises signatures, so a conforming implementation
    need not produce the bytes a vector carries. What the vector claims about it is that it
