@@ -98,8 +98,8 @@ silent, without reading the Rust.
 - [Replaying the peer corpus](docs/replaying-the-peer-corpus.md): `run_peer.py`'s modes, the decision
   vectors, and the link refusal.
 - [Comparison rules](docs/comparison-rules.md): the four rules the runner enforces.
-- [What the vectors do not cover](docs/what-the-vectors-do-not-cover.md): the limits, said rather
-  than left to be discovered.
+- [What the vectors do not cover](docs/what-the-vectors-do-not-cover.md): the limits, stated up
+  front.
 - [`vectors/anchors/`](docs/anchors.md): the one artifact that is not a replayable transcript.
 - [Versioning](docs/versioning.md): the three numbers that move together, and what a release
   bundles.
