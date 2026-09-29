@@ -350,12 +350,15 @@ room's grant is no longer missing from the protocol: `PROTOCOL.md` §5 defines `
 other, and both reference clients now speak it, with vectors 021 to 023 pinning the exchange. A
 listing is not a confinement, and the three rules this item is about are implemented host-side,
 where the design puts them, by `isGrantedPath` and the per-segment directory checks: a read is held
-under the session's captured folders, the exclude globs (`.env`, `.git/**`) bind a peer-named path
-as they bind the listing, the path is clamped to plain relative segments, and every directory on
-the way to the file must itself be a plain directory of its folder. A peer may still open any path it
-names, listed or not (the wire half is unchanged), but a host no longer reads unboundedly to
-serve one: a guessed exclude or a path through a link is refused rather than read.
-`PROTOCOL.md` §12 says what an implementation that does read it owes.
+under the session's captured folders, what the host leaves out of its listing binds a peer-named path
+as it binds the listing, the path is clamped to plain relative segments, and every directory on
+the way to the file must itself be a plain directory of its folder. The reference clients leave out
+dependency trees, build outputs, version-control internals and secret files by name, and honor the
+working copy's own ignore files at or below the shared folder, reading nothing above it. That
+practice is `PROTOCOL.md` §13.3's `SHOULD`, and which names it covers is the implementation's
+policy. A peer may still open any path it names, listed or not (the wire half is unchanged), but a
+host no longer reads unboundedly to serve one: a guessed exclude or a path through a link is refused
+rather than read. `PROTOCOL.md` §12 says what an implementation that does read it owes.
 
 **B.9 Do capabilities ever gate behaviour?** Today they are pure advertisement: unknown ones are
 ignored and a client cannot insist on one. If a profile ever becomes mandatory, the protocol needs

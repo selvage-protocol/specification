@@ -2274,6 +2274,12 @@ The state replaces what a receiver held, and it is ordered by its own `issued`.
   receivers with the same cap read one state the same way. A receiver that drops
   a path for either reason applies the rest of the listing and the state's
   roles.
+- **A host's listing is the shape of a project, not a disk.** A host **SHOULD**
+  leave out what is not part of the working copy's sources: dependency trees,
+  build outputs and version-control internals, and it **SHOULD** honor the
+  working copy's own ignore files (`.gitignore`) where it has them. Which names
+  those are is the implementation's policy and not fixed here; the listing's
+  *shape* is the three bounds above.
 - **Two publications at one edition.** Two connections of one host can publish
   states with the same `issued` and different contents, and nothing a receiver
   holds says which is the later: both verify, both name one edition, and
