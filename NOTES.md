@@ -2002,3 +2002,22 @@ harness compresses the client's own clocks instead (`A.1`), which is the substit
 **MUST NOT** forbids, and an independent implementation that refuses it has no seam to be tested
 on at all. Whether the binary should take the two clocks as flags, or the tooling be allowed a
 shortened client clock as a test seam the prose names, is open; the requirement itself is not.
+
+**B.48 An update lost on the way out is never recovered.** `PROTOCOL.md` §7, §9.1, §13.1's step 6
+and §13.6. **Unresolved** (2026-10-04). An Update a client writes into a socket that is closing
+never reaches the relay, and every later update from that client depends on it, so each one stays
+pending at every receiver (§7 has a receiver hold it rather than drop it) and the client's edits
+from then on are invisible to the room. Nothing in the protocol asks for it back. The sync handshake
+runs one way: a client sends a SyncStep1 once a state commits its key (§13.1's step 6), and every
+peer answers with what *that client* lacks; no peer sends its own SyncStep1 in return, and §13.6's
+re-sync follows a refused frame, which a pending update is not. §9.1 does make a reconnect re-run
+that handshake — a reconnecting client is a new joiner and §13.1 applies to it — so the client that
+lost the update recovers what it missed while it was away, and its peers still recover nothing from
+it: reconnecting does not narrow the gap. y-protocols' own handshake is two-way (a server answers a
+SyncStep1 with a SyncStep2 and then its own SyncStep1), which is how a yjs provider such as
+y-websocket recovers on reconnect. An independent implementation and the TypeScript engine both
+show it: in a run with a TypeScript host and guest, the guest ended with `on off abc` and the host
+with `abc`, with nothing refused and nothing reported. Open is which frame recovers it — a peer
+that sees `peer.joined` answering with a SyncStep1 of its own, a receiver that has held pending
+structs past a bound sending one, or both — and how often it may be sent, since a SyncStep1 is
+answered with a diff and §13.6 already bounds its own to one per `awareness_renew_ms`.
