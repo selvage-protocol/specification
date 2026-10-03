@@ -1469,8 +1469,10 @@ to a byte comparison. The reader takes either and no vector pins one; if the ver
 spelling it has to say so. (2) **A `kind = 0` plaintext that is not a y-protocols stream.**
 Step 8's table row is written for the four JSON payloads and kind 0's plaintext is "that same
 stream, whole"; a receiver has to report *something* for bytes that are not one, and the reader
-reports `bad_payload` because it is the only reason that fits. No vector asserts it. Settled by
-§B.47. (3) **A
+reports `bad_payload` because it is the only reason that fits. No vector asserts it. Neither library reads past an undefined
+message — y-protocols' reference dispatch throws on an unknown type, and `yrs`'s `missing_handle`
+returns `Unsupported` — and both clients apply the messages before one and report nothing, which is
+what `PROTOCOL.md` §7 now states; whether such a frame should be refused is still open. (3) **A
 receiver tolerates another spelling of a payload.** §2 is a producer's rule and a receiver
 tolerates a differently-spelled text frame, so the reader parses a plaintext's JSON and reads
 its member set and types rather than comparing its bytes; nothing in §6.1 says otherwise and no
@@ -1620,7 +1622,13 @@ not one of the two defects: §B.38 records the question as open, no vector asser
 it means deciding how much of a y-protocols stream a receiver validates, which is this version's to
 say and not a pass's. What the next pass needs is one sentence in §7 or §6.1 — what a `kind = 0`
 plaintext that is not a stream of §7's message table is — and then both readers move to it.
-§B.47 is that sentence.
+**Revised 2026-10-03:** §7 now states what every client does at a `message_type` or `sync_type`
+its table does not define: reading stops, nothing after it can be read, and the messages before it
+stand — `reference_server/crates/client/src/peer.rs`'s `apply_content` and
+`vscode_client/src/engine/peer.ts`'s `applyContent` both apply them and report nothing. The runner
+is the exception: `runner/sealed.py` decodes a stream's first message alone and refuses
+`bad_payload` for an undefined one, and for an auth message or an awareness query too, which §7 has
+a receiver read. Whether the frame should be refused is still **unresolved**.
 
 **Two more things reading the vectors as an implementer turned up, neither an error in the spec.**
 `scenario.relay_withholds` (vector 153) names a kind the relay does not forward; the runner's frames
@@ -1981,18 +1989,7 @@ six below lets a relay change what a conforming receiver *does* with a frame.
   whether the prose says what a client draws when the roster and the state disagree, which today it
   does not.
 
-**B.47 A `kind = 0` stream a receiver cannot read to its end.** `PROTOCOL.md` §7 and
-`CANONICAL.md` §6.1's step 8. **Decided** (2026-10-03): a stream holding a `message_type` or a
-`sync_type` §7's table does not define, or ending inside a message, is refused `bad_payload`, and
-none of it is applied. No library reads past such a message — y-protocols' reference dispatch
-throws on an unknown type and `yrs`'s `missing_handle` returns `Unsupported` — and §13.2 and §13.6
-already have a refused `kind = 0` frame apply nothing and count as a content refusal. Three readers
-have to move to it, and no vector pins it yet: `reference_server/crates/client/src/peer.rs`'s
-`apply_content` and `vscode_client/src/engine/peer.ts`'s `applyContent` apply every message before
-the one they cannot read and report nothing, and `runner/sealed.py` decodes a stream's first
-message alone and refuses an auth message and an awareness query, which §7 has a receiver read.
-
-**B.48 Whether conformance tooling may run a client on clocks shorter than the advertised ones.**
+**B.47 Whether conformance tooling may run a client on clocks shorter than the advertised ones.**
 `PROTOCOL.md` §2 and §8.2. **Unresolved** (2026-10-03). A client **MUST NOT** substitute its own
 awareness clocks for the advertised ones, and §13.8's host-away window, §13.7's lease and §8.2's
 expiry all run on them, so a harness that wants to see one of them pass in seconds has two ways

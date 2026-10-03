@@ -426,7 +426,7 @@ refuses the frame.
 | 5 | the mark, for `kind = 0`, `3` and `4` | `replayed_counter` |
 | 6 | the signature | `bad_signature` |
 | 7 | the AEAD opens | `bad_aead` |
-| 8 | the plaintext is an object of the members its kind fixes, each of the type that kind gives it; for `kind = 0`, a stream of `PROTOCOL.md` §7's messages, read to its end | `bad_payload` |
+| 8 | the plaintext is an object of the members its kind fixes, each of the type that kind gives it | `bad_payload` |
 | 9 | `issued`, for `kind = 1` and `2` | `stale_issued` |
 | 10 | the sender's role, for a `kind = 0` frame carrying document content: a key the state gives role `viewer` may not send one | `unauthorised_content` |
 
