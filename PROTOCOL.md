@@ -1020,6 +1020,13 @@ Follows
   terminator: a receiver reads messages until the frame ends. A frame carrying
   an update followed by an awareness state is valid and **MUST** be handled in
   full.
+- **A message this table does not define refuses the frame.** A `message_type`
+  above 3 or a `sync_type` above 2 has no length this protocol defines, so
+  nothing after it can be found. A receiver **MUST** refuse such a frame
+  `bad_payload` at [`CANONICAL.md`](CANONICAL.md) §6.1's step 8, as it refuses
+  a stream that ends inside a message, and apply none of its messages, those
+  before it included (§13.2): it reads the stream to its end before it applies
+  any of it.
 - **Who sends what.** Each client sends a SyncStep1 with its state vector once a
   state commits its own session key, because one sent before that is a frame
   every conforming peer refuses `uncommitted_key` (§13.1's step 6). Every peer
