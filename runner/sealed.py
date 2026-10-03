@@ -813,7 +813,7 @@ class Reader:
         message: object = None
         if kind == 0:
             try:
-                message = yprotocols.decode_message(plaintext)
+                message = yprotocols.decode_stream(plaintext)
             except yprotocols.DecodeError:
                 if "no-payload" not in mutations:
                     return self._refuse(envelope, kind, "bad_payload")

@@ -1626,9 +1626,10 @@ plaintext that is not a stream of §7's message table is — and then both reade
 its table does not define: reading stops, nothing after it can be read, and the messages before it
 stand — `reference_server/crates/client/src/peer.rs`'s `apply_content` and
 `vscode_client/src/engine/peer.ts`'s `applyContent` both apply them and report nothing. The runner
-is the exception: `runner/sealed.py` decodes a stream's first message alone and refuses
-`bad_payload` for an undefined one, and for an auth message or an awareness query too, which §7 has
-a receiver read. Whether the frame should be refused is still **unresolved**.
+is the exception: `runner/yprotocols.py`'s `decode_stream` reads the whole stream, an auth message
+and an awareness query read and ignored as §7 says, and `runner/sealed.py` refuses `bad_payload`
+for a stream holding an undefined message or ending inside one. Whether the frame should be refused
+is still **unresolved**.
 
 **Two more things reading the vectors as an implementer turned up, neither an error in the spec.**
 `scenario.relay_withholds` (vector 153) names a kind the relay does not forward; the runner's frames
