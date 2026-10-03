@@ -825,8 +825,8 @@ room's connections and not about what any of them does (§9).
 
 Every `session.rename` is answered with exactly one of a `result` or an `error`
 (§4.2); the result of an accepted rename is `{}`, because the room's statement
-of the new name is the `peer.renamed` event. A client **MUST** bound its wait
-for that answer (below).
+of the new name is the `peer.renamed` event. How long a client waits for that
+answer is the next section's.
 
 A rename belongs to the connection that made it and dies with it, like its
 `peer_id`, holds and awareness (§9.1): a reconnecting client is a new peer and
