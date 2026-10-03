@@ -1328,6 +1328,15 @@ converges. What a client's content must be, and all that is required:
   absolute offsets has to convert them, and an adapter that publishes relative
   positions (§8.1) does not. This is the second reason to prefer relative
   positions, after concurrent editing itself.
+- **A client writes whole code points.** The `Y.Text` counts UTF-16 code units
+  (§8.1.1) and an update carries its strings as UTF-8, where a lone surrogate
+  has no encoding: yjs writes one as U+FFFD while its own replica keeps the code
+  unit, so the replica that wrote it holds a text no other replica holds, and
+  their state vectors still agree. A client **MUST NOT** insert a lone
+  surrogate, and **SHOULD NOT** put an insertion or a deletion boundary between
+  the two halves of a surrogate pair: yjs splits the run there and writes U+FFFD
+  for both halves, in every replica, so the replicas agree and the character is
+  lost.
 
 None of this is a new field or a method: it is a statement about what a client
 writes into its replica, and it is normative because a client that ignores it
