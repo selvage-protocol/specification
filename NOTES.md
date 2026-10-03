@@ -82,6 +82,11 @@ The implementations this document describes:
   level is a settled decision rather than an oversight (`B.20`).
 - The client's request surface is the handshake and `session.rename`;
   see `A.4`.
+- **A denied auth message ends its frame.** A `kind = 0` plaintext is applied with `yrs`'s
+  `DefaultProtocol::handle` (`reference_server/crates/client/src/peer.rs`'s `apply_content`), whose
+  `handle_auth` returns an error for a permission-denied auth message, so the messages before it
+  are applied and the ones after it are not. `PROTOCOL.md` §8.3 has a denial cost the frame's
+  other messages nothing.
 
 ### A.3 The TypeScript client (VS Code, and the Neovim companion)
 
@@ -135,6 +140,13 @@ The implementations this document describes:
   seated `session.error{bad_message}` carries no `id` and a client that pipelined cannot tell which
   request it sank; the engine turns such an event into a `sessionError` and holds nothing
   outstanding to fail.
+- **Reads an auth message as a length-prefixed buffer, which is nonconforming and needs a fix.**
+  `applyFrame` (`vscode_client/src/engine/sync.ts`) reads a `message_type = 2` body with
+  `readVarUint8Array`, where `PROTOCOL.md` §7 fixes y-protocols' `varUint(status)` and, for
+  status 0, `varString(reason)`. It takes the status for a length, so the read never ends where
+  the message does and every message after one in the frame is misread: an Update behind it can
+  be hidden, which is what `reference_server/crates/client/src/sealed.rs`'s content walk guards
+  against. The fix is in the engine and reaches the vendored copies with it.
 
 ### A.4 The `x.` method surface
 

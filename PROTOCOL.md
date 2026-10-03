@@ -993,15 +993,17 @@ Follows
   plaintext (§7.1, §13.7); it is not encoded inside the CRDT.
 - A binary frame is `varUint(message_type)`, then:
 
-  | message_type | meaning         | body                                                                                                                                                           |
-  | ------------ | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | 0            | sync            | `varUint(sync_type)` then `varUint8Array(payload)`; `sync_type` is 0 = SyncStep1 (state vector), 1 = SyncStep2 (update), 2 = Update                            |
-  | 1            | awareness       | `varUint8Array(awareness update)`                                                                                                                              |
-  | 2            | auth            | not sent in this slice: there is no per-join approval. A receiver that gets one reads it and ignores it (§8.3)                                                 |
-  | 3            | awareness query | not sent in this slice. A client **MAY** ignore one it receives, and a client that answers **MUST NOT** answer more than one such message for one frame (§8.3) |
+  | message_type | meaning         | body                                                                                                                                                                                                                                     |
+  | ------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | 0            | sync            | `varUint(sync_type)` then `varUint8Array(payload)`; `sync_type` is 0 = SyncStep1 (state vector), 1 = SyncStep2 (update), 2 = Update                                                                                                      |
+  | 1            | awareness       | `varUint8Array(awareness update)`                                                                                                                                                                                                        |
+  | 2            | auth            | `varUint(status)`, then `varString(reason)` when `status` is 0 (permission denied) and nothing more for any other status. Not sent in this slice: there is no per-join approval. A receiver that gets one reads it and ignores it (§8.3) |
+  | 3            | awareness query | no body. Not sent in this slice. A client **MAY** ignore one it receives, and a client that answers **MUST NOT** answer more than one such message for one frame (§8.3)                                                                  |
 
   `varUint` is LEB128; `varUint8Array` is a `varUint` byte length followed by
-  the bytes. The sync payloads are yjs v1 encodings.
+  the bytes; `varString` is a `varUint8Array` of UTF-8. The auth body is
+  y-protocols' `auth.js`, which `y-protocols/PROTOCOL.md` does not describe, and
+  `yrs` reads it the same way. The sync payloads are yjs v1 encodings.
 - **A frame MAY hold several messages.** The body above is one message, and a
   binary frame is a _stream_ of them, one after another, with no count and no
   terminator: a receiver reads messages until the frame ends. A frame carrying
@@ -2922,7 +2924,8 @@ shape.
 - [y-protocols]
   [`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md):
   the document-sync and awareness payloads this layer carries and does not
-  define (§7, §8).
+  define (§7, §8), with y-protocols 1.0.7's `auth.js`, the source of the auth
+  body (§7).
 - [`CANONICAL.md`](CANONICAL.md): SJ-C/1, the byte form of a session text frame.
 - [`schema/`](schema/): the machine-readable model of every frame this document
   describes.
