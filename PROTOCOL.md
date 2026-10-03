@@ -1481,7 +1481,13 @@ nothing about the frame reveals it. So:
 #### 8.1.1 What a receiver does with an anchor
 
 A receiver resolves each endpoint against the `Y.Text` named by `path`, and
-**MUST** verify that the resolved branch is that text. The cases, in full:
+**MUST** verify that the resolved branch is that text. A replica that holds no
+text at `path` resolves no anchor, a `tname` alone included, and **MUST NOT**
+create the text to resolve one: yjs's
+`createAbsolutePositionFromRelativePosition` registers an empty root type
+through `doc.get` and answers index 0 for a `tname` alone, while `yrs` answers
+nothing. The state then carries no selection until the text arrives (below).
+The cases, in full:
 
 | the anchor                      | it resolves to                                                                                                                                           | when it fails                                                                                                                                    |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
