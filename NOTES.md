@@ -1991,3 +1991,16 @@ have to move to it, and no vector pins it yet: `reference_server/crates/client/s
 `apply_content` and `vscode_client/src/engine/peer.ts`'s `applyContent` apply every message before
 the one they cannot read and report nothing, and `runner/sealed.py` decodes a stream's first
 message alone and refuses an auth message and an awareness query, which §7 has a receiver read.
+
+**B.48 Whether conformance tooling may run a client on clocks shorter than the advertised ones.**
+`PROTOCOL.md` §2 and §8.2. **Unresolved** (2026-10-03). A client **MUST NOT** substitute its own
+awareness clocks for the advertised ones, and §13.8's host-away window, §13.7's lease and §8.2's
+expiry all run on them, so a harness that wants to see one of them pass in seconds has two ways
+to do it, and neither is available to an implementation driven from outside. The server cannot be
+told: `selvaged` takes `--room-grace-ms` but no flag for `awareness_renew_ms` or
+`awareness_expire_ms`, which are `selvage_protocol::Keepalive`'s defaults, settable only through
+the library's `Config` by a harness that embeds the server, and no harness does. So the reference
+harness compresses the client's own clocks instead (`A.1`), which is the substitution the
+**MUST NOT** forbids, and an independent implementation that refuses it has no seam to be tested
+on at all. Whether the binary should take the two clocks as flags, or the tooling be allowed a
+shortened client clock as a test seam the prose names, is open; the requirement itself is not.
