@@ -1541,6 +1541,20 @@ is involved. The CRDT clock inside an `item` anchor is unaffected by the choice.
   with nothing on the wire to say why. A client **MUST** renew its own state
   every `keepalive.awareness_renew_ms` by republishing it with a newer awareness
   clock.
+- **A receiver applies an entry by its clock**, as y-protocols 1.0.7's
+  `applyAwarenessUpdate` does, and `yrs` with it ([y-protocols], §14):
+  - an entry is applied when its clock is above the one the receiver holds for
+    that client id, or equal to it with a `null` state while the receiver holds
+    a state for that id, which is how a removal is published; any other entry is
+    ignored, and does not renew the state;
+  - a `null` for the receiver's **own** client id while its own state exists is
+    not applied: the receiver keeps its state and takes the `null`'s clock plus
+    one as its own, so that its next publication, a renewal at the latest,
+    supersedes the removal;
+  - a first entry for a client id the receiver holds nothing for is applied at
+    any clock by `yrs` and ignored at clock 0 by y-protocols, so a client
+    **MUST** publish its first state for an awareness client id at a clock above
+    0, which both libraries' own local state does.
 - **Those numbers are the only clock, and they are not necessarily 15 s and 30
   s.** They are one implementation's defaults, not the protocol's values; a
   server **MAY** advertise anything positive. An implementation **MUST NOT**
@@ -2957,8 +2971,8 @@ shape.
 - [y-protocols]
   [`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md):
   the document-sync and awareness payloads this layer carries and does not
-  define (§7, §8), with y-protocols 1.0.7's `auth.js`, the source of the auth
-  body (§7).
+  define (§7, §8), with y-protocols 1.0.7's `auth.js` and `awareness.js`, the
+  source of the auth body (§7) and of the awareness apply rule (§8.2).
 - [yjs] [`yjs/yjs`](https://github.com/yjs/yjs), version 13: the update format
   V1 the sync payloads are (§7), whose normative source is its encoder and
   decoder (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js` and

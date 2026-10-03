@@ -147,6 +147,12 @@ The implementations this document describes:
   the message does and every message after one in the frame is misread: an Update behind it can
   be hidden, which is what `reference_server/crates/client/src/sealed.rs`'s content walk guards
   against. The fix is in the engine and reaches the vendored copies with it.
+- **Publishes its first state after a re-seat at awareness clock 0.** `PeerSession.reseat` moves
+  `awareness.clientID` to a fresh id that has no meta entry, so y-protocols' `setLocalState` starts
+  it at clock 0, and `PROTOCOL.md` §8.2 has a sender's first state above 0 because a y-protocols
+  receiver ignores a first entry at 0: a peer on this engine shows no cursor for the re-seated one
+  until its next renewal. A first connection is not affected, because the constructor's
+  `setLocalState(null)` spends clock 0 before anything is published.
 
 ### A.4 The `x.` method surface
 
