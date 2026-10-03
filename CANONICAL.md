@@ -184,7 +184,6 @@ unknown member back, which §4.1 forbids in effect by making every frame's membe
 - **Capability names it does not know**: ignored, in `/meta` and in the `capabilities` member.
 - **`x.` prefixed method, event and capability names**: reserved (`PROTOCOL.md` §10.1) and treated
   exactly like any other unknown name.
-- **A `v` with an explicit zero minor**, and any minor at major 1 (§2.5).
 - **A missing `params`**, which means the same as `params: {}`: for a method that requires a
   param, both are `bad_params`, and neither is a different code path.
 - **A frame carrying several concatenated y-protocols messages** (§7), handled in full.
