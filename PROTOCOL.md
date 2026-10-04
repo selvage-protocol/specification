@@ -2261,7 +2261,10 @@ where the list puts it.
   client that refuses everything is indistinguishable from a client on a lossy
   link. The report is local — a status, a log line, a count — and **MUST NOT**
   be sent, because §11's vocabulary is for faults of the session and this is not
-  one.
+  one. A healthy room produces refusals too, by design: a state re-sent to a peer
+  that already holds its edition is refused `stale_issued` (§7.1). The report is
+  a record a client can be asked for, not an alarm, and how much of it reaches a
+  person is the adapter's to decide.
 - **A client MUST NOT end the session for a refused frame.** A refusal is a
   statement about one frame; ending on it hands any relay the power to end a
   session by corrupting one byte.
