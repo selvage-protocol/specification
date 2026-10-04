@@ -47,7 +47,10 @@ def read_varstring(data: bytes, i: int) -> tuple[str, int]:
     end = i + length
     if end > len(data):
         raise DecodeError("truncated string")
-    return data[i:end].decode("utf-8"), end
+    try:
+        return data[i:end].decode("utf-8"), end
+    except UnicodeDecodeError as error:
+        raise DecodeError("a string that is not UTF-8") from error
 
 
 def read_varbytes(data: bytes, i: int) -> tuple[bytes, int]:

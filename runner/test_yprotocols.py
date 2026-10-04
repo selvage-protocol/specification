@@ -197,6 +197,11 @@ class TestDecodeStream(unittest.TestCase):
         self.assertEqual(len(messages), 1)
         self.assertIsInstance(messages[0], yprotocols.SyncMessage)
 
+    def test_an_auth_reason_that_is_not_utf8_raises(self) -> None:
+        # Denied, with a one-byte reason that is a lone continuation byte.
+        with self.assertRaises(yprotocols.DecodeError):
+            yprotocols.decode_stream(bytes([2, 0, 1, 0x80]))
+
     def test_an_undefined_message_type_raises(self) -> None:
         with self.assertRaises(yprotocols.DecodeError):
             yprotocols.decode_stream(bytes([0, 0, 1, 0, 4, 0]))
