@@ -82,11 +82,15 @@ The implementations this document describes:
   level is a settled decision rather than an oversight (`B.20`).
 - The client's request surface is the handshake and `session.rename`;
   see `A.4`.
-- **A denied auth message ends its frame.** A `kind = 0` plaintext is applied with `yrs`'s
-  `DefaultProtocol::handle` (`reference_server/crates/client/src/peer.rs`'s `apply_content`), whose
-  `handle_auth` returns an error for a permission-denied auth message, so the messages before it
-  are applied and the ones after it are not. `PROTOCOL.md` §8.3 has a denial cost the frame's
-  other messages nothing.
+- **Reads a `kind = 0` stream message by message.** `reference_server/crates/client/src/peer.rs`'s
+  `read_stream` applies each message as it reads it: an auth message is read and ignored, a denial
+  included (`PROTOCOL.md` §8.3), an awareness query is dropped, one `SyncStep1` per frame is
+  answered (`MAX_REPLIES_PER_FRAME`), and a message it cannot read or apply, or a `message_type` §7
+  does not define, ends the reading with the messages before it standing.
+- **Refuses an update whose `Any` nests past 256 levels.**
+  `reference_server/crates/client/src/nesting.rs`'s `MAX_ANY_DEPTH` is an implementation limit,
+  checked before `yrs`'s recursive reader sees the value; the frame is refused `bad_payload` at
+  `CANONICAL.md` §6.1's step 8 and the session goes on (§B.49).
 
 ### A.3 The TypeScript client (VS Code, and the Neovim companion)
 
@@ -108,22 +112,38 @@ The implementations this document describes:
   queue (`vscode_client/src/engine/relay.ts`), and that one is bounded instead, at
   `MAX_INBOX_FRAMES` (4096), past which the connection is dropped.
 - Rotates its awareness client id on every re-seat: `dial` mints a fresh one (`awarenessClientId`)
-  for each `session.hello`, and `PeerSession.reseat` points `awareness.clientID` at it and deletes
-  the outgoing id's state and meta entry.
-- **Leaves a departed peer's awareness state to expire rather than removing it on `peer.left`.**
-  The event runs `PeerSession.seatLeft`, which drops the seat from the roster and its holds and
-  publishes the state that follows; the state the departed seat's client id published stays in the
-  replica's `Awareness` — `presence()` still reports it, with no `peer`, because `peerInfos()` no
-  longer names the seat — until y-protocols' own `outdatedTimeout` (30 s) reaps it. `PROTOCOL.md`
-  §8.4 makes dropping it a SHOULD, and neither this client nor the Rust one does it: `seatLeft` and
-  `reference_server/crates/client/src/peer.rs`'s `seat_left` are the same shape and remove nothing.
+  for each `session.hello`, and `PeerSession.reseat` points `awareness.clientID` at it, deletes the
+  outgoing id's state and meta entry, and records clock 0 as spent for the incoming id, so the first
+  state under it goes out at 1 (`PROTOCOL.md` §8.2), as the constructor's `setLocalState(null)` does
+  for the first id.
+- **Drops a departed peer's awareness state on `peer.left`**, under `PROTOCOL.md` §8.4's two
+  conditions. Before the record leaves the roster, the relay (`vscode_client/src/engine/relay.ts`)
+  reads the awareness id that record last claimed, and when no remaining seated peer claims it
+  calls `PeerSession.forgetAwareness` (`vscode_client/src/engine/peer.ts`): y-protocols'
+  `removeAwarenessStates` under an origin that is not published. The session never drops its own
+  id, so this connection counts as a claimant, and the id's clock is kept, so a stale state for it
+  still in flight is not applied again while a renewal above that clock is. A state the departed
+  key published under an id nobody claimed is left to expire. `presence()` therefore stops
+  reporting the departed peer at the `peer.left` that removes its seat, and a forged `peer.left`
+  hides a live peer's cursor until that peer's next renewal. The Rust client does the same
+  (`reference_server/crates/client/src/relay.rs`'s `departed_claim`, through
+  `PeerSession::forget_awareness`).
+- **Expires remote awareness states on y-protocols' clock, not the session's.** The engine leaves
+  y-protocols' own check interval running (`unrefTimer(this.awareness._checkInterval)` in
+  `vscode_client/src/engine/peer.ts`) and expires nothing itself, so a remote state is dropped at
+  the library's 30 s `outdatedTimeout` whatever `keepalive.awareness_expire_ms` the server
+  advertised. `PROTOCOL.md` §8.2 has a client forget a state not renewed inside
+  `awareness_expire_ms` (a MUST), so the engine conforms only where the server advertises 30 s.
+- **Throws at a message type it does not know.** `applyFrame`
+  (`vscode_client/src/engine/sync.ts`) throws on a `message_type` outside 0–3 where `PROTOCOL.md`
+  §7 has a receiver stop reading. The messages before it are applied, and the replies they asked
+  for are lost with the throw.
 - **An incoming awareness query is dropped, not answered** (`MESSAGE_QUERY_AWARENESS` in
   `vscode_client/src/engine/sync.ts`), and a frame of query messages draws no answer at all.
   `PROTOCOL.md` §8.3 allows that and bounds the answering form, because answering one per message
   made a legal 256 KiB frame of one-byte query messages cost 262 144 replies carrying the whole
-  awareness set. The Rust client still answers through `yrs`'s own protocol handler — one reply per
-  query message in the frame, with no per-frame cap — so the two engines differ here and the Rust
-  one carries the amplification.
+  awareness set. The Rust client drops it too, and both answer one `SyncStep1` per frame
+  (`MAX_REPLIES_PER_FRAME` in `reference_server/crates/client/src/peer.rs`).
 - **Its outgoing frames are not in SJ-C member order.** The envelope is serialised as
   `{v, id, method, params}`, and `session.hello`'s params as
   `{display_name, awareness_client_id, capabilities, client}` (`client` only when the caller named
@@ -140,19 +160,6 @@ The implementations this document describes:
   seated `session.error{bad_message}` carries no `id` and a client that pipelined cannot tell which
   request it sank; the engine turns such an event into a `sessionError` and holds nothing
   outstanding to fail.
-- **Reads an auth message as a length-prefixed buffer, which is nonconforming and needs a fix.**
-  `applyFrame` (`vscode_client/src/engine/sync.ts`) reads a `message_type = 2` body with
-  `readVarUint8Array`, where `PROTOCOL.md` §7 fixes y-protocols' `varUint(status)` and, for
-  status 0, `varString(reason)`. It takes the status for a length, so the read never ends where
-  the message does and every message after one in the frame is misread: an Update behind it can
-  be hidden, which is what `reference_server/crates/client/src/sealed.rs`'s content walk guards
-  against. The fix is in the engine and reaches the vendored copies with it.
-- **Publishes its first state after a re-seat at awareness clock 0.** `PeerSession.reseat` moves
-  `awareness.clientID` to a fresh id that has no meta entry, so y-protocols' `setLocalState` starts
-  it at clock 0, and `PROTOCOL.md` §8.2 has a sender's first state above 0 because a y-protocols
-  receiver ignores a first entry at 0: a peer on this engine shows no cursor for the re-seated one
-  until its next renewal. A first connection is not affected, because the constructor's
-  `setLocalState(null)` spends clock 0 before anything is published.
 
 ### A.4 The `x.` method surface
 
@@ -1615,7 +1622,8 @@ are not one is unstated (`NOTES.md` §B.38, item 2). The two readers answer it d
 directions: `runner/sealed.py` decodes the framing and refuses `bad_payload` for anything it cannot
 read — which includes a message type 2 or 3, where §7 has a receiver read an `auth` message and
 ignore it and lets a client ignore an awareness query — while `sealed.rs`'s step 8 for `kind = 0`
-carries the plaintext whole and refuses nothing, so a client built on it accepts a stream no
+carries the plaintext whole and refuses nothing but a stream holding an update nested past the
+bound of §B.49, so a client built on it accepts a stream no
 decoder reads and applies nothing. That is now an observable difference and not only a verdict one,
 because §13.6 makes a content refusal what a client re-syncs on. It is **not** fixed here and it is
 not one of the two defects: §B.38 records the question as open, no vector asserts it, and settling
@@ -2028,7 +2036,10 @@ answered with a diff and §13.6 already bounds its own to one per `awareness_ren
 `yrs`'s `Any::decode` and lib0's `readAny` both recurse with no bound of their own, and an `Any`
 array costs two bytes a level, so one frame under the reference server's 8 MiB bound can nest
 millions deep: lib0 throws a `RangeError`, which y-protocols' `readSyncStep2` catches and logs, and
-the Rust client's reader exhausts its stack, which ends the process. No conforming client writes
+the Rust client refuses the frame `bad_payload` at `CANONICAL.md` §6.1's step 8 once an `Any` opens
+more than 256 arrays and maps (`reference_server/crates/client/src/nesting.rs`'s `MAX_ANY_DEPTH`, an
+implementation limit), before `yrs`'s recursive reader sees it, and the JetBrains engine stops
+reading past the same depth (`YAny.MAX_DEPTH`). No conforming client writes
 one — Selvage's documents are `Y.Text` strings — so the question is only how a receiver meets a
 hostile one: whether §7 bounds an `Any`'s depth, and what a receiver reports past it, which is
 part of how much of a `kind = 0` stream a receiver validates (§B.38, §B.40).
