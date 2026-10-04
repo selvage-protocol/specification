@@ -153,6 +153,15 @@ number for it: the size of an inbound frame or message (§2.1), a listing it wil
 path longer than it will hold. A server refuses one of those with `bad_params`, and the value is
 still canonical: the limit is policy, and the refusal is about the value.
 
+### 2.9 Nesting depth
+
+A frame nests at most **127** objects and arrays, counting the outermost: the depth `serde_json`
+reads by default, and the server's and the Rust client's reader is that one. A producer **MUST
+NOT** write a deeper value, a receiver **MUST** read one up to that depth, and a receiver **MAY**
+refuse a deeper one — a text frame `bad_message`, as an envelope it cannot read (`PROTOCOL.md`
+§11), and a sealed payload (§6.1) `bad_payload` at step 8. A JavaScript `JSON.parse` has no such
+bound, so two conforming receivers can disagree only about a frame no conforming producer writes.
+
 ## 3. Unknown members: dropped
 
 A member that the receiver's implementation does not know is **dropped**, never preserved and
@@ -179,7 +188,7 @@ unknown member back, which §4.1 forbids in effect by making every frame's membe
   `wire_versions` and a peer's holds are sets (§2.7); their order is not a claim, and a receiver
   that reads one into one is wrong, not the peer that wrote them. The sealed room state's
   `listing` is the exception §2.7 names, and a receiver reads it as the order it was sent in.
-- **Members it does not know**, at any depth, in either direction (§3).
+- **Members it does not know**, at any depth §2.9 admits, in either direction (§3).
 - **Event names it does not know**: ignored, like an unknown member.
 - **Capability names it does not know**: ignored, in `/meta` and in the `capabilities` member.
 - **`x.` prefixed method, event and capability names**: reserved (`PROTOCOL.md` §10.1) and treated

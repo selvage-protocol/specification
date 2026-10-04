@@ -2021,3 +2021,14 @@ with `abc`, with nothing refused and nothing reported. Open is which frame recov
 that sees `peer.joined` answering with a SyncStep1 of its own, a receiver that has held pending
 structs past a bound sending one, or both — and how often it may be sent, since a SyncStep1 is
 answered with a diff and §13.6 already bounds its own to one per `awareness_renew_ms`.
+
+**B.49 A yjs `Any` value nested without bound.** `PROTOCOL.md` §7 and `CANONICAL.md` §2.9.
+**Unresolved** (2026-10-04). §2.9 bounds the JSON of a frame and of a sealed payload, and not the
+`Any` values a yjs update can carry inside a `kind = 0` plaintext, which no JSON reader sees.
+`yrs`'s `Any::decode` and lib0's `readAny` both recurse with no bound of their own, and an `Any`
+array costs two bytes a level, so one frame under the reference server's 8 MiB bound can nest
+millions deep: lib0 throws a `RangeError`, which y-protocols' `readSyncStep2` catches and logs, and
+the Rust client's reader exhausts its stack, which ends the process. No conforming client writes
+one — Selvage's documents are `Y.Text` strings — so the question is only how a receiver meets a
+hostile one: whether §7 bounds an `Any`'s depth, and what a receiver reports past it, which is
+part of how much of a `kind = 0` stream a receiver validates (§B.38, §B.40).
