@@ -607,7 +607,12 @@ that escapes the working copy remain names a peer carries unvalidated (§12,
 
 The reply is a single `room.created` or `room.joined` event (§6.1), and it is
 guaranteed to be the first frame on the connection after the handshake, before
-any relayed payload or other event. Refusals are a `session.error` event
+any relayed payload or other event, which a server meets by queueing the reply
+in the step that seats the connection (the reference server does both under one
+lock). A binary frame that arrives before the reply therefore comes from a
+server that broke this rule, and a client **MAY** drop it or hold it and read it
+once seated; either is safe, because nothing in a frame is applied before it
+verifies against a state (§13.1, §13.2). Refusals are a `session.error` event
 followed by a WebSocket close with the matching code (§11). A `session.hello`
 whose params object cannot be read is refused as `bad_message` (including one
 with no `display_name`, which is a parse failure for a shape whose only required
