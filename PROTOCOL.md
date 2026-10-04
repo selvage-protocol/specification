@@ -607,7 +607,12 @@ that escapes the working copy remain names a peer carries unvalidated (§12,
 
 The reply is a single `room.created` or `room.joined` event (§6.1), and it is
 guaranteed to be the first frame on the connection after the handshake, before
-any relayed payload or other event. Refusals are a `session.error` event
+any relayed payload or other event, which a server meets by queueing the reply
+in the step that seats the connection (the reference server does both under one
+lock). A binary frame that arrives before the reply therefore comes from a
+server that broke this rule, and a client **MAY** drop it or hold it and read it
+once seated; either is safe, because nothing in a frame is applied before it
+verifies against a state (§13.1, §13.2). Refusals are a `session.error` event
 followed by a WebSocket close with the matching code (§11). A `session.hello`
 whose params object cannot be read is refused as `bad_message` (including one
 with no `display_name`, which is a parse failure for a shape whose only required
@@ -825,8 +830,8 @@ room's connections and not about what any of them does (§9).
 
 Every `session.rename` is answered with exactly one of a `result` or an `error`
 (§4.2); the result of an accepted rename is `{}`, because the room's statement
-of the new name is the `peer.renamed` event. A client **MUST** bound its wait
-for that answer (below).
+of the new name is the `peer.renamed` event. How long a client waits for that
+answer is the next section's.
 
 A rename belongs to the connection that made it and dies with it, like its
 `peer_id`, holds and awareness (§9.1): a reconnecting client is a new peer and
@@ -993,20 +998,38 @@ Follows
   plaintext (§7.1, §13.7); it is not encoded inside the CRDT.
 - A binary frame is `varUint(message_type)`, then:
 
-  | message_type | meaning         | body                                                                                                                                                           |
-  | ------------ | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | 0            | sync            | `varUint(sync_type)` then `varUint8Array(payload)`; `sync_type` is 0 = SyncStep1 (state vector), 1 = SyncStep2 (update), 2 = Update                            |
-  | 1            | awareness       | `varUint8Array(awareness update)`                                                                                                                              |
-  | 2            | auth            | not sent in this slice: there is no per-join approval. A receiver that gets one reads it and ignores it (§8.3)                                                 |
-  | 3            | awareness query | not sent in this slice. A client **MAY** ignore one it receives, and a client that answers **MUST NOT** answer more than one such message for one frame (§8.3) |
+  | message_type | meaning         | body                                                                                                                                                                                                                                     |
+  | ------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+  | 0            | sync            | `varUint(sync_type)` then `varUint8Array(payload)`; `sync_type` is 0 = SyncStep1 (state vector), 1 = SyncStep2 (update), 2 = Update                                                                                                      |
+  | 1            | awareness       | `varUint8Array(awareness update)`                                                                                                                                                                                                        |
+  | 2            | auth            | `varUint(status)`, then `varString(reason)` when `status` is 0 (permission denied) and nothing more for any other status. Not sent in this slice: there is no per-join approval. A receiver that gets one reads it and ignores it (§8.3) |
+  | 3            | awareness query | no body. Not sent in this slice. A client **MAY** ignore one it receives, and a client that answers **MUST NOT** answer more than one such message for one frame (§8.3)                                                                  |
 
   `varUint` is LEB128; `varUint8Array` is a `varUint` byte length followed by
-  the bytes. The sync payloads are yjs v1 encodings.
+  the bytes; `varString` is a `varUint8Array` of UTF-8. The auth body is
+  y-protocols' `auth.js`, which `y-protocols/PROTOCOL.md` does not describe, and
+  `yrs` reads it the same way.
+- **The sync payloads are yjs's update format V1**: a SyncStep1 carries a state
+  vector as `Y.encodeStateVector` writes it, and a SyncStep2 or an Update a
+  document update as `Y.encodeStateAsUpdate` and a `Y.Doc`'s `update` event
+  write it, never the `…V2` form. No document specifies those bytes: their
+  normative source is yjs 13's encoder and decoder (`UpdateEncoderV1`,
+  `UpdateDecoderV1`), which `yrs`'s `encode_v1` and `decode_v1` reproduce
+  ([yjs], §14). A receiver **MUST** read every struct the format defines, the
+  Skip struct a merged update can carry among them, and **MUST** hold an update
+  whose dependencies it lacks until they arrive rather than drop it, as yjs and
+  `yrs` do: frames reach a peer in no cross-peer order (below), and a relay may
+  drop one (§13.2).
 - **A frame MAY hold several messages.** The body above is one message, and a
   binary frame is a _stream_ of them, one after another, with no count and no
   terminator: a receiver reads messages until the frame ends. A frame carrying
   an update followed by an awareness state is valid and **MUST** be handled in
   full.
+- **A message this table does not define ends the reading.** A `message_type`
+  above 3 or a `sync_type` above 2 has no length this protocol defines, so
+  nothing after it in the frame can be read. A receiver stops there, and the
+  messages before it stand. Whether such a frame should instead be refused is
+  open ([`NOTES.md`](NOTES.md) §B.38, §B.40).
 - **Who sends what.** Each client sends a SyncStep1 with its state vector once a
   state commits its own session key, because one sent before that is a frame
   every conforming peer refuses `uncommitted_key` (§13.1's step 6). Every peer
@@ -1308,6 +1331,15 @@ converges. What a client's content must be, and all that is required:
   absolute offsets has to convert them, and an adapter that publishes relative
   positions (§8.1) does not. This is the second reason to prefer relative
   positions, after concurrent editing itself.
+- **A client writes whole code points.** The `Y.Text` counts UTF-16 code units
+  (§8.1.1) and an update carries its strings as UTF-8, where a lone surrogate
+  has no encoding: yjs writes one as U+FFFD while its own replica keeps the code
+  unit, so the replica that wrote it holds a text no other replica holds, and
+  their state vectors still agree. A client **MUST NOT** insert a lone
+  surrogate, and **SHOULD NOT** put an insertion or a deletion boundary between
+  the two halves of a surrogate pair: yjs splits the run there and writes U+FFFD
+  for both halves, in every replica, so the replicas agree and the character is
+  lost.
 
 None of this is a new field or a method: it is a statement about what a client
 writes into its replica, and it is normative because a client that ignores it
@@ -1452,7 +1484,13 @@ nothing about the frame reveals it. So:
 #### 8.1.1 What a receiver does with an anchor
 
 A receiver resolves each endpoint against the `Y.Text` named by `path`, and
-**MUST** verify that the resolved branch is that text. The cases, in full:
+**MUST** verify that the resolved branch is that text. A replica that holds no
+text at `path` resolves no anchor, a `tname` alone included, and **MUST NOT**
+create the text to resolve one: yjs's
+`createAbsolutePositionFromRelativePosition` registers an empty root type
+through `doc.get` and answers index 0 for a `tname` alone, while `yrs` answers
+nothing. The state then carries no selection until the text arrives (below).
+The cases, in full:
 
 | the anchor                      | it resolves to                                                                                                                                           | when it fails                                                                                                                                    |
 | ------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -1506,6 +1544,20 @@ is involved. The CRDT clock inside an `item` anchor is unaffected by the choice.
   with nothing on the wire to say why. A client **MUST** renew its own state
   every `keepalive.awareness_renew_ms` by republishing it with a newer awareness
   clock.
+- **A receiver applies an entry by its clock**, as y-protocols 1.0.7's
+  `applyAwarenessUpdate` does, and `yrs` with it ([y-protocols], §14):
+  - an entry is applied when its clock is above the one the receiver holds for
+    that client id, or equal to it with a `null` state while the receiver holds
+    a state for that id, which is how a removal is published; any other entry is
+    ignored, and does not renew the state;
+  - a `null` for the receiver's **own** client id while its own state exists is
+    not applied: the receiver keeps its state and takes the `null`'s clock plus
+    one as its own, so that its next publication, a renewal at the latest,
+    supersedes the removal;
+  - a first entry for a client id the receiver holds nothing for is applied at
+    any clock by `yrs` and ignored at clock 0 by y-protocols, so a client
+    **MUST** publish its first state for an awareness client id at a clock above
+    0, which both libraries' own local state does.
 - **Those numbers are the only clock, and they are not necessarily 15 s and 30
   s.** They are one implementation's defaults, not the protocol's values; a
   server **MAY** advertise anything positive. An implementation **MUST NOT**
@@ -2209,7 +2261,10 @@ where the list puts it.
   client that refuses everything is indistinguishable from a client on a lossy
   link. The report is local — a status, a log line, a count — and **MUST NOT**
   be sent, because §11's vocabulary is for faults of the session and this is not
-  one.
+  one. A healthy room produces refusals too, by design: a state re-sent to a peer
+  that already holds its edition is refused `stale_issued` (§7.1). The report is
+  a record a client can be asked for, not an alarm, and how much of it reaches a
+  person is the adapter's to decide.
 - **A client MUST NOT end the session for a refused frame.** A refusal is a
   statement about one frame; ending on it hands any relay the power to end a
   session by corrupting one byte.
@@ -2922,7 +2977,12 @@ shape.
 - [y-protocols]
   [`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md):
   the document-sync and awareness payloads this layer carries and does not
-  define (§7, §8).
+  define (§7, §8), with y-protocols 1.0.7's `auth.js` and `awareness.js`, the
+  source of the auth body (§7) and of the awareness apply rule (§8.2).
+- [yjs] [`yjs/yjs`](https://github.com/yjs/yjs), version 13: the update format
+  V1 the sync payloads are (§7), whose normative source is its encoder and
+  decoder (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js` and
+  `src/utils/encoding.js`).
 - [`CANONICAL.md`](CANONICAL.md): SJ-C/1, the byte form of a session text frame.
 - [`schema/`](schema/): the machine-readable model of every frame this document
   describes.

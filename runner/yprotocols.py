@@ -101,6 +101,37 @@ def decode_message(frame: bytes) -> SyncMessage | AwarenessMessage:
     raise DecodeError(f"unknown message type {message_type}")
 
 
+def decode_stream(frame: bytes) -> list[SyncMessage | AwarenessMessage]:
+    """Every sync and awareness message of a frame's stream, in order.
+
+    `PROTOCOL.md` §7: a frame is a stream of messages, an auth message is read and ignored
+    (a status varint, and a reason only when the status is 0) and an awareness query has no
+    body, so neither is returned. A message type this table does not define, or a stream
+    that ends inside a message, raises.
+    """
+    messages: list[SyncMessage | AwarenessMessage] = []
+    i = 0
+    while i < len(frame):
+        message_type, j = read_varuint(frame, i)
+        if message_type == 2:
+            status, i = read_varuint(frame, j)
+            if status == 0:
+                _, i = read_varstring(frame, i)
+        elif message_type == 3:
+            i = j
+        elif message_type in (0, 1):
+            if message_type == 0:
+                _, k = read_varuint(frame, j)
+            else:
+                k = j
+            _, end = read_varbytes(frame, k)
+            messages.append(decode_message(frame[i:end]))
+            i = end
+        else:
+            raise DecodeError(f"unknown message type {message_type}")
+    return messages
+
+
 def carries_content(frame: bytes) -> bool:
     """Whether a `kind = 0` stream carries document content, anywhere in it.
 
@@ -253,9 +284,9 @@ class Replica:
         self.items: list[Item] = []
 
     def apply(self, frame: bytes) -> None:
-        message = decode_message(frame)
-        if isinstance(message, SyncMessage) and message.subtype in (1, 2):
-            self.items.extend(decode_update(message.payload))
+        for message in decode_stream(frame):
+            if isinstance(message, SyncMessage) and message.subtype in (1, 2):
+                self.items.extend(decode_update(message.payload))
 
     def _item_at(self, at: tuple[int, int]) -> Item | None:
         client, clock = at

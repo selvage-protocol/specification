@@ -82,6 +82,11 @@ The implementations this document describes:
   level is a settled decision rather than an oversight (`B.20`).
 - The client's request surface is the handshake and `session.rename`;
   see `A.4`.
+- **A denied auth message ends its frame.** A `kind = 0` plaintext is applied with `yrs`'s
+  `DefaultProtocol::handle` (`reference_server/crates/client/src/peer.rs`'s `apply_content`), whose
+  `handle_auth` returns an error for a permission-denied auth message, so the messages before it
+  are applied and the ones after it are not. `PROTOCOL.md` §8.3 has a denial cost the frame's
+  other messages nothing.
 
 ### A.3 The TypeScript client (VS Code, and the Neovim companion)
 
@@ -135,6 +140,19 @@ The implementations this document describes:
   seated `session.error{bad_message}` carries no `id` and a client that pipelined cannot tell which
   request it sank; the engine turns such an event into a `sessionError` and holds nothing
   outstanding to fail.
+- **Reads an auth message as a length-prefixed buffer, which is nonconforming and needs a fix.**
+  `applyFrame` (`vscode_client/src/engine/sync.ts`) reads a `message_type = 2` body with
+  `readVarUint8Array`, where `PROTOCOL.md` §7 fixes y-protocols' `varUint(status)` and, for
+  status 0, `varString(reason)`. It takes the status for a length, so the read never ends where
+  the message does and every message after one in the frame is misread: an Update behind it can
+  be hidden, which is what `reference_server/crates/client/src/sealed.rs`'s content walk guards
+  against. The fix is in the engine and reaches the vendored copies with it.
+- **Publishes its first state after a re-seat at awareness clock 0.** `PeerSession.reseat` moves
+  `awareness.clientID` to a fresh id that has no meta entry, so y-protocols' `setLocalState` starts
+  it at clock 0, and `PROTOCOL.md` §8.2 has a sender's first state above 0 because a y-protocols
+  receiver ignores a first entry at 0: a peer on this engine shows no cursor for the re-seated one
+  until its next renewal. A first connection is not affected, because the constructor's
+  `setLocalState(null)` spends clock 0 before anything is published.
 
 ### A.4 The `x.` method surface
 
@@ -1451,7 +1469,10 @@ to a byte comparison. The reader takes either and no vector pins one; if the ver
 spelling it has to say so. (2) **A `kind = 0` plaintext that is not a y-protocols stream.**
 Step 8's table row is written for the four JSON payloads and kind 0's plaintext is "that same
 stream, whole"; a receiver has to report *something* for bytes that are not one, and the reader
-reports `bad_payload` because it is the only reason that fits. No vector asserts it. (3) **A
+reports `bad_payload` because it is the only reason that fits. No vector asserts it. Neither library reads past an undefined
+message — y-protocols' reference dispatch throws on an unknown type, and `yrs`'s `missing_handle`
+returns `Unsupported` — and both clients apply the messages before one and report nothing, which is
+what `PROTOCOL.md` §7 now states; whether such a frame should be refused is still open. (3) **A
 receiver tolerates another spelling of a payload.** §2 is a producer's rule and a receiver
 tolerates a differently-spelled text frame, so the reader parses a plaintext's JSON and reads
 its member set and types rather than comparing its bytes; nothing in §6.1 says otherwise and no
@@ -1601,6 +1622,14 @@ not one of the two defects: §B.38 records the question as open, no vector asser
 it means deciding how much of a y-protocols stream a receiver validates, which is this version's to
 say and not a pass's. What the next pass needs is one sentence in §7 or §6.1 — what a `kind = 0`
 plaintext that is not a stream of §7's message table is — and then both readers move to it.
+**Revised 2026-10-03:** §7 now states what every client does at a `message_type` or `sync_type`
+its table does not define: reading stops, nothing after it can be read, and the messages before it
+stand — `reference_server/crates/client/src/peer.rs`'s `apply_content` and
+`vscode_client/src/engine/peer.ts`'s `applyContent` both apply them and report nothing. The runner
+is the exception: `runner/yprotocols.py`'s `decode_stream` reads the whole stream, an auth message
+and an awareness query read and ignored as §7 says, and `runner/sealed.py` refuses `bad_payload`
+for a stream holding an undefined message or ending inside one. Whether the frame should be refused
+is still **unresolved**.
 
 **Two more things reading the vectors as an implementer turned up, neither an error in the spec.**
 `scenario.relay_withholds` (vector 153) names a kind the relay does not forward; the runner's frames
@@ -1960,3 +1989,46 @@ six below lets a relay change what a conforming receiver *does* with a frame.
   `peer_id`, the label a host writes into the state from the roster it was sent. What is open is
   whether the prose says what a client draws when the roster and the state disagree, which today it
   does not.
+
+**B.47 Whether conformance tooling may run a client on clocks shorter than the advertised ones.**
+`PROTOCOL.md` §2 and §8.2. **Unresolved** (2026-10-03). A client **MUST NOT** substitute its own
+awareness clocks for the advertised ones, and §13.8's host-away window, §13.7's lease and §8.2's
+expiry all run on them, so a harness that wants to see one of them pass in seconds has two ways
+to do it, and neither is available to an implementation driven from outside. The server cannot be
+told: `selvaged` takes `--room-grace-ms` but no flag for `awareness_renew_ms` or
+`awareness_expire_ms`, which are `selvage_protocol::Keepalive`'s defaults, settable only through
+the library's `Config` by a harness that embeds the server, and no harness does. So the reference
+harness compresses the client's own clocks instead (`A.1`), which is the substitution the
+**MUST NOT** forbids, and an independent implementation that refuses it has no seam to be tested
+on at all. Whether the binary should take the two clocks as flags, or the tooling be allowed a
+shortened client clock as a test seam the prose names, is open; the requirement itself is not.
+
+**B.48 An update lost on the way out is never recovered.** `PROTOCOL.md` §7, §9.1, §13.1's step 6
+and §13.6. **Unresolved** (2026-10-04). An Update a client writes into a socket that is closing
+never reaches the relay, and every later update from that client depends on it, so each one stays
+pending at every receiver (§7 has a receiver hold it rather than drop it) and the client's edits
+from then on are invisible to the room. Nothing in the protocol asks for it back. The sync handshake
+runs one way: a client sends a SyncStep1 once a state commits its key (§13.1's step 6), and every
+peer answers with what *that client* lacks; no peer sends its own SyncStep1 in return, and §13.6's
+re-sync follows a refused frame, which a pending update is not. §9.1 does make a reconnect re-run
+that handshake — a reconnecting client is a new joiner and §13.1 applies to it — so the client that
+lost the update recovers what it missed while it was away, and its peers still recover nothing from
+it: reconnecting does not narrow the gap. y-protocols' own handshake is two-way (a server answers a
+SyncStep1 with a SyncStep2 and then its own SyncStep1), which is how a yjs provider such as
+y-websocket recovers on reconnect. An independent implementation and the TypeScript engine both
+show it: in a run with a TypeScript host and guest, the guest ended with `on off abc` and the host
+with `abc`, with nothing refused and nothing reported. Open is which frame recovers it — a peer
+that sees `peer.joined` answering with a SyncStep1 of its own, a receiver that has held pending
+structs past a bound sending one, or both — and how often it may be sent, since a SyncStep1 is
+answered with a diff and §13.6 already bounds its own to one per `awareness_renew_ms`.
+
+**B.49 A yjs `Any` value nested without bound.** `PROTOCOL.md` §7 and `CANONICAL.md` §2.9.
+**Unresolved** (2026-10-04). §2.9 bounds the JSON of a frame and of a sealed payload, and not the
+`Any` values a yjs update can carry inside a `kind = 0` plaintext, which no JSON reader sees.
+`yrs`'s `Any::decode` and lib0's `readAny` both recurse with no bound of their own, and an `Any`
+array costs two bytes a level, so one frame under the reference server's 8 MiB bound can nest
+millions deep: lib0 throws a `RangeError`, which y-protocols' `readSyncStep2` catches and logs, and
+the Rust client's reader exhausts its stack, which ends the process. No conforming client writes
+one — Selvage's documents are `Y.Text` strings — so the question is only how a receiver meets a
+hostile one: whether §7 bounds an `Any`'s depth, and what a receiver reports past it, which is
+part of how much of a `kind = 0` stream a receiver validates (§B.38, §B.40).

@@ -186,5 +186,21 @@ class TestCarriesContent(unittest.TestCase):
         self.assertTrue(yprotocols.carries_content(bytes([0, 2, 0, 0, 0])))
         self.assertFalse(yprotocols.carries_content(bytes([0, 0])))
 
+
+class TestDecodeStream(unittest.TestCase):
+    """`PROTOCOL.md` §7: an auth message and an awareness query are read and ignored."""
+
+    def test_an_auth_message_is_read_and_the_stream_goes_on(self) -> None:
+        # Denied with the reason "x", granted, a query, then an update.
+        frame = bytes([2, 0, 1, ord("x"), 2, 1, 3, 0, 2, 0])
+        messages = yprotocols.decode_stream(frame)
+        self.assertEqual(len(messages), 1)
+        self.assertIsInstance(messages[0], yprotocols.SyncMessage)
+
+    def test_an_undefined_message_type_raises(self) -> None:
+        with self.assertRaises(yprotocols.DecodeError):
+            yprotocols.decode_stream(bytes([0, 0, 1, 0, 4, 0]))
+
+
 if __name__ == "__main__":
     unittest.main()
