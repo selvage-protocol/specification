@@ -404,8 +404,9 @@ replayed closing.
 
 **A key an announcement names is held until a state decides it.** A receiver keeps a mark for a key
 an applied state commits — now or earlier — for as long as it holds the room's keys, and for a key
-only an announcement has named until the state that does not commit it, because an announcement is a
-claim about a key and the state is the room's answer to it (`PROTOCOL.md` §7.1). The mark beside an
+only an announcement has named until a state it applies after that announcement does not commit it,
+because an announcement is a claim about a key and the state is the room's answer to it
+(`PROTOCOL.md` §7.1): a state applied before the announcement is no answer to it. The mark beside an
 uncommitted key guards that announcement alone, since a `kind = 0` or `3` frame from such a key is
 refused `uncommitted_key` whatever mark stands against it. `PROTOCOL.md` §13.3 says what a receiver
 may do when a peer announces keys without bound.
