@@ -128,16 +128,18 @@ The implementations this document describes:
   hides a live peer's cursor until that peer's next renewal. The Rust client does the same
   (`reference_server/crates/client/src/relay.rs`'s `departed_claim`, through
   `PeerSession::forget_awareness`).
-- **Expires remote awareness states on y-protocols' clock, not the session's.** The engine leaves
-  y-protocols' own check interval running (`unrefTimer(this.awareness._checkInterval)` in
-  `vscode_client/src/engine/peer.ts`) and expires nothing itself, so a remote state is dropped at
-  the library's 30 s `outdatedTimeout` whatever `keepalive.awareness_expire_ms` the server
-  advertised. `PROTOCOL.md` §8.2 has a client forget a state not renewed inside
-  `awareness_expire_ms` (a MUST), so the engine conforms only where the server advertises 30 s.
-- **Throws at a message type it does not know.** `applyFrame`
-  (`vscode_client/src/engine/sync.ts`) throws on a `message_type` outside 0–3 where `PROTOCOL.md`
-  §7 has a receiver stop reading. The messages before it are applied, and the replies they asked
-  for are lost with the throw.
+- **Runs §8.2's awareness clock itself.** `PeerSession`'s constructor clears y-protocols'
+  `_checkInterval`, so the library neither renews nor expires a state. The tick renews the local
+  state every `awareness_renew_ms` (`renewAwareness`) and forgets a remote state at the first tick
+  at or past `awareness_expire_ms` after the delivery that last applied it (`expireAwareness`,
+  beside `expireLeases`), measured on the session clock. An entry y-protocols ignores renews
+  nothing, and a forgotten state's clock is kept, so a stale copy in flight is not applied again.
+- **Stops reading a frame at a message §7 does not define.** `applyFrame`
+  (`vscode_client/src/engine/sync.ts`) stops at a `message_type` above 3 or a `sync_type` above 2
+  and returns the replies the messages before it asked for, and `isContent`
+  (`vscode_client/src/engine/sealed.ts`) stops at the same place. A frame in which a defined
+  message cannot be read still throws: the messages before it stay applied, and the rest of the
+  frame and its replies are lost.
 - **An incoming awareness query is dropped, not answered** (`MESSAGE_QUERY_AWARENESS` in
   `vscode_client/src/engine/sync.ts`), and a frame of query messages draws no answer at all.
   `PROTOCOL.md` §8.3 allows that and bounds the answering form, because answering one per message
