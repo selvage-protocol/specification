@@ -18,11 +18,11 @@ the same thing, and all four are meant to be read together:
 | [`schema/`](schema/)           | the machine-readable model: JSON Schema 2020-12, one file per concern, with every frame of every vector checked against it                                                                  |
 | [`vectors/`](vectors/)         | transcripts of real bytes. They are examples, not the rule; a second implementation is held to them by [`runner/run_vectors.py`](runner/)                                                   |
 
-**The implementations' status is not here.** What the reference server and the
-two clients do where this document does not bind them, the decisions this draft
-had to make, and what is still open are in [`NOTES.md`](NOTES.md), which is
-informative: no sentence in it binds a reader, and nothing in this document is
-softened by anything there.
+**The implementations' status is not here.** What the implementations do where
+this document does not bind them, the decisions this draft had to make, and what
+is still open are in [`NOTES.md`](NOTES.md), which is informative: no sentence
+in it binds a reader, and nothing in this document is softened by anything
+there.
 
 ---
 
@@ -174,7 +174,7 @@ These words carry obligations, and the protocol uses them precisely.
 
   ```json
   {
-    "server": "selvaged/x.y.z",
+    "server": "example-server/1.2.3",
     "wire_versions": ["selvage/2"],
     "capabilities": ["y-protocols/1", "awareness"],
     "keepalive": {
@@ -186,12 +186,12 @@ These words carry obligations, and the protocol uses them precisely.
   }
   ```
 
-  | member          | type            | meaning                                                                                                                                                                                                                                                                                |
-  | --------------- | --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-  | `server`        | string          | free-form identification, e.g. `selvaged/x.y.z`. For diagnostics only, and not stable; a peer **MUST NOT** depend on it                                                                                                                                                                |
-  | `wire_versions` | array of string | the wire versions this server accepts, which is `["selvage/2"]`: the protocol has one version, and the member stays a list because a later version needs a place to say so (§10)                                                                                                       |
-  | `capabilities`  | array of string | what the server believes it has; the same list the handshake reply advertises (§10)                                                                                                                                                                                                    |
-  | `keepalive`     | object          | the session's clocks (`ping_interval_ms`, `awareness_renew_ms`, `awareness_expire_ms`), which are the ones the handshake reply carries too (§8.2), and, in `/meta` alone, `room_grace_ms`, the server's default grace period: how long a room survives its last connection ending (§9) |
+  | member          | type            | meaning                                                                                                                                                                                                                                                                                      |
+  | --------------- | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------       |
+  | `server`        | string          | free-form identification, e.g. `example-server/1.2.3`. For diagnostics only, and not stable; a peer **MUST NOT** depend on it                                                                                                                                                                |
+  | `wire_versions` | array of string | the wire versions this server accepts, which is `["selvage/2"]`: the protocol has one version, and the member stays a list because a later version needs a place to say so (§10)                                                                                                             |
+  | `capabilities`  | array of string | what the server believes it has; the same list the handshake reply advertises (§10)                                                                                                                                                                                                          |
+  | `keepalive`     | object          | the session's clocks (`ping_interval_ms`, `awareness_renew_ms`, `awareness_expire_ms`), which are the ones the handshake reply carries too (§8.2), and, in `/meta` alone, `room_grace_ms`, the server's default grace period: how long a room survives its last connection ending (§9)       |
 
   Unknown members are ignored, like an unknown member anywhere else. A client
   **MAY** read the body for a better default before the handshake answers. The
@@ -214,18 +214,13 @@ These words carry obligations, and the protocol uses them precisely.
 
   `GET /meta` is the only request this document defines, and the metadata
   endpoint does not support keep-alive. A client **MUST NOT** send it another
-  method. _(informative)_ The reference listener answers `HEAD /meta` with the
-  `GET` headers, the body's `content-length` among them, and no body, which is
-  what RFC 9110 §9.3.2 asks for, and answers any other method
-  `405 Method Not Allowed` with `allow: GET, HEAD`: a `POST` answered `200`
-  while creating nothing would be a lie.
+  method.
 
   Other paths return `404`. An implementation **MAY** serve a static page there
-  instead — the reference server can, from `--serve-page`, on the same origin
-  as `/session` and `/meta` — which is what lets an invite link, whose address
-  is the room's (§5.1), open in a browser. That page is outside this protocol:
-  §1 covers no HTTP surface but `GET /meta`, and the protocol gives a room
-  exactly one wire endpoint.
+  instead, on the same origin as `/session` and `/meta`, which is what lets an
+  invite link, whose address is the room's (§5.1), open in a browser. That page
+  is outside this protocol: §1 covers no HTTP surface but `GET /meta`, and the
+  protocol gives a room exactly one wire endpoint.
 
 - **Frame types.** Text frames carry the JSON session envelope (§4–§6). Binary
   frames are sealed frames carrying y-protocols payloads (§7, §8). The server
@@ -307,7 +302,7 @@ peer.
   the first two the connection ends the way a dropped socket ends, and past the
   envelope bound it is refused on the frame's own vocabulary — and **a room's
   stored state is its token, its membership and its connections**: the room and
-  peer caps are what bound it in the reference server, and the server holds
+  peer caps are what bound it, and the server holds
   nothing else about a room (§3). A request that would exceed a bound the server
   sets is refused with an `x.` capacity code (§10.1, §11), leaving the room as
   it was. Which shape that refusal takes follows §11 rather than the code:
@@ -347,9 +342,9 @@ The frame, message, envelope, queue and connection bounds are the server's own
 configured values rather than the WebSocket library's defaults, and the queue,
 connection, room-state and budget rows are enforced caps rather than the posture
 [`NOTES.md`](NOTES.md) §A.1 records the server once had. A capacity code is the
-implementation's own: `x.server_full`, `x.room_full` and `x.rate_limited` are
-the reference server's, they live in the reserved `x.` namespace of §10.1, and
-no meaning of its own is read into one — what a peer reads is the close code
+implementation's own: `x.server_full`, `x.room_full` and `x.rate_limited` live
+in the reserved `x.` namespace of §10.1, and no meaning of its own is read into
+one — what a peer reads is the close code
 that follows it, and §9.1's rule that an `x.*` fault is not retried
 automatically.
 
@@ -557,7 +552,7 @@ first, or failing to complete the handshake within the server's hello timeout
     "display_name": "Ada",
     "awareness_client_id": 5466766094545993,
     "capabilities": ["y-protocols/1"],
-    "client": "selvage-vscode/0.1.0"
+    "client": "example-client/1.2.3"
   }
 }
 ```
@@ -608,8 +603,8 @@ that escapes the working copy remain names a peer carries unvalidated (§12,
 The reply is a single `room.created` or `room.joined` event (§6.1), and it is
 guaranteed to be the first frame on the connection after the handshake, before
 any relayed payload or other event, which a server meets by queueing the reply
-in the step that seats the connection (the reference server does both under one
-lock). A binary frame that arrives before the reply therefore comes from a
+in the step that seats the connection. A binary frame that arrives before the
+reply therefore comes from a
 server that broke this rule, and a client **MAY** drop it or hold it and read it
 once seated; either is safe, because a held frame is read like any other:
 nothing in it is applied before it verifies (§13.2), and until a state commits a
@@ -1006,7 +1001,7 @@ One obligation on the client side, and it changes no bytes:
 ## 7. Document sync
 
 Follows
-[`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md).
+[`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/v1.0.7/PROTOCOL.md).
 
 - **One `Y.Doc` per session, one `Y.Text` per document**, keyed by
   workspace-relative path. Document identity is the path, and it reaches the
@@ -1023,19 +1018,17 @@ Follows
 
   `varUint` is LEB128; `varUint8Array` is a `varUint` byte length followed by
   the bytes; `varString` is a `varUint8Array` of UTF-8. The auth body is
-  y-protocols' `auth.js`, which `y-protocols/PROTOCOL.md` does not describe, and
-  `yrs` reads it the same way.
+  y-protocols' `auth.js`, which `y-protocols/PROTOCOL.md` does not describe.
 - **The sync payloads are yjs's update format V1**: a SyncStep1 carries a state
   vector as `Y.encodeStateVector` writes it, and a SyncStep2 or an Update a
   document update as `Y.encodeStateAsUpdate` and a `Y.Doc`'s `update` event
   write it, never the `…V2` form. No document specifies those bytes: their
-  normative source is yjs 13's encoder and decoder (`UpdateEncoderV1`,
-  `UpdateDecoderV1`), which `yrs`'s `encode_v1` and `decode_v1` reproduce
-  ([yjs], §14). A receiver **MUST** read every struct the format defines, the
-  Skip struct a merged update can carry among them, and **MUST** hold an update
-  whose dependencies it lacks until they arrive rather than drop it, as yjs and
-  `yrs` do: frames reach a peer in no cross-peer order (below), and a relay may
-  drop one (§13.2).
+  normative source is yjs 13.6.32's encoder and decoder (`UpdateEncoderV1`,
+  `UpdateDecoderV1`), which build on lib0 0.2.117 ([yjs], §14). A receiver
+  **MUST** read every struct the format defines, the Skip struct a merged update
+  can carry among them, and **MUST** hold an update whose dependencies it lacks
+  until they arrive rather than drop it, as yjs does: frames reach a peer in no
+  cross-peer order (below), and a relay may drop one (§13.2).
 - **A frame MAY hold several messages.** The body above is one message, and a
   binary frame is a _stream_ of them, one after another, with no count and no
   terminator: a receiver reads messages until the frame ends. A frame carrying
@@ -1407,10 +1400,10 @@ y-protocols leaves the awareness state opaque. This protocol's state is:
 }
 ```
 
-The shape a yjs client produces is `tname` **and** `item` together; a `yrs`
-client emits the same position as the `item` alone. Both are conforming, and see
-the scope rule below, which is the single detail an implementation is most
-likely to get wrong.
+The shape a `yjs` client produces is `tname` **and** `item` together; a client
+on another library emits the same position as the `item` alone. Both are
+conforming, and see the scope rule below, which is the single detail an
+implementation is most likely to get wrong.
 
 Both fields are optional, and identity is **not** here: a display name travels
 in the session layer (§6.1), and a mid-session change to one is announced there
@@ -1456,7 +1449,7 @@ nothing about the frame reveals it. So:
   // yjs, a caret inside a root type: the scope names the type and `item` the element.
   { "tname": "src/main.rs", "item": { "client": 5466766094545993, "clock": 11 }, "assoc": 0 }
 
-  // yrs, the same position: the element alone.
+  // another library, the same position: the element alone.
   { "item": { "client": 5466766094545993, "clock": 11 }, "assoc": 0 }
 
   // either library, a position with no element to name: here the end of the text with
@@ -1466,11 +1459,9 @@ nothing about the frame reveals it. So:
 
   The first form is not a theoretical allowance: yjs's
   `createRelativePositionFromTypeIndex` on a root type emits it (verified as
-  `{"tname":"src/main.rs","item":{"client":…,"clock":2},"assoc":0}`), while
-  `yrs` holds one or the other in its `IndexScope` and emits the second for a
-  position inside a root type and the third for an end of one. A receiver that
-  insisted on a single member, or on a scope, would show no cursor whatever for
-  a peer on the other library, which is precisely the silent
+  `{"tname":"src/main.rs","item":{"client":…,"clock":2},"assoc":0}`). A receiver
+  that insisted on a single member, or on a scope, would show no cursor whatever
+  for a peer on the other library, which is precisely the silent
   cross-implementation failure this section exists to prevent.
 
   **No index is ever carried on the wire.** An anchor stays valid for as long as
@@ -1504,8 +1495,8 @@ A receiver resolves each endpoint against the `Y.Text` named by `path`, and
 text at `path` resolves no anchor, a `tname` alone included, and **MUST NOT**
 create the text to resolve one: yjs's
 `createAbsolutePositionFromRelativePosition` registers an empty root type
-through `doc.get` and answers index 0 for a `tname` alone, while `yrs` answers
-nothing. The state then carries no selection until the text arrives (below).
+through `doc.get` and answers index 0 for a `tname` alone. The state then
+carries no selection until the text arrives (below).
 The cases, in full:
 
 | the anchor                      | it resolves to                                                                                                                                           | when it fails                                                                                                                                    |
@@ -1543,11 +1534,12 @@ The cases, in full:
 Because no offset reaches the wire, the protocol fixes no offset unit. An
 implementation that speaks offsets across an editor-adapter seam fixes the unit
 **at that boundary**, and it **MUST** be the unit its editor uses, since that is
-the unit the anchor was computed from. VS Code and `yjs` both count UTF-16 code
-units, so a client built on `yrs` **MUST** build its document with
-`OffsetKind::Utf16`: `yrs` defaults to `OffsetKind::Bytes`, under which an
-anchor taken from a non-ASCII document is already wrong before any concurrency
-is involved. The CRDT clock inside an `item` anchor is unaffected by the choice.
+the unit the anchor was computed from. Where that unit is the UTF-16 code unit —
+the unit a JavaScript string is indexed in, and the unit a `yjs` document
+counts — a client whose CRDT library defaults to another unit **MUST** configure
+it for UTF-16, because a byte-offset default computes an anchor from a
+non-ASCII document wrongly before any concurrency is involved. The CRDT clock
+inside an `item` anchor is unaffected by the choice.
 
 ### 8.2 Renewal and expiry
 
@@ -1561,7 +1553,7 @@ is involved. The CRDT clock inside an `item` anchor is unaffected by the choice.
   every `keepalive.awareness_renew_ms` by republishing it with a newer awareness
   clock.
 - **A receiver applies an entry by its clock**, as y-protocols 1.0.7's
-  `applyAwarenessUpdate` does, and `yrs` with it ([y-protocols], §14):
+  `applyAwarenessUpdate` does ([y-protocols], §14):
   - an entry is applied when its clock is above the one the receiver holds for
     that client id, or equal to it with a `null` state while the receiver holds
     a state for that id, which is how a removal is published; any other entry is
@@ -1570,10 +1562,10 @@ is involved. The CRDT clock inside an `item` anchor is unaffected by the choice.
     not applied: the receiver keeps its state and takes the `null`'s clock plus
     one as its own, so that its next publication, a renewal at the latest,
     supersedes the removal;
-  - a first entry for a client id the receiver holds nothing for is applied at
-    any clock by `yrs` and ignored at clock 0 by y-protocols, so a client
+  - a first entry for a client id the receiver holds nothing for is ignored at
+    clock 0 by y-protocols, so a client
     **MUST** publish its first state for an awareness client id at a clock above
-    0, which both libraries' own local state does.
+    0, which y-protocols' own local state does.
 - **Those numbers are the only clock, and they are not necessarily 15 s and 30
   s.** They are one implementation's defaults, not the protocol's values; a
   server **MAY** advertise anything positive. An implementation **MUST NOT**
@@ -1619,7 +1611,7 @@ courtesy: a binary frame is a stream of messages with no count (§7), so a
 receiver that answered each message could be made to answer a whole frame's
 worth of them: a query message is one byte, so a 256 KiB frame of them draws 262
 144 replies from an implementation built on y-protocols' own protocol handler,
-and the reference server's 8 MiB frame bound (§2.1) admits a frame thirty-two
+and the 8 MiB frame bound (§2.1) admits a frame thirty-two
 times that. A client that does answer **MUST NOT** answer more than one query
 message per frame, so that one frame costs one reply whatever it holds. A
 `message_type = 2` (auth) message is read and ignored: this slice has no
@@ -1804,7 +1796,7 @@ closing it had already passed. What a client must know and do:
   that, and its peers only send what a SyncStep1 asks for.
 - **A reconnecting client SHOULD use a fresh awareness client id.** A library
   may remember a client id whose state was removed and drop the next publish
-  from it (`yrs` 0.27.4 keeps that tombstone), and a client whose first
+  from it, and a client whose first
   republish is dropped looks, to every peer, like a participant with no cursor
   at all (§8.4).
 - **A refusal means stop; a drop means try again.** `room_unknown` and
@@ -2010,9 +2002,9 @@ The **close** vocabulary is separate, and it lives in the private-use range:
 one does not. That vocabulary is not the whole of what a peer can receive: a
 close outside it carries no session meaning and a client **MUST NOT** read one
 into it, because a capacity fault that is not about the session protocol is
-IANA's to name — the reference server closes **1013** (try again later) at its
-connection cap and when a connection has spent its inbound budget (§2.1, §12) —
-and 1013 is not in the private-use range at all.
+IANA's to name — **1013** (try again later) is such a close, at a connection cap
+or a spent inbound budget (§2.1, §12) — and 1013 is not in the private-use range
+at all.
 
 **The vocabulary is closed.** An implementation **MUST NOT** reuse a code with a
 different meaning, and one that needs a code of its own **SHOULD** name it in
@@ -2131,15 +2123,11 @@ link does carry is the room key, so every holder of it can read every frame, and
 a guest's write privilege is the role the host's state gives its key (§13.4,
 §13.5). ([`NOTES.md`](NOTES.md) §B.2.)
 
-**The denial-of-service posture is the reference server's own policy.** §2.1's
-capacity rows are its: a 1024-connection cap counted past the request head, a
-1024-room cap, 128 peers to a room, no idle reaper (only the ping bound above,
-which closes a connection that has stopped answering), no per-source rate limit,
-a per-connection outbound queue of 32 frames and 32 MiB past which the slow peer
-is disconnected, and a per-connection inbound budget of 2 MiB a second with a 64
-MiB burst, each frame charged at least 1 KiB, past which the peer is told
-`x.rate_limited` and closed 1013. A frame over the transport's bound ends a
-connection with nothing on the wire to say why; a text envelope over the
+**The denial-of-service posture is a deployment's own policy.** §2.1's
+capacity rows are one server's; a second deployment sets its own, and the table
+records what a reference server chose rather than what the protocol requires. A
+frame over the transport's bound ends a connection with nothing on the wire to
+say why; a text envelope over the
 server's own envelope bound is refused on the frame's own vocabulary instead,
 because a whole frame is something a session can answer (§2.1). What a peer
 _can_ rely on is §2.1's bound: a conforming server refuses deterministically
@@ -2994,17 +2982,21 @@ shape.
 - [SP 800-38D] Dworkin, _Recommendation for Block Cipher Modes of Operation: GCM
   and GMAC_: AES-256-GCM, the AEAD of a sealed frame (`CANONICAL.md` §6.1).
 - [y-protocols]
-  [`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/master/PROTOCOL.md):
+  [`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/v1.0.7/PROTOCOL.md):
   the document-sync and awareness payloads this layer carries and does not
   define (§7, §8), with y-protocols 1.0.7's `auth.js` and `awareness.js`, the
   source of the auth body (§7) and of the awareness apply rule (§8.2).
-- [yjs] [`yjs/yjs`](https://github.com/yjs/yjs), version 13: the update format
-  V1 the sync payloads are (§7), whose normative source is its encoder and
-  decoder (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js` and
-  `src/utils/encoding.js`).
+- [yjs] [`yjs/yjs`](https://github.com/yjs/yjs), version 13.6.32: the update
+  format V1 the sync payloads are (§7), whose normative source is its encoder
+  and decoder (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js` and
+  `src/utils/encoding.js`), which build on lib0 0.2.117 ([lib0]).
+- [lib0] [`dmonad/lib0`](https://github.com/dmonad/lib0), version 0.2.117: the
+  byte primitives — `varUint`, `varUint8Array` and `varString` — the binary
+  frame's messages are built from (§7).
 - [`CANONICAL.md`](CANONICAL.md): SJ-C/1, the byte form of a session text frame.
 - [`schema/`](schema/): the machine-readable model of every frame this document
-  describes.
+  describes, and [`limits.json`](schema/limits.json), the numeric bounds this
+  document and [`CANONICAL.md`](CANONICAL.md) own.
 
 **Informative.**
 

@@ -155,8 +155,7 @@ still canonical: the limit is policy, and the refusal is about the value.
 
 ### 2.9 Nesting depth
 
-A frame nests at most **127** objects and arrays, counting the outermost: the depth `serde_json`
-reads by default, and the server's and the Rust client's reader is that one. A producer **MUST
+A frame nests at most **127** objects and arrays, counting the outermost. A producer **MUST
 NOT** write a deeper value, a receiver **MUST** read one up to that depth, and a receiver **MAY**
 refuse a deeper one — a text frame `bad_message`, as an envelope it cannot read (`PROTOCOL.md`
 §11), and a sealed payload (§6.1) `bad_payload` at step 8. A JavaScript `JSON.parse` has no such
@@ -165,9 +164,7 @@ bound, so two conforming receivers can disagree only about a frame no conforming
 ## 3. Unknown members: dropped
 
 A member that the receiver's implementation does not know is **dropped**, never preserved and
-never rejected. All three implementations in this project do exactly that, because all three
-deserialize into a fixed set of named members (`serde` and a plain object read, both of which
-ignore the rest), and the server never copies a client's object into a frame it sends: `PeerInfo`
+never rejected. A server never copies a client's object into a frame it sends: `PeerInfo`
 and the session params are built member by member.
 
 Dropping is what makes `PROTOCOL.md` §4.1's promise true (a receiver that keeps working when a

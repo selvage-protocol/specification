@@ -1,10 +1,15 @@
 # Validating the schemas and the vectors
 
 `python3 schema/validate.py` checks the schemas as schemas, and checks every schema-eligible frame
-in every vector against them. It prints a line for the schemas, a line for the corpus counts, and
+in every vector against them. It prints a line for the schemas, a line for the numeric limits, a
+line for the corpus counts, and
 `result OK`. It checks:
 
-- every `*.json` in `schema/` is a valid JSON Schema 2020-12 document;
+- every `*.json` in `schema/` other than `limits.json` is a valid JSON Schema 2020-12 document;
+- that `schema/limits.json` — the numeric bounds the spec owns, each with its value, its unit and the
+  section that owns it — parses, that every entry names a value, a unit and a section and the names
+  are unique, and that the two bounds a schema also carries agree with it: a display name's
+  `maxLength` in `schema/common.json` and the close-code range in `schema/errors.json`;
 - every `send` text frame not marked `refused` and every `expect` text frame in every vector
   parses, validates against `schema/session.json`, and validates against the params schema of the
   method or event it names;

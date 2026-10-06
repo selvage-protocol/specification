@@ -36,6 +36,14 @@ constraint that refuses everything fails beside one that accepts what the versio
 sealed payloads a host signs, and the reasons a receiver reports a refused sealed frame in
 (`sealed.json`).
 
+**The numeric bounds.** `schema/limits.json` is data beside the schemas, not one of them: the
+numeric bounds the spec owns, each with its value, its unit and the section that owns it, so that
+an implementation's tests can read them instead of copying the prose. `check_limits` checks that
+every entry names an integer value, a unit and a section; that the names are unique and are the set
+`EXPECTED_LIMITS` pins; and that the two bounds that also live in a schema — a display name's
+`maxLength` in `common.json` and the close-code range in `errors.json` — equal what the schema
+carries, so a bound that moves in one place and not the other is a red run.
+
 **The peer layer.** `vectors/peer/*.json` is the second corpus: `selvage/2`'s *client* rules, whose
 subject is a client implementation rather than the server, and whose bytes are sealed frames
 (`CANONICAL.md` §6.1). Each peer vector declares a `"kind"`: a **frame** vector hands
@@ -88,6 +96,52 @@ VECTOR_DIR = pathlib.Path(
     os.environ.get("SELVAGE_VECTORS", SCHEMA_DIR.parent / "vectors")
 )
 BASE = "https://dontblameme.dev/schema/1/"
+
+# `limits.json` is data beside the schemas, not one of them: no `$ref` resolves against it, so the
+# registry and the schema count skip it, and `check_limits` reads it for its own checks.
+DATA_FILES = frozenset({"limits.json"})
+# The limits whose home is also a schema, so a copy sits in each and the two must agree.
+LIMITS_DISPLAY_NAME = "display_name_length"
+LIMITS_CLOSE_MIN = "close_code_min"
+LIMITS_CLOSE_MAX = "close_code_max"
+# The bounds `limits.json` publishes, by name. The file is a registry an implementation reads, so a
+# deleted bound has to be a deliberate edit: without this a smaller file still parses, still names
+# units and sections, and still passes. Update it in the same commit that adds or removes a bound.
+EXPECTED_LIMITS = frozenset(
+    {
+        "http_request_head",
+        "http_head_timeout",
+        "hello_timeout",
+        "ws_ping_interval",
+        "ws_ping_unanswered_intervals",
+        "outbound_queue_frames",
+        "outbound_queue_bytes",
+        "connection_cap",
+        "inbound_frame",
+        "inbound_message",
+        "inbound_text_envelope",
+        "room_cap",
+        "peers_per_room",
+        "inbound_rate",
+        "inbound_burst",
+        "inbound_frame_charge_floor",
+        "inbound_small_frame_ceiling",
+        LIMITS_DISPLAY_NAME,
+        LIMITS_CLOSE_MIN,
+        LIMITS_CLOSE_MAX,
+        "nesting_depth",
+        "listing_path_bytes",
+        "listing_paths",
+        "listing_path_bytes_total",
+    }
+)
+
+
+def schema_files() -> list[pathlib.Path]:
+    """The JSON Schema documents in this directory, the data file excluded."""
+    return sorted(
+        path for path in SCHEMA_DIR.glob("*.json") if path.name not in DATA_FILES
+    )
 
 # What the corpus is expected to hold. Adding a vector, or an assertion inside one, is a
 # deliberate edit, and these numbers are what makes the opposite edit — a silent deletion — a red
@@ -483,7 +537,7 @@ KNOWN_METHODS = known_methods()
 def registry() -> Registry:
     loaded = Registry()
     identifiers: dict[str, str] = {}
-    for path in sorted(SCHEMA_DIR.glob("*.json")):
+    for path in schema_files():
         try:
             schema = json.loads(path.read_text())
         except json.JSONDecodeError as error:
@@ -902,6 +956,121 @@ def check_method_map() -> None:
                     "methods",
                     f"the params schema for {method!r} does not name a $def of methods.json",
                 )
+
+
+def load_schema_document(name: str) -> dict | None:
+    """Reads a schema file for a cross-check, reporting through `fail(...)`."""
+    try:
+        document = json.loads((SCHEMA_DIR / name).read_text())
+    except (OSError, json.JSONDecodeError) as error:
+        fail(name, f"not readable as JSON: {error}")
+        return None
+    if not isinstance(document, dict):
+        fail(name, "not a JSON object")
+        return None
+    return document
+
+
+def check_limits() -> int:
+    """Checks `schema/limits.json`, the numeric bounds the spec owns.
+
+    The file is data, not a schema: every entry names an integer value, its unit and the section
+    that owns it, the names are unique, and the set of names is the one `EXPECTED_LIMITS` pins,
+    so a deleted bound is a red run rather than a smaller file that parses. Two of the bounds have
+    a second home in a schema — a display name's `maxLength` in `common.json` and the close-code
+    range in `errors.json`'s `closeCode` enum — so the entry that claims each must equal the
+    schema's value, which is the check that a bound moving in one place and not the other is a red
+    run. It returns the number of entries it read.
+    """
+    document = load_schema_document("limits.json")
+    if document is None:
+        return 0
+    entries = document.get("limits")
+    if not isinstance(entries, list) or not entries:
+        fail("limits.json", "no non-empty `limits` array")
+        return 0
+    by_name: dict[str, dict] = {}
+    for index, entry in enumerate(entries):
+        where = f"limits[{index}]"
+        if not isinstance(entry, dict):
+            fail("limits.json", f"{where}: not an object")
+            continue
+        name = entry.get("name")
+        if not isinstance(name, str) or not name:
+            fail("limits.json", f"{where}: no `name`")
+            continue
+        if name in by_name:
+            fail("limits.json", f"{where}: duplicate name {name!r}")
+            continue
+        by_name[name] = entry
+        value = entry.get("value")
+        if not isinstance(value, int) or isinstance(value, bool):
+            fail("limits.json", f"{where} ({name}): no integer `value`")
+        for field in ("unit", "section"):
+            field_value = entry.get(field)
+            if not isinstance(field_value, str) or not field_value:
+                fail("limits.json", f"{where} ({name}): no `{field}`")
+
+    if set(by_name) != EXPECTED_LIMITS:
+        missing = sorted(EXPECTED_LIMITS - set(by_name))
+        unexpected = sorted(set(by_name) - EXPECTED_LIMITS)
+        fail(
+            "limits.json",
+            "the published bounds do not match the pinned registry: "
+            f"missing {missing}, unexpected {unexpected}",
+        )
+
+    common = load_schema_document("common.json")
+    max_length = None
+    if common is not None:
+        max_length = ((common.get("$defs") or {}).get("displayName") or {}).get(
+            "maxLength"
+        )
+    if not isinstance(max_length, int) or isinstance(max_length, bool):
+        fail(
+            "limits.json",
+            "common.json's `$defs.displayName.maxLength` is not an integer to cross-check",
+        )
+    elif LIMITS_DISPLAY_NAME not in by_name:
+        fail(
+            "limits.json",
+            f"no {LIMITS_DISPLAY_NAME!r} entry for common.json's display-name bound",
+        )
+    elif by_name[LIMITS_DISPLAY_NAME].get("value") != max_length:
+        fail(
+            "limits.json",
+            f"{LIMITS_DISPLAY_NAME} is {by_name[LIMITS_DISPLAY_NAME].get('value')} and "
+            f"common.json's display-name `maxLength` is {max_length}",
+        )
+
+    errors = load_schema_document("errors.json")
+    enum = None
+    if errors is not None:
+        enum = ((errors.get("$defs") or {}).get("closeCode") or {}).get("enum")
+    if not isinstance(enum, list) or not enum or not all(
+        isinstance(code, int) and not isinstance(code, bool) for code in enum
+    ):
+        fail(
+            "limits.json",
+            "errors.json's `$defs.closeCode.enum` is not an integer list to cross-check",
+        )
+    else:
+        for name, want in (
+            (LIMITS_CLOSE_MIN, min(enum)),
+            (LIMITS_CLOSE_MAX, max(enum)),
+        ):
+            if name not in by_name:
+                fail(
+                    "limits.json",
+                    f"no {name!r} entry for errors.json's close-code vocabulary",
+                )
+            elif by_name[name].get("value") != want:
+                fail(
+                    "limits.json",
+                    f"{name} is {by_name[name].get('value')} and errors.json's "
+                    f"close-code vocabulary puts it at {want}",
+                )
+    return len(entries)
 
 
 # The values `PROTOCOL.md` §5 refuses — a control character in a `display_name`, a `path`
@@ -1797,13 +1966,17 @@ def main() -> int:
     global CHECKS
     reg = registry()
     check_method_map()
+    limits = check_limits()
     refusals_by_the_rule = check_control_refusal(reg)
     sealed = check_sealed_payloads(reg)
     refusals = check_refusals(reg)
     absence = check_absence()
     print(
-        f"schema ok      {len(list(SCHEMA_DIR.glob('*.json')))} schemas, {refusals_by_the_rule} values "
+        f"schema ok      {len(schema_files())} schemas, {refusals_by_the_rule} values "
         "checked against the control-character refusal"
+    )
+    print(
+        f"limits         {limits} bounds, cross-checked against common.json and errors.json"
     )
     print(f"sealed         {sealed} values checked against the sealed payloads of selvage/2")
     print(f"refusals       {refusals} values checked against selvage/2's local report vocabulary")
