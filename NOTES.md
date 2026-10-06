@@ -18,7 +18,12 @@ The implementations this document describes:
   Code client, engine and adapter.
 - [`selvage-protocol/nvim_client`](https://github.com/selvage-protocol/nvim_client): the Neovim
   client: a Lua front-end and a Node companion that drives its own vendored copy of the same
-  engine. The two copies are byte-identical, so "the TypeScript client" below is both of them.
+  engine. The copies are byte-identical, so "the TypeScript client" below is every one of them,
+  the browser page [`selvage-protocol/web_client`](https://github.com/selvage-protocol/web_client)
+  among them.
+- [`selvage-protocol/jetbrains_client`](https://github.com/selvage-protocol/jetbrains_client): the
+  JetBrains client: a Kotlin session engine and an IntelliJ Platform plugin, whose differential
+  test runs the TypeScript engine through Node and compares.
 
 ---
 
@@ -193,7 +198,8 @@ sort, because events reach a client that has already promised to ignore the ones
 Hand-rolled on the WebSocket listener: no keep-alive and no routing. `GET /meta` answers the body;
 `HEAD /meta` answers the same status line and headers, the body's `content-length` among them, with
 nothing after them, which is what RFC 9110 §9.3.2 asks for; and any other method is
-`405 Method Not Allowed` with `allow: GET, HEAD`. It is fine for negotiation, and it should be
+`405 Method Not Allowed` with `allow: GET, HEAD`: a `POST` answered `200` while creating nothing
+would be a lie. It is fine for negotiation, and it should be
 replaced rather than extended if a real HTTP surface is ever needed (`B.14`). The body is written in
 canonical member order (`CANONICAL.md` §2.1), which the server's `Meta` struct achieves by declaring
 its members in ascending order. With `--serve-page` the same listener serves a static page from
@@ -266,6 +272,50 @@ browser opening the invite gets a `404`; in a relaying deployment the invite rea
 if the editor that minted it dials the room's address — the page's — rather than the server's.
 Whoever runs the relay is also the operator of the page, holding the server's own view of the
 traffic and serving the code the guest runs (`PROTOCOL.md` §3).
+
+### A.11 Implementation facts the normative text does not carry
+
+`PROTOCOL.md` and `CANONICAL.md` state rules. Which implementation does what, where a rule meets a
+concrete implementation, is here instead, because a list of implementations in the normative text
+goes stale as soon as a new one lands. Each item names the section whose rule it belongs to.
+
+- **Every implementation drops an unknown member** (`CANONICAL.md` §3). Each deserializes into a
+  fixed set of named members and ignores the rest — `serde` in the Rust server and client, a plain
+  object read in the TypeScript and Kotlin engines — and a server builds `PeerInfo` and the session
+  params member by member rather than copying a client's object.
+- **`serde_json`'s default nesting depth is 127** (`CANONICAL.md` §2.9), and the server's and the
+  Rust client's reader is `serde_json`: the bound the normative text states is that reader's
+  default rather than a figure of the protocol's own.
+- **`yrs` 0.27.4 keeps a tombstone** for an awareness client id whose state was removed and drops
+  the next publish from it (`PROTOCOL.md` §9.1). The Rust client reads awareness through `yrs`, so
+  a reconnect that reuses a client id can have its first republish dropped; the rule a client is
+  held to is only that a fresh id is safer.
+- **The reference server closes 1013** (try again later) at its connection cap and when a
+  connection has spent its inbound budget (`PROTOCOL.md` §11, §12; the numbers are `A.1`).
+- **The reference server queues the handshake reply under the same lock that seats the
+  connection** (`PROTOCOL.md` §5), which is how the reply is guaranteed to be the first frame after
+  the handshake.
+- **`yrs` reads y-protocols' `auth.js` the way yjs does** (`PROTOCOL.md` §7), reproduces the update
+  format V1 in its `encode_v1` and `decode_v1`, and holds an update whose dependencies it lacks
+  until they arrive, as yjs does.
+- **The two anchor shapes are two libraries'** (`PROTOCOL.md` §8.1). `yjs`'s
+  `createRelativePositionFromTypeIndex` writes `tname` **and** `item` for a position in a root
+  type; `yrs` holds one or the other in its `IndexScope` and writes `item` alone for a position
+  inside a root type and the scope alone for an end of one. `yjs`'s
+  `createAbsolutePositionFromRelativePosition` registers an empty root type through `doc.get` and
+  answers index 0 for a `tname` alone, while `yrs` answers nothing. A `yrs` client builds its
+  document with `OffsetKind::Utf16`; `yrs` defaults to `OffsetKind::Bytes`, under which an anchor
+  taken from a non-ASCII document is wrong before any concurrency is involved.
+- **`yrs` applies a first awareness entry at any clock** where y-protocols ignores clock 0
+  (`PROTOCOL.md` §8.2), which is why the rule for a publisher is to start above 0.
+- **The reference listener answers `HEAD /meta`** with the `GET` headers and no body, and refuses
+  any other method with `405 Method Not Allowed` and `allow: GET, HEAD` (`PROTOCOL.md` §2, `A.5`).
+  With `--serve-page` the same listener serves a static page on the same origin (`A.5`, `A.10`).
+
+**Client-only bounds the protocol does not have.** Two clients bound something the wire does not:
+
+- The JetBrains engine refuses a `/meta` body over 64 KiB; the TypeScript engine reads it whole.
+- The JetBrains engine caps its inbox at 4096 frames and 16 MiB.
 
 ---
 
