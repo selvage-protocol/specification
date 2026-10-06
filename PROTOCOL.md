@@ -2995,7 +2995,8 @@ shape.
   frame's messages are built from (§7).
 - [`CANONICAL.md`](CANONICAL.md): SJ-C/1, the byte form of a session text frame.
 - [`schema/`](schema/): the machine-readable model of every frame this document
-  describes.
+  describes, and [`limits.json`](schema/limits.json), the numeric bounds this
+  document and [`CANONICAL.md`](CANONICAL.md) own.
 
 **Informative.**
 

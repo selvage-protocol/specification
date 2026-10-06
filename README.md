@@ -84,7 +84,7 @@ silent, without reading the Rust.
 |---|---|
 | [`PROTOCOL.md`](PROTOCOL.md) | **The specification.** What the members mean, and what a conforming peer must, should or may do. §1.1 says which sentences bind a reader and what conformance is. |
 | [`CANONICAL.md`](CANONICAL.md) | **SJ-C/1**, the canonical byte form of a session text frame, and §6.1, the byte form of a `selvage/2` sealed frame. Normative for the bytes. |
-| [`schema/`](schema/) | The machine-readable model: JSON Schema 2020-12, one file per concern, plus `validate.py`. |
+| [`schema/`](schema/) | The machine-readable model: JSON Schema 2020-12, one file per concern, plus `limits.json` (the numeric bounds the spec owns) and `validate.py`. |
 | [`runner/`](runner/) | The language-neutral replay. `run_vectors.py` starts a server and replays every wire transcript against it; `run_peer.py` replays the peer corpus's frame layer with no server and no client; `sealed.py` is `CANONICAL.md` §6.1 in Python; `subject.py` is the protocol a decision vector drives a client through. None of it needs a Rust toolchain. |
 | [`vectors/`](vectors/) | Versioned transcripts of real bytes, replayed by the reference server's [`crates/harness/tests/vectors.rs`](https://github.com/selvage-protocol/reference_server/blob/main/crates/harness/tests/vectors.rs) and by `runner/`. `vectors/peer/` is the peer corpus and `vectors/fixture/` is its keys. |
 | [`NOTES.md`](NOTES.md) | **Informative.** What the implementations do where `PROTOCOL.md` does not bind them, the decisions this draft had to make, and what is still open. Nothing there is a requirement. |
