@@ -21,12 +21,12 @@ protocol (`runner/subject.py`). `start` seats it with the invite, the fixture se
 the roster and the session's clock; `expectSubject` is the decision channel. So a decision
 vector needs one thing and this runner names it: a subject.
 
-**A link is refused before a socket, and that is a decision too.** §5.1's fragment is
-decided about the link itself — a key absent, missing or not a key — so a client refuses the `join`
-in its own words and seats
-nothing; `expectRefusal` is the step that asserts what those words carry, and the subject stays
-free for the vector's next `start`. A guard on the link (`subject.LINK_MUTATIONS`) is removed
-before the `join` for the same reason: it has to be gone before the link is read.
+**A link is refused before a socket, and that is a decision too.** §5.1's rules about a link —
+a key absent, missing or not a key, and a name that repeats — are decided about the link itself,
+so a client refuses the `join` in its own words and seats nothing; `expectRefusal` is the step
+that asserts what those words carry, and the subject stays free for the vector's next `start`.
+A guard on the link (`subject.LINK_MUTATIONS`) is removed before the `join` for the same reason:
+it has to be gone before the link is read.
 
 **The mutation census is what makes the corpus evidence rather than a list of assertions.** A
 conforming receiver and a wrong one both pass a vector that asserts nothing, so `--mutation-census`
@@ -657,8 +657,8 @@ class DecisionRun:
         session keypair.
 
         The answer is either a seating or the client's own words for a link it refuses
-        (`PROTOCOL.md` §5.1's fragment, whose absent, missing or malformed key is refused before a
-        socket), and the second is
+        (`PROTOCOL.md` §5.1's link rules — a repeated name, or an absent, missing or malformed
+        key — decided before a socket), and the second is
         a decision the vector asserts with `expectRefusal` rather than a failure of the run.
 
         The guard this run removes is named **before** the join when it sits on the link, which

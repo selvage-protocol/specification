@@ -33,21 +33,13 @@ python3 runner/run_vectors.py
 Against a `selvaged` that implements every frame the corpus covers, it ends with:
 
 ```
-summary        24 files, 33760 frame checks, 24 vectors passed, 0 failed
+summary        25 files, 33784 frame checks, 25 vectors passed, 0 failed
 ```
 
-**The `selvaged` in this workspace is built from `reference_server`'s `main`**, which seats **both**
-wire versions: it answers a pre-seating fault in `selvage/1`, and it refuses a `v` it does not read
-with a code and a close this corpus no longer has. Today, against that binary, the replay ends with:
-
-```
-summary        24 files, 33760 frame checks, 9 vectors passed, 15 failed
-```
-
-The one-version server is `chore/drop-version-1` in `reference_server`, and the green line above
-is what the corpus gives against what that branch builds. The red line to expect is a vector that
-pins behaviour newer than the server you point it at; the summary names the file and the frame it
-disagreed about.
+**An older `selvaged` is the red line to expect.** A summary that is red rather than green names
+the file and the frame the binary disagreed about, and the usual cause is a vector that pins
+behaviour newer than the server you point it at: the corpus grows with the protocol, and a binary
+built before the change a vector pins will not answer for it.
 
 It exits non-zero if any vector fails. A `selvaged` must accept `--room-grace-ms MS`: the grace
 period is per-vector (`vectors/012` waits out 400 ms), and a runner that spawns the server has no

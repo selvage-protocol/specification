@@ -28,7 +28,8 @@ Same file, same conventions, two things different.
    asserts in `EXPECTED_REFUSALS` and the mutation each declares in `EXPECTED_MUTATIONS`, so both
    move in the same commit as the vector.
 4. **A `decision` vector about a link is refused or seated, and it carries the leg that must not
-   be refused.** §5.1's fragment is answered by the client's refusal of
+   be refused.** §5.1's link rules — a fragment's missing or malformed key, and a `room`, `token`,
+   `k` or `h` a link repeats — are answered by the client's refusal of
    the `join`: `expectRefusal` names what the client's own words must carry, and a vector asserting
    one carries a `start` that must join, because a subject that refuses every link passes a
    refusal leg and is caught by the seating beside it. A guard that sits on the link is removed

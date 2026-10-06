@@ -33,12 +33,13 @@ counts `not attempted` separately from `passed`, and `runner/subject.py` holds t
 implements. Run `python3 runner/run_vectors.py --layer all` to see the same split from the wire
 layer's side.
 
-**One rule is decided about the link, before a socket, and a subject answers it by refusing the
-`join`.** §5.1's fragment is not a frame, so there is nothing to deliver and no reason of §6.1's to
-report: the client answers the `join` itself, in its own words, and seats nothing, leaving the
-subject free for the vector's next `start`. A vector asserts that with `expectRefusal`, whose `names`
-are the strings the client's words must carry — the missing or malformed key (§5.1) — because the
-section leaves the sentence to the client. A guard on the link is removed **before** the `join`
+**A rule decided about the link, before a socket, is answered by refusing the `join`.** §5.1's
+fragment, and a link that names any of its four keys more than once, are not frames, so there is
+nothing to deliver and no reason of §6.1's to report: the client answers the `join` itself, in its
+own words, and seats nothing, leaving the subject free for the vector's next `start`. A vector
+asserts that with `expectRefusal`, whose `names` are the strings the client's words must carry —
+the missing or malformed key, or the parameter a link repeats (§5.1) — because the section leaves
+the sentence to the client. A guard on the link is removed **before** the `join`
 (`runner/subject.py`'s `LINK_MUTATIONS`), which is where a client reads it; every other guard is
 removed once the subject is seated.
 

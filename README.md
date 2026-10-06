@@ -32,8 +32,8 @@ and `result OK`:
 schema ok      10 schemas, 39 values checked against the control-character refusal
 sealed         48 values checked against the sealed payloads of selvage/2
 refusals       13 values checked against selvage/2's local report vocabulary
-vectors        24 files, 33760 frame checks, 8387 assertion steps
-peer vectors   26 files, 19 frame, 7 decision, 221 checks, 74 assertion steps
+vectors        25 files, 33784 frame checks, 8394 assertion steps
+peer vectors   27 files, 19 frame, 8 decision, 232 checks, 74 assertion steps
 absence        49 session shapes, 50 vectors, 9 control violations, 50 sealed frames, 100 needle checks
 result         OK
 ```

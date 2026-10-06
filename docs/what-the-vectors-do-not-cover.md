@@ -6,8 +6,9 @@ client to the rules of `selvage/2`, and it does it twice over: its frame vectors
 *receiver* to `CANONICAL.md` §6.1 — the envelope, the key schedule, the counter mark, the ten
 reasons — with no client at all, and its decision vectors hold a real client to what it does
 with a frame it has received or a link it is handed, which is what a subject is for. Two of those
-decisions are made before a socket is opened at all (§5.1's fragment), so what a subject shows for it
-is its refusal and that it seated nothing; the rest are frames. What no vector here can show is that
+decisions are made before a socket is opened at all — §5.1's fragment, and a link that repeats a
+`room`, `token`, `k` or `h` — so what a subject shows for them is its refusal and that it seated
+nothing; the rest are frames. What no vector here can show is that
 two clients **agree**: a vector can hold a client to a rule it states, and it
 cannot show that two implementations reach the same state. That stays the interop test's job
 (`vscode_client/test/interop-v2.test.ts` against

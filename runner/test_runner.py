@@ -771,18 +771,29 @@ class TestTheTwoLinkRules(unittest.TestCase):
         red = self.link("157", mutation="accept-partial-fragment")
         self.assertIn("(`expectRefusal`)", red.failure or "", red.failure)
 
+    def test_the_repeated_key_vector_holds_and_catches_its_guard_alone(self) -> None:
+        clean = self.link("159")
+        self.assertIsNone(clean.failure)
+        self.assertEqual(clean.assertions, 5, "four refusals and the leg that must join")
+        red = self.link("159", mutation="accept-repeated-key")
+        self.assertIn("(`expectRefusal`)", red.failure or "", red.failure)
+
     def test_a_subject_that_refuses_every_link_fails_the_control_leg(self) -> None:
-        # The vector carries the leg that must not be refused — 157's complete fragment — and a
-        # subject whose refusals are worded well enough to answer the refusal legs is caught by
-        # it and not by anything else.
-        outcome = self.link("157", behaviour="link-rules-refuse-all")
-        self.assertIn("(`expectSubject`)", outcome.failure or "", outcome.failure)
+        # Each vector carries the leg that must not be refused — 157's complete fragment, 159's
+        # complete link — and a subject whose refusals are worded well enough to answer the
+        # refusal legs is caught by it and not by anything else.
+        for vector_id in ("157", "159"):
+            outcome = self.link(vector_id, behaviour="link-rules-refuse-all")
+            self.assertIn("(`expectSubject`)", outcome.failure or "", outcome.failure)
 
     def test_the_mutation_each_vector_declares_is_the_one_the_census_removes(self) -> None:
         # The name in the vector is the name the stub removes, and the census sends the first as
         # the second: a vector whose `catches` named nothing the subject knows cannot be red, so
         # this is what makes the two cases above evidence rather than a coincidence.
-        for vector_id, declared in (("157", "accept-partial-fragment"),):
+        for vector_id, declared in (
+            ("157", "accept-partial-fragment"),
+            ("159", "accept-repeated-key"),
+        ):
             for vector in run_peer.load_vectors():
                 if vector.get("id") == vector_id:
                     self.assertEqual(vector.get("catches"), declared)
@@ -1124,10 +1135,11 @@ def run_stub_subject(behaviour: str) -> int:
 def link_reply(behaviour: str, command: dict, state: dict) -> dict:
     """What the link-rule stub answers one command with.
 
-    It is a client for the one decision a link carries **before a socket**, which is the layer
+    It is a client for the decisions a link carries **before a socket**, which is the layer
     the rest of the corpus has no subject for: `PROTOCOL.md` §5.1 refuses a fragment that names
-    one of its two keys and not the other, naming the missing one, and one whose `k` or `h` is not
-    a 32-byte value, naming that key.
+    one of its two keys and not the other, naming the missing one, one whose `k` or `h` is not a
+    32-byte value, naming that key, and — in either form — a `room`, `token`, `k` or `h` that
+    appears more than once, naming the repeated one instead of choosing by order.
 
     `state["mutation"]` is the guard this run removed, and it arrives before the `join`: a guard
     on the link has to be gone before the link is read.
@@ -1154,24 +1166,59 @@ def link_reply(behaviour: str, command: dict, state: dict) -> dict:
 
 
 def link_refusal(behaviour: str, command: dict, mutation: str | None) -> str | None:
-    """The words this stub refuses a link with, or `None` when it joins it."""
+    """The words this stub refuses a link with, or `None` when it joins it.
+
+    `PROTOCOL.md` §5.1's link rules: a fragment that names one of its two keys and not the
+    other, a `k` or `h` that is not a 32-byte value, and — in either form — a `room`, `token`,
+    `k` or `h` that appears more than once. A repeat is refused by name and not resolved by
+    order, which is the rule a rewrite that took the first value would break.
+    """
     invite = command.get("invite") if isinstance(command.get("invite"), str) else ""
     if behaviour == "link-rules-refuse-all":
-        # A superset of the refusal vector's own words on purpose: this double passes every
+        # A superset of every refusal vector's own names on purpose: this double passes every
         # refusal leg and can only be caught by the control leg beside it, which is the leg that
         # exists to say "refusing everything is not answering".
-        return "the invite carries no room key (`k`) and no host key (`h`)"
-    fragment = invite.split("#", 1)[1] if "#" in invite else ""
-    pairs = [pair.partition("=") for pair in fragment.split("&") if pair]
+        return (
+            "the invite names no `room` or `token`, and carries no room key (`k`) and no "
+            "host key (`h`)"
+        )
+    before, _, fragment = invite.partition("#")
+    _, _, query = before.partition("?")
+    if mutation != "accept-repeated-key":
+        name = repeated(pairs_of(query), ("room", "token"))
+        if name is not None:
+            return f"the link names `{name}` twice"
+    pairs = pairs_of(fragment)
     names = [name for name, _, _ in pairs]
     if mutation != "accept-partial-fragment":
         if "k" in names and "h" not in names:
             return "the invite carries no host key (`h`)"
         if "h" in names and "k" not in names:
             return "the invite carries no room key (`k`)"
+    if mutation != "accept-repeated-key":
+        name = repeated(pairs, ("k", "h"))
+        if name is not None:
+            return f"the invite names `{name}` twice"
+    if mutation != "accept-partial-fragment":
         for name, _, value in pairs:
             if name in ("k", "h") and not is_key(value):
                 return f"`{name}` is not a 32-byte key in the fragment's encoding"
+    return None
+
+
+def pairs_of(part: str) -> list[tuple[str, str, str]]:
+    """A query or fragment split into `(name, separator, value)` triples."""
+    return [pair.partition("=") for pair in part.split("&") if pair]
+
+
+def repeated(pairs: list[tuple[str, str, str]], wanted: tuple[str, ...]) -> str | None:
+    """The first of `wanted` that `pairs` names more than once, if any."""
+    counts: dict[str, int] = {}
+    for name, _, _ in pairs:
+        counts[name] = counts.get(name, 0) + 1
+    for name in wanted:
+        if counts.get(name, 0) > 1:
+            return name
     return None
 
 
