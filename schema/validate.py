@@ -39,10 +39,10 @@ sealed payloads a host signs, and the reasons a receiver reports a refused seale
 **The numeric bounds.** `schema/limits.json` is data beside the schemas, not one of them: the
 numeric bounds the spec owns, each with its value, its unit and the section that owns it, so that
 an implementation's tests can read them instead of copying the prose. `check_limits` checks that
-every entry names a value, a unit and a section; that the names are unique; and that the two bounds
-that also live in a schema — a display name's `maxLength` in `common.json` and the close-code range
-in `errors.json` — equal what the schema carries, so a bound that moves in one place and not the
-other is a red run.
+every entry names an integer value, a unit and a section; that the names are unique and are the set
+`EXPECTED_LIMITS` pins; and that the two bounds that also live in a schema — a display name's
+`maxLength` in `common.json` and the close-code range in `errors.json` — equal what the schema
+carries, so a bound that moves in one place and not the other is a red run.
 
 **The peer layer.** `vectors/peer/*.json` is the second corpus: `selvage/2`'s *client* rules, whose
 subject is a client implementation rather than the server, and whose bytes are sealed frames
@@ -104,6 +104,37 @@ DATA_FILES = frozenset({"limits.json"})
 LIMITS_DISPLAY_NAME = "display_name_length"
 LIMITS_CLOSE_MIN = "close_code_min"
 LIMITS_CLOSE_MAX = "close_code_max"
+# The bounds `limits.json` publishes, by name. The file is a registry an implementation reads, so a
+# deleted bound has to be a deliberate edit: without this a smaller file still parses, still names
+# units and sections, and still passes. Update it in the same commit that adds or removes a bound.
+EXPECTED_LIMITS = frozenset(
+    {
+        "http_request_head",
+        "http_head_timeout",
+        "hello_timeout",
+        "ws_ping_interval",
+        "ws_ping_unanswered_intervals",
+        "outbound_queue_frames",
+        "outbound_queue_bytes",
+        "connection_cap",
+        "inbound_frame",
+        "inbound_message",
+        "inbound_text_envelope",
+        "room_cap",
+        "peers_per_room",
+        "inbound_rate",
+        "inbound_burst",
+        "inbound_frame_charge_floor",
+        "inbound_small_frame_ceiling",
+        LIMITS_DISPLAY_NAME,
+        LIMITS_CLOSE_MIN,
+        LIMITS_CLOSE_MAX,
+        "nesting_depth",
+        "listing_path_bytes",
+        "listing_paths",
+        "listing_path_bytes_total",
+    }
+)
 
 
 def schema_files() -> list[pathlib.Path]:
@@ -934,17 +965,21 @@ def load_schema_document(name: str) -> dict | None:
     except (OSError, json.JSONDecodeError) as error:
         fail(name, f"not readable as JSON: {error}")
         return None
-    return document if isinstance(document, dict) else None
+    if not isinstance(document, dict):
+        fail(name, "not a JSON object")
+        return None
+    return document
 
 
 def check_limits() -> int:
     """Checks `schema/limits.json`, the numeric bounds the spec owns.
 
-    The file is data, not a schema: every entry names its value, its unit and the section
-    that owns it, and the names are unique. Two of the bounds have a second home in a schema
-    — a display name's `maxLength` in `common.json` and the close-code range in
-    `errors.json`'s `closeCode` enum — so the entry that claims each must equal the schema's
-    value, which is the check that a bound moving in one place and not the other is a red
+    The file is data, not a schema: every entry names an integer value, its unit and the section
+    that owns it, the names are unique, and the set of names is the one `EXPECTED_LIMITS` pins,
+    so a deleted bound is a red run rather than a smaller file that parses. Two of the bounds have
+    a second home in a schema — a display name's `maxLength` in `common.json` and the close-code
+    range in `errors.json`'s `closeCode` enum — so the entry that claims each must equal the
+    schema's value, which is the check that a bound moving in one place and not the other is a red
     run. It returns the number of entries it read.
     """
     document = load_schema_document("limits.json")
@@ -968,12 +1003,22 @@ def check_limits() -> int:
             fail("limits.json", f"{where}: duplicate name {name!r}")
             continue
         by_name[name] = entry
-        if "value" not in entry:
-            fail("limits.json", f"{where} ({name}): no `value`")
+        value = entry.get("value")
+        if not isinstance(value, int) or isinstance(value, bool):
+            fail("limits.json", f"{where} ({name}): no integer `value`")
         for field in ("unit", "section"):
-            value = entry.get(field)
-            if not isinstance(value, str) or not value:
+            field_value = entry.get(field)
+            if not isinstance(field_value, str) or not field_value:
                 fail("limits.json", f"{where} ({name}): no `{field}`")
+
+    if set(by_name) != EXPECTED_LIMITS:
+        missing = sorted(EXPECTED_LIMITS - set(by_name))
+        unexpected = sorted(set(by_name) - EXPECTED_LIMITS)
+        fail(
+            "limits.json",
+            "the published bounds do not match the pinned registry: "
+            f"missing {missing}, unexpected {unexpected}",
+        )
 
     common = load_schema_document("common.json")
     max_length = None
