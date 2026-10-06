@@ -659,11 +659,16 @@ query parameters are ignored, so a client **MAY** attach its own parameters
 without a protocol change; a convention that uses one to tell a guest it will be
 a `viewer` is such a parameter, and this document defines none of it — a
 client's role is the applied state's alone (§13.4, §13.9). `room` and `token`
-each appear **at most once**: a URL that repeats either is malformed, and the
-server refuses it rather than let one of two values win. There is no code for a
-malformed URL in §11's vocabulary, so that refusal is the join refusal
-`token_invalid`, the code a room whose named token is not the room's already
-gets. Which of the two cases a URL is depends on `room` alone:
+each appear **at most once**: a URL that repeats either is malformed, and a
+receiver **MUST NOT** take one of the two values by the order they were written
+in — which room a link names must not depend on how its query was spelled. The
+server reads the query as soon as the connection's upgrade is done, so it
+refuses such a URL **before** it reads `session.hello`, and a connection that
+sends nothing at all is answered `session.error` and closed **4002** just the
+same. There is no code for a malformed URL in §11's vocabulary, so that refusal
+is the join refusal `token_invalid`, the code a room whose named token is not
+the room's already gets. Which of the two cases a URL is depends on `room`
+alone:
 
 - **A `room` without a `token`**, or with a token that is not the room's, is a
   `token_invalid` refusal.
@@ -702,9 +707,14 @@ back — `http://` as `ws://`, `https://` as `wss://` — and appending `/sessio
 and the rules above apply to the page link's query unchanged: `room` and `token`
 are percent-decoded by RFC 3986, each appears at most once, and any other
 parameter, including a `server` written by an implementation that predates this
-form, is ignored. **A receiver MUST accept either form and join the room it
-names**, and a host **MAY** hand on either; a link that truncates either form is
-the truncated-invite case the `token`-without-`room` rule above describes.
+form, is ignored. **A page link has no server to refuse it**, so a receiver
+**MUST** refuse one that repeats `room` or `token` **locally, before it opens a
+socket**, and the refusal **MUST** name the parameter that repeats, `room` or
+`token`: deriving the connection URL from the link is a rewrite that would have
+to choose a value, and it **MUST NOT**. **A receiver MUST accept either
+form and join the room it names**, and a host **MAY** hand on either; a link
+that truncates either form is the truncated-invite case the
+`token`-without-`room` rule above describes.
 
 The two forms carry the same secret and differ only in which scheme names the
 same address, so §12's rule about an invite URL covers both.
@@ -733,22 +743,25 @@ not a key, and neither is a 43-character value whose final character carries
 non-zero padding bits: a 32-byte value has one canonical spelling and
 [`CANONICAL.md`](CANONICAL.md) §6.1 fixes it, so a spelling that is not that one
 is a value nothing encodes rather than a second way to write the same key. Each
-name appears **at most once**, as `room` and `token` do, and a parameter the
-receiver does not know is ignored, as an unknown query parameter is.
+name appears **at most once**, as `room` and `token` do, and a receiver **MUST
+NOT** choose between two values by the order they appear here either: a link
+whose fragment repeats `k` or `h` is refused locally, as the paragraph below
+requires, and a parameter the receiver does not know is ignored, as an unknown
+query parameter is.
 
 The fragment is **never sent**, by construction: it is not part of a request
 line, and nothing this protocol defines puts it in a frame. A client **MUST**
 strip it before it builds the socket URL, **MUST NOT** log it, and **MUST NOT**
 send it to the server in any form. It **MUST** refuse an invite whose fragment
-is absent, whose `k` or `h` is missing, or whose `k` or `h` is not a 32-byte
-value — **locally, and before it opens a socket**. Without both values it can
-neither read a frame nor verify one, so there is no fallback. What this document
-fixes is that the refusal happens and what it is about — a refusal is about the
-key that is missing or is not a key, and names it, in this document's own
-spelling of the name the fragment gives it, `k` or `h` — while a link whose
-fragment is absent altogether is about both, and its refusal asks for the whole
-link, `#` and all, rather than naming one of the two. The sentence is the
-client's.
+is absent, or whose `k` or `h` is missing, repeated, or not a 32-byte value —
+**locally, and before it opens a socket**. Without both values
+it can neither read a frame nor verify one, so there is no fallback. What this
+document fixes is that the refusal happens and what it is about — a refusal is
+about the key that is missing, is repeated, or is not a key, and names it, in
+this document's own spelling of the name the fragment gives it, `k` or `h` —
+while a link whose fragment is absent altogether is about both, and its refusal
+asks for the whole link, `#` and all, rather than naming one of the two. The
+sentence is the client's.
 
 **That refusal is local, and has no wire form.** It happens before a socket is
 opened, so there is no frame to refuse on and no code to carry it: it is not a
@@ -1851,6 +1864,7 @@ than a server's.
 | in state   | frame, or the clock                                                                                                                                     | to       | what goes out                                                                                                                               |
 | ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | (accepted) | a WebSocket upgrade on `/session`                                                                                                                       | unseated | —                                                                                                                                           |
+| (accepted) | a WebSocket upgrade on `/session` whose query repeats `room` or `token` (§5.1)                                                                          | closed   | `session.error{token_invalid}`, close **4002**                                                                                              |
 | (accepted) | any other request line                                                                                                                                  | closed   | the plain-HTTP answer: `/meta`'s body or its headers for `HEAD`, the served page when one is configured, `405` for another method, or `404` |
 | (accepted) | no complete request head within the server's bound (§2.1)                                                                                               | closed   | —                                                                                                                                           |
 | unseated   | `session.hello`, room and token valid or no room named                                                                                                  | seated   | `room.created` (mint) or `room.joined` (join), to the sender; `peer.joined` to the room, unless it minted                                   |
@@ -1986,7 +2000,7 @@ in decides what a code does:
 | `bad_params`     | method params missing or malformed                                                                                                                | refusal for a blank, over-long or control-carrying `display_name`: `session.error`, then close **4000** | error response; the connection stays open  |
 | `hello_required` | the first text frame was not `session.hello`, or none arrived in time                                                                             | refusal: `session.error`, then close **4000**                                                           | —                                          |
 | `room_unknown`   | no such room (never minted, or destroyed)                                                                                                         | refusal: `session.error`, then close **4001**                                                           | —                                          |
-| `token_invalid`  | room present, token absent or wrong                                                                                                               | refusal: `session.error`, then close **4002**                                                           | —                                          |
+| `token_invalid`  | a join URL that repeats `room` or `token` (§5.1), or a room present whose token is absent or wrong                                               | refusal: `session.error`, then close **4002**                                                           | —                                          |
 | `room_gone`      | the room was destroyed. The frame that announces it is the `room.gone` **event** (§6), which has no recipient, and a later join is `room_unknown` | —                                                                                                       | —                                          |
 | `already_seated` | `session.hello` sent twice                                                                                                                        | —                                                                                                       | error response; the connection stays open  |
 
@@ -2852,7 +2866,8 @@ the client refuses to join, in its own words, and seats nothing, so neither
 that refusal — the corpus's decision layer asks for it with `expectRefusal` —
 and what it holds an implementation to in it is the **naming** and not the
 sentence, because §5.1 leaves the sentence to the client: the refusal names the
-key of §5.1's two that is missing, in this document's own spelling of it. A
+parameter it is about — the key of §5.1's two that is missing or is not a key,
+or the name a link repeats — in this document's own spelling of it. A
 refusal and a seating are the two answers a link can be given, so a vector that
 pins one carries the other beside it: the other way to pass a corpus of refusals
 is to refuse everything.
@@ -2894,6 +2909,7 @@ assertion about them says.
 | A verified closing ends; an unverified one does not (§13.10)                             | `ended` true for the first, false for the second and for a closing delivered to a subject holding no state                                                                                                                                                                                                                         | two `kind = 2` frames, one above the mark and one at it, and one delivered before any state; the mutation that drops the `issued` ordering must fail the first leg                                                                                                                                                                   |
 | The room is gone, not retryable (§13.10)                                                 | the subject sends no second `session.hello` to the id; `published` shows the one hello                                                                                                                                                                                                                                             | an absence scan over the transcript after `room_unknown`, as §6's scans are                                                                                                                                                                                                                                                          |
 | §5.1's fragment names one of its two keys and not the other                              | the refusal, naming the missing key; no session seated behind it                                                                                                                                                                                                                                                                   | one link of each shape — `k` without `h`, and `h` without `k` — with the whole fragment beside them, which must join; the mutation that accepts a partial fragment must fail the refusal legs                                                                                                                                        |
+| §5.1's link repeats `room`, `token`, `k` or `h`                                           | the refusal, naming the repeated parameter; no session seated behind it                                                                                                                                                                                                                                                            | one page link of each shape — `room` twice and `token` twice — and a fragment that repeats `k` and one that repeats `h`, with the whole link beside them, which must join; the mutation that accepts a repeated key must fail the refusal legs                                                                                       |
 | The invite's `viewer` parameter is not authoritative (§13.9)                             | a subject handed the parameter, then a state committing it as `guest`, behaves as a `guest`                                                                                                                                                                                                                                        | a fixture state that contradicts the parameter; a client that trusts the URL must fail                                                                                                                                                                                                                                               |
 
 **What a vector can pin.** The bytes: that a holds message is sealed and signed

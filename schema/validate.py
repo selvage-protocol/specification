@@ -94,16 +94,16 @@ BASE = "https://dontblameme.dev/schema/1/"
 # run instead of a smaller number in a line of output. Update them in the same commit that changes
 # the corpus. The two layers are counted apart on purpose: they are committed and replayed by
 # different tools, and one number would let one layer's loss be paid by the other's gain.
-EXPECTED_WIRE_VECTORS = 24
-EXPECTED_PEER_VECTORS = 26
-EXPECTED_FRAME_CHECKS = 33760
-EXPECTED_ASSERTIONS = 8387
+EXPECTED_WIRE_VECTORS = 25
+EXPECTED_PEER_VECTORS = 27
+EXPECTED_FRAME_CHECKS = 33784
+EXPECTED_ASSERTIONS = 8394
 # The peer layer's own counts. `PEER_CHECKS` is one per peer step plus one per recipe, and
 # `PEER_ASSERTIONS` counts the assertion steps of the **frame** vectors, which is what
 # `runner/run_peer.py` runs without a client; a decision vector's `expectSubject` steps are checked
 # here and are not in this number, because they are asserted against a *subject* — a client named by
 # `--subject` — and are counted in that run's own summary rather than in a corpus-wide pin.
-EXPECTED_PEER_CHECKS = 221
+EXPECTED_PEER_CHECKS = 232
 EXPECTED_PEER_ASSERTIONS = 74
 
 # The error and close codes each vector asserts, in sorted order. A substitution inside a
@@ -147,6 +147,8 @@ EXPECTED_CODES = {
     "032": ["close:4002", "session.error:token_invalid"],
     "035": [],
     "036": ["session.error:bad_message"],
+    "037": ["close:4002", "close:4002", "session.error:token_invalid",
+            "session.error:token_invalid"],
 }
 
 # The refusal reasons each peer vector asserts, in sorted order, and the mutation it must go red
@@ -187,6 +189,7 @@ EXPECTED_REFUSALS = {
     "155": [],
     "156": [],
     "157": [],
+    "159": [],
 }
 EXPECTED_MUTATIONS = {
     "101": None,
@@ -215,6 +218,7 @@ EXPECTED_MUTATIONS = {
     "155": "any-closing",
     "156": "wait-for-ever",
     "157": "accept-partial-fragment",
+    "159": "accept-repeated-key",
 }
 
 # The control of the absence scan: a document built to break every rule the scan states, and the
@@ -386,6 +390,7 @@ PEER_SUBJECT_MUTATIONS = frozenset(
         "any-closing",
         "wait-for-ever",
         "accept-partial-fragment",
+        "accept-repeated-key",
     }
 )
 

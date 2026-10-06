@@ -162,6 +162,21 @@ The implementations this document describes:
   seated `session.error{bad_message}` carries no `id` and a client that pipelined cannot tell which
   request it sank; the engine turns such an event into a `sessionError` and holds nothing
   outstanding to fail.
+- **Owes §5.1's repeat rule wherever a page link is rewritten.** `room`, `token`, `k` and `h`
+  each appear at most once and a receiver must not choose a value by the order it appears (§5.1).
+  The server refuses a repeated `room` or `token` as it reads the query, before `session.hello`
+  (`reference_server/crates/protocol/src/lib.rs`'s `parse_join_query`, through
+  `crates/selvaged/src/net/mod.rs`'s `serve_session`), which `vectors/037` pins. A page link is
+  the client's to rewrite into a connection URL — `wireInvite`
+  (`vscode_client/src/engine/relay.ts`) and the JetBrains plugin's `parsePageLink`
+  (`jetbrains_client/plugin/src/main/kotlin/dev/dontblameme/selvage/intellij/bridge/Invites.kt`)
+  — and a rewrite that takes one of two values, `URLSearchParams.get` or `firstOrNull`, is the
+  choice §5.1 forbids: the refusal is the client's, local and before a socket, and
+  `vectors/peer/159` pins it. A fragment's `k` and `h` are refused in the same place as the
+  partial-fragment rule (`reference_server/crates/client/src/peer.rs`,
+  `vscode_client/src/engine/peer.ts`,
+  `jetbrains_client/engine/src/main/kotlin/dev/dontblameme/selvage/sealed/Invite.kt`), because
+  nothing about a fragment reaches the server.
 
 ### A.4 The `x.` method surface
 
@@ -593,28 +608,26 @@ stands until one of those is chosen.
 `room` or `token`, because last-wins and first-wins parsers would name two different rooms from one
 URL. §11 has no code for a malformed URL, so the refusal is `token_invalid`, the code a room whose
 named token is not the room's already gets, a distinction a client cannot see, the same cost §B.23
-records for `doc.grant`'s `bad_params`. **Decided** as the code to use; whether `selvage/1` wants a
-URL-fault code of its own is open, and §5.1, §11 and any vector that pins one move together if it
-is wanted.
+records for `doc.grant`'s `bad_params`. **Decided** as the code to use; whether the protocol wants
+a URL-fault code of its own is open, and §5.1, §11 and any vector that pins one move together if
+it is wanted.
 
-**No vector pinned any of §5.1's URL rules**, and two of the three cannot be pinned by this
-corpus at all. The **decoding** rule — `%XX` is the only escape, and a literal `+` is the
-character `+` — has no vocabulary to state it in: a placeholder binds one whole value, so a step
-cannot spell an encoding of a room id or a token the server minted. The **repeated parameter** is
-refused by the reference server before `session.hello`, at the upgrade — a connection that sends
-nothing at all is answered `session.error{token_invalid}` and closed 4002, while a wrong token, an
-unknown room and a missing token all stay silent until a hello arrives — and §5.1 does not say
-when the refusal goes out. A transcript of that refusal would therefore begin with its `expect`
-and hold a second implementation to the timing as well as to the rule, where §1.1's silence rule
-says a peer must not depend on what the prose does not state; a transcript that sent a hello first
-would fail against the reference server, because the socket is already gone. So the rule is
-**unpinned and unpinnable** in the corpus as it stands, and what settles it is prose: either §5.1
-says when the refusal goes out, or the seating rule of §9.2 does. (The reference server does all
-three — a join whose room id or token has its first character percent-encoded still reaches the
-same room — so the gap is the corpus's and not the implementation's, and it is the corpus's gap
-that matters: an implementation that read only the prose is where the decoding would diverge, and
-§5.1's sentence about `+` exists because that divergence is silent — one peer's token is another's
-`token_invalid`, and neither can see why.)
+**A vector pins the repeated parameter now, and the prose states when the refusal goes out.**
+The **repeated parameter** is refused by the reference server before `session.hello`, at the
+upgrade — a connection that sends nothing at all is answered `session.error{token_invalid}` and
+closed 4002, while a wrong token, an unknown room and a missing token all stay silent until a
+hello arrives — and §5.1 now states that timing, so `vectors/037` is a transcript of the refusal
+that begins with its `expect` and sends nothing. A page link is the receiver's to resolve and has
+no server in it, so a repeat there, and a fragment that repeats `k` or `h`, are pinned as a
+client's local refusal in the peer layer (`vectors/peer/159`). The **decoding** rule — `%XX` is
+the only escape, and a literal `+` is the character `+` — is the one that stays unpinnable in the
+corpus: it has no vocabulary to state it in, because a placeholder binds one whole value, so a
+step cannot spell an encoding of a room id or a token the server minted. That gap is the corpus's
+and not the implementation's — the reference server decodes by RFC 3986, so a join whose room id
+or token has its first character percent-encoded still reaches the same room — and it is the
+corpus's gap that matters: an implementation that read only the prose is where the decoding would
+diverge, and §5.1's sentence about `+` exists because that divergence is silent — one peer's
+token is another's `token_invalid`, and neither can see why.
 
 **B.26 A one-sided drop has no *required* liveness bound.** A socket can die at one end while the
 other stays open (a roaming client, a hung relay, a half-open TCP connection), and every party is
