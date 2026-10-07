@@ -1023,8 +1023,8 @@ Follows
   vector as `Y.encodeStateVector` writes it, and a SyncStep2 or an Update a
   document update as `Y.encodeStateAsUpdate` and a `Y.Doc`'s `update` event
   write it, never the `…V2` form. No document specifies those bytes: their
-  normative source is yjs 13.6.32's encoder and decoder (`UpdateEncoderV1`,
-  `UpdateDecoderV1`), which build on lib0 0.2.117 ([yjs], §14). A receiver
+  normative source is yjs 13.6.33's encoder and decoder (`UpdateEncoderV1`,
+  `UpdateDecoderV1`), which build on lib0 0.2.119 ([yjs], §14). A receiver
   **MUST** read every struct the format defines, the Skip struct a merged update
   can carry among them, and **MUST** hold an update whose dependencies it lacks
   until they arrive rather than drop it, as yjs does: frames reach a peer in no
@@ -2986,11 +2986,11 @@ shape.
   the document-sync and awareness payloads this layer carries and does not
   define (§7, §8), with y-protocols 1.0.7's `auth.js` and `awareness.js`, the
   source of the auth body (§7) and of the awareness apply rule (§8.2).
-- [yjs] [`yjs/yjs`](https://github.com/yjs/yjs), version 13.6.32: the update
+- [yjs] [`yjs/yjs`](https://github.com/yjs/yjs), version 13.6.33: the update
   format V1 the sync payloads are (§7), whose normative source is its encoder
   and decoder (`src/utils/UpdateEncoder.js`, `src/utils/UpdateDecoder.js` and
-  `src/utils/encoding.js`), which build on lib0 0.2.117 ([lib0]).
-- [lib0] [`dmonad/lib0`](https://github.com/dmonad/lib0), version 0.2.117: the
+  `src/utils/encoding.js`), which build on lib0 0.2.119 ([lib0]).
+- [lib0] [`dmonad/lib0`](https://github.com/dmonad/lib0), version 0.2.119: the
   byte primitives — `varUint`, `varUint8Array` and `varString` — the binary
   frame's messages are built from (§7).
 - [`CANONICAL.md`](CANONICAL.md): SJ-C/1, the byte form of a session text frame.
