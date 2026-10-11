@@ -1053,6 +1053,15 @@ Follows
   has its own queue). yjs convergence does not require one, but an editor
   adapter **MUST NOT** assume ordering between documents or between peers.
 
+**Replication and lazy content (informative).** Sync covers the session document's
+accumulated history, not a per-guest subset of paths. A host may introduce a
+file's text only when it is needed, and an adapter may materialize only the
+paths it needs locally. Once text is in the session document, the ordinary
+sync exchange can carry it to any peer, whether or not that peer holds its path
+open. Releasing a hold or removing a path from the listing does not remove its
+`Y.Text` or history (§13.3, §13.7). Neither a per-path fetch RPC nor selective
+per-guest synchronization is defined here.
+
 ### 7.1 The sealed frame
 
 A binary frame is one **sealed frame**. Its bytes are
@@ -1826,16 +1835,15 @@ closing it had already passed. What a client must know and do:
   the window abandons a room that was still joinable. The grace is policy, like
   the retry's own numbers; what the wire fixes is that both exist and that a
   client uses the one it was told.
-- **A client has to be able to tell its user which of the two happened, and the
-  wire vocabulary still cannot express it.** A refusal reaches an adapter as
-  `session.error` (§6) and then, if the server closed the connection, as a
-  disconnection. A recoverable drop the client is retrying is visible to an
-  adapter as a local `reconnecting` event in the TypeScript client
-  ([`NOTES.md`](NOTES.md) §A.6), so it does not have to be inferred from the
-  silence; the Rust client has no in-process reconnect, so it reports no retry.
-  What the _wire_ cannot express is the retry itself, and one that gave up
-  produces the same disconnection an orderly close produces. **Known gap** on
-  the wire, and the fix there is an event, not a change to any existing frame.
+- **Retrying and giving up are local engine-adapter state.** A client must be
+  able to tell its caller whether it is retrying a recoverable drop or has
+  stopped. A refusal arrives as `session.error` (§6) and, if the server closes
+  the connection, a disconnection. With the socket gone, retry progress and
+  exhaustion of the bounded retry policy are reported locally, not by a wire
+  event. The adapter must not have to infer them from silence. The TypeScript
+  client's local `reconnecting` event is one such report
+  ([`NOTES.md`](NOTES.md) §A.6); the Rust client has no in-process reconnect and
+  reports no retry. No new session event or frame shape is needed.
 - **Nothing survives the room.** Once the room is destroyed there is no room to
   rejoin, on any URL, with any token (§9): no frame announces the destruction,
   and the same fact is the `room_unknown` a join naming it is refused with.

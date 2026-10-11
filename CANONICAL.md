@@ -141,17 +141,17 @@ follow:
 
 SJ-C fixes a string's bytes, not its length: a value longer than a receiver's bound is still
 canonical, and a receiver that refuses it refuses the value, not the encoding. The protocol fixes
-one such bound on a value: a `display_name` is at most 32 **UTF-16 code units** (`PROTOCOL.md`
+a bound on a display name: a `display_name` is at most 32 **UTF-16 code units** (`PROTOCOL.md`
 §5), counted in the unit a JavaScript string's `.length` reports and the unit §8.1 of that document
 counts offsets in, so an astral character costs two. A name over the bound is refused `bad_params`,
 the code a blank one gets; it is not a canonical-form fault, and the frame is not `bad_message`.
 The control characters `PROTOCOL.md` §5 forbids in a `display_name` and a `path` are the same kind
-of value refusal: the string is canonical, and it is the value a server will not carry.
+of value fault: the string is canonical. A server refuses the display name with `bad_params`;
+a peer drops an unusable path under `PROTOCOL.md` §13.3 or §13.7, not the state or holds message.
 
-A server's own limit on what it will carry is a different thing, and `PROTOCOL.md` §5 fixes no
-number for it: the size of an inbound frame or message (§2.1), a listing it will not store whole, a
-path longer than it will hold. A server refuses one of those with `bad_params`, and the value is
-still canonical: the limit is policy, and the refusal is about the value.
+The relay holds no listing and reads no path. Path and listing bounds are enforced by
+peers (`PROTOCOL.md` §13.3, §13.7); a value beyond those bounds is still canonical. Transport and
+envelope bounds, and their distinct refusal behavior, are `PROTOCOL.md` §2.1's, not string rules.
 
 ### 2.9 Nesting depth
 
@@ -161,21 +161,22 @@ refuse a deeper one — a text frame `bad_message`, as an envelope it cannot rea
 §11), and a sealed payload (§6.1) `bad_payload` at step 8. A JavaScript `JSON.parse` has no such
 bound, so two conforming receivers can disagree only about a frame no conforming producer writes.
 
-## 3. Unknown members: dropped
+## 3. Unknown members: ignored
 
-A member that the receiver's implementation does not know is **dropped**, never preserved and
-never rejected. A server never copies a client's object into a frame it sends: `PeerInfo`
-and the session params are built member by member.
+A member that the receiver's implementation does not know is **ignored**, never rejected merely
+because it is unknown. It does not affect the interpretation of known members. This rule applies
+at every depth §2.9 admits; it does not relax `PROTOCOL.md` §4's duplicate-member rule (its code
+is §11's `bad_message`), the string rules of §2.3, or the numeric rules of §2.4.
 
-Dropping is what makes `PROTOCOL.md` §4.1's promise true (a receiver that keeps working when a
-*later* version adds a member), and it is why the vectors in [`vectors/`](vectors/) can assert the
-*exact* member set of a frame: a version-locked vector is checking that no member has been silently
-added or renamed. The member set of every frame of this version is fixed, and that is what lets a
-vector assert an exact one.
+Frames an implementation authors use the member sets defined for this version, not unknown members echoed
+from an incoming object. A server's `PeerInfo` and session params contain only their defined
+members. The vectors in [`vectors/`](vectors/) assert those *exact* outgoing member sets, checking
+that no member has been silently added or renamed.
 
-A receiver that preserves unknown members has not been asked to, but is not conformant with this
-document: preservation is untestable (nothing observable differs) except when a peer echoes the
-unknown member back, which §4.1 forbids in effect by making every frame's members enumerated.
+Ignoring makes `PROTOCOL.md` §4.1's compatibility promise observable: an otherwise valid frame with
+an unknown member is handled as it would be without that member, and the member is not echoed into
+an authored frame. Whether a receiver retains it in an internal JSON representation is
+unspecified; conformance does not require recursively deleting it from that representation.
 
 ## 4. What a receiver MUST tolerate
 
@@ -497,7 +498,7 @@ later revision defines one, and a receiver of this version refuses a frame that 
 reading it by the nearest rule it knows.
 
 **The four sealed payloads.** All four are JSON objects, read as §2 writes one, and none is a
-session frame: none carries `v`, and §2.5 is not theirs. §3 is: a receiver drops a member it does
+session frame: none carries `v`, and §2.5 is not theirs. §3 is: a receiver ignores a member it does
 not know and does not refuse the value. A producer **MUST NOT** write a member this version does not
 define — the member sets below are fixed, and §2.7's order for `listing` is part of them.
 
