@@ -1835,12 +1835,12 @@ closing it had already passed. What a client must know and do:
   the window abandons a room that was still joinable. The grace is policy, like
   the retry's own numbers; what the wire fixes is that both exist and that a
   client uses the one it was told.
-- **Retrying and giving up are local engine-adapter state.** A client must be
+- **Retrying and giving up are local engine-adapter state.** A client **MUST** be
   able to tell its caller whether it is retrying a recoverable drop or has
   stopped. A refusal arrives as `session.error` (§6) and, if the server closes
   the connection, a disconnection. With the socket gone, retry progress and
   exhaustion of the bounded retry policy are reported locally, not by a wire
-  event. The adapter must not have to infer them from silence. The TypeScript
+  event. The adapter **MUST NOT** need to infer them from silence. The TypeScript
   client's local `reconnecting` event is one such report
   ([`NOTES.md`](NOTES.md) §A.6); the Rust client has no in-process reconnect and
   reports no retry. No new session event or frame shape is needed.
