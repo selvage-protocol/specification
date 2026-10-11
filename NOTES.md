@@ -215,11 +215,18 @@ The TypeScript client implements the bounded policy of `PROTOCOL.md` §9.1 (`A.3
 awareness client id on every re-seat, so a reconnecting peer is never mistaken for the peer it
 replaces; it emits a local `reconnecting` event while a retry is in flight, so an adapter does not
 have to infer it from the silence (`vscode_client/src/engine/relay.ts`). The Rust client has no
-in-process reconnect (`A.2`), so it retries nothing and reports no retry. What remains a wire gap is
-the retry itself, because the `selvage/2` event vocabulary has no name for it (`PROTOCOL.md` §9.1,
-*Known gap*).
+in-process reconnect (`A.2`), so it retries nothing and reports no retry. Retry progress and giving
+up belong to the local engine-adapter seam while the socket is gone, not to the `selvage/2` event
+vocabulary. `PROTOCOL.md` §9.1 requires bounded retries and an observable give-up; no new wire
+event is needed to report either.
 
 ### A.7 The second client
+
+**Status: what is superseded is the `DESIGN.md` §14.2 deferral, not the whole account.** The
+independent JetBrains implementation named in this document's introduction answers the deferral the
+account below cites; the account's own fact, that `nvim_client` drives a byte-identical vendored
+copy of the TypeScript engine, remains current. Client conformance is defined by `PROTOCOL.md`
+§1.1 and §13, with checkability in §13.11, regardless of implementation language.
 
 `nvim_client` exists and is a second *editor* client, but it drives a byte-identical vendored copy
 of the same TypeScript engine rather than an independent implementation. What `DESIGN.md` §14.2
@@ -279,7 +286,7 @@ traffic and serving the code the guest runs (`PROTOCOL.md` §3).
 concrete implementation, is here instead, because a list of implementations in the normative text
 goes stale as soon as a new one lands. Each item names the section whose rule it belongs to.
 
-- **Every implementation drops an unknown member** (`CANONICAL.md` §3). Each deserializes into a
+- **Every implementation ignores an unknown member** (`CANONICAL.md` §3). Each deserializes into a
   fixed set of named members and ignores the rest — `serde` in the Rust server and client, a plain
   object read in the TypeScript and Kotlin engines — and a server builds `PeerInfo` and the session
   params member by member rather than copying a client's object.
@@ -321,6 +328,25 @@ goes stale as soon as a new one lands. Each item names the section whose rule it
 
 ## B. Decisions and open questions
 
+Dated implementation-status and proposal passages are historical, including claims that a revision
+has not shipped or that tooling cannot yet run. They preserve the sequence of decisions, not current
+obligations. Use `PROTOCOL.md` and `CANONICAL.md` for current requirements; explicitly unresolved
+questions remain open unless a later item records their resolution.
+
+Reading the earlier records:
+
+- **The plaintext-era mechanisms recorded in B.1–B.23 are historical.** Removed session fields,
+  `doc.*` messages, server-held listings and host reclaim are not an alternative protocol. Current
+  session fields are `PROTOCOL.md` §4–§6, cursor attribution is §8.4, and the listing and holds are
+  §7.1, §13.3 and §13.7.
+- **B.31–B.44 record the sealed revision's staged proposals and implementation passes.** Their
+  intermediate version gates, dual-version support and pending-release/tooling statuses are
+  historical. §B.45 records their re-baseline onto the one version; current version and refusal
+  rules are `PROTOCOL.md` §10 and §11, and client obligations are §13.
+
+These labels do not resolve an open question. In particular, §B.46–§B.49 retain their open status;
+a dated proposal's use of MUST or SHOULD is not itself a current normative requirement.
+
 Each item was decided by the implementation if it says **decided**, and is a candidate for
 ratification; **unresolved** items are marked as such and none of them is a requirement. Items are
 numbered so that `PROTOCOL.md` and the schemas can cite one.
@@ -341,7 +367,13 @@ keypair, whose public half travels in the invite URL's fragment, and a host that
 blip window proves it with a signature its peers verify rather than with a token the server checks.
 What survives here is only the part about identity and the link, which is `B.1`'s subject.
 
-**B.3 Read-only guests: the `viewer` role, endpoint-side.** The design has the host serving content
+**B.3 Read-only guests: the `viewer` role, endpoint-side.**
+
+**Historical rollout status.** The proposals and unimplemented-status claims below predate the
+sealed protocol's implementation. Current attribution and viewer obligations are `PROTOCOL.md`
+§7.1, §13.2, §13.4, §13.5 and §13.9; the endpoint-enforcement rationale remains relevant.
+
+The design has the host serving content
 and guests reading it, and this slice has both roles editing, because the conformance gate requires
 concurrent edits from both sides. What is settled is **where enforcement lives**: the server never
 inspects a payload, and `PROTOCOL.md` §12 is being revised toward an encrypted shape in which the
@@ -409,7 +441,15 @@ the other policy on one edge publishes `-1` for it itself; nothing about the sha
 and `CANONICAL.md` §2.4 says so. Undo interop (yjs's `followUndoneDeletions`, which it recommends
 leaving `false` for shared positions) is out of scope for `selvage/1`.
 
-**B.5 Where does an awareness client id belong?** The session layer carries `awareness_client_id`
+**B.5 Where does an awareness client id belong?**
+
+**Session-layer placement, decided.** The session layer carries `awareness_client_id`, and
+`PROTOCOL.md` §8.4 states that normatively; current cursor attribution is §8.4 and §13.4. This
+passage preserves the original alternative (the awareness state naming a `peer_id`). The surviving
+open question is whether the server should mint or validate the id (`B.24`), not which layer
+carries it.
+
+The session layer carries `awareness_client_id`
 so that a cursor can be attributed to a display name without putting identity into awareness
 (`PROTOCOL.md` §8.4). This is one reading of "identity travels in the peer/session layer"; an
 alternative is for the awareness state to name a `peer_id`. **Unresolved.**
@@ -418,7 +458,18 @@ alternative is for the awareness state to name a `peer_id`. **Unresolved.**
 to address one peer, which the host-seeded document flow ("the host serves this path to that
 requester") would want. Adding it means a target field in the frame. **Unresolved.**
 
-**B.7 No per-document request/response.** A guest's `doc.open` is informational on the wire: no
+**B.7 No per-document request/response.**
+
+**Current replication model.** `PROTOCOL.md` §7 syncs the accumulated session document as a whole.
+Lazy host introduction delays adding a file's text to that document; lazy local materialization
+delays writing replicated text into an adapter's cache. Neither restricts sync to a guest's open
+paths. Content already introduced can reach every peer, and releasing a hold or removing a listing
+entry does not remove that content (§13.3, §13.7). There is no per-path fetch RPC.
+
+**Historical mechanism, superseded by §B.45.** The `doc.open`/`doc.granted` account below describes
+the removed plaintext protocol. Current holds and listing rules are `PROTOCOL.md` §13.7 and §13.3.
+
+A guest's `doc.open` is informational on the wire: no
 frame asks the host for a path, and a document's content arrives because the single session
 `Y.Doc` syncs as a whole. That mechanism is unchanged, and `B.23`'s grant does not touch it, since
 a listing carries paths and never content. What the grant changes is *which* paths a client opens:
@@ -432,7 +483,13 @@ reference clients now materialise the grant and fetch content lazily: the VS Cod
 the listing its engine reports on `doc.granted` and opens a granted path on demand, while the
 Neovim guest mirrors the listing into a directory and reads a file only when something opens it.
 
-**B.8 Open-document paths are unvalidated.** `path` is an opaque string, and `PROTOCOL.md` §5 only
+**B.8 Open-document paths are unvalidated.**
+
+**Historical plaintext grant.** The `doc.grant` exchange below was removed by §B.45. Current
+path validity and receiver bounds are `PROTOCOL.md` §5, §13.3 and §13.7; host-side filesystem
+confinement remains distinct from wire path validity (§12).
+
+`path` is an opaque string, and `PROTOCOL.md` §5 only
 requires it to be non-blank and free of control characters. The first is `trim()` non-empty, which
 the schema's `documentPath` describes and approximates with a `minLength` and a `\S` pattern; the
 second is carried exactly, as a `not` around a pattern that matches a control character anywhere in
@@ -456,7 +513,12 @@ rather than read. `PROTOCOL.md` §12 says what an implementation that does read 
 ignored and a client cannot insist on one. If a profile ever becomes mandatory, the protocol needs
 a failure mode other than "unknown is ignored". **Unresolved.**
 
-**B.10 Lifecycle of the open-document set.** Settled for this draft in `PROTOCOL.md` §1.2 and §5:
+**B.10 Lifecycle of the open-document set.**
+
+**Historical server-held set, revised below by §B.45.** Current live holds belong to peers
+(`PROTOCOL.md` §1.2, §13.7); their release does not retract accumulated document content (§7).
+
+Settled for this draft in `PROTOCOL.md` §1.2 and §5:
 the set belongs to the room and outlives any peer, a hold belongs to one connection, and a path
 leaves the set when the last peer holding it open closes it. The second half of the old question,
 whether a reconnecting host should re-`doc.open` its documents rather than inheriting the set, is
@@ -498,6 +560,9 @@ and gains a client nothing, since the three discovery steps of §8.3 are the who
 peer that speaks y-protocols without Selvage may ask one and get nothing.
 
 **B.16 The second client implementation.** See `A.7`. **Unresolved.**
+
+**Historical status.** §A.7 now identifies the independent Kotlin engine. The original status
+above is retained as provenance; current client obligations are `PROTOCOL.md` §1.1 and §13.
 
 **B.17 A token with no `room` mints a room.** `PROTOCOL.md` §5.1 states the rule normatively: a URL
 that carries `token` but no `room` mints a new room, seats the connection as its host and discards
@@ -570,7 +635,14 @@ is already canonical under §2.1, §2.2 and §2.3, and §2.8 already covers its 
 No new error code and no new close code: `bad_params` and `unsupported_version` cover every
 outcome.
 
-**B.23 A room's working tree is `doc.grant` and `doc.granted`.** A room could not say what its
+**B.23 A room's working tree is `doc.grant` and `doc.granted`.**
+
+**Historical plaintext mechanism, superseded by §B.45.** The requests, events, server-held
+listing and server refusals below are not current obligations. The listing now travels in signed,
+sealed room state (`PROTOCOL.md` §7.1), with peer-side application and bounds (§13.3), holds
+(§13.7) and host-side access safety (§12). The snapshot and candidate-path rationale is retained.
+
+A room could not say what its
 working copy is: `documents` is the union of the holds its connections declared, so a guest's view
 of a project was the union of what every peer happened to have open, and a path nobody had opened
 was invisible (`PROTOCOL.md` §1.2, §6.2). `PROTOCOL.md` §5 adds `doc.grant`, a host-only request
