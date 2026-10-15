@@ -58,7 +58,20 @@ run_lychee() {
 
 inputs_clean() {
   local dirty
-  dirty=$(git status --porcelain -- .github schema scripts vectors runner flake.nix flake.lock)
+  # A caller's Git repository, index, object or config selection would point this read at
+  # another repository, or hide the untracked files that make the tree dirty, so a changed
+  # validate could pass as clean. Drop the selection for this read alone and let git discover
+  # the checkout from the working directory, as it does for a linked worktree whose `.git` is a
+  # file; the substitution is a subshell, so the caller's environment and the rest of the run
+  # are untouched.
+  # The discovered repository's own `status.showUntrackedFiles=no` is not an environment
+  # variable, so it survives the unset; the read asks for untracked files explicitly.
+  dirty=$(
+    unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY \
+          GIT_ALTERNATE_OBJECT_DIRECTORIES GIT_CONFIG_GLOBAL GIT_CONFIG_SYSTEM \
+          GIT_CONFIG_COUNT GIT_CONFIG_PARAMETERS
+    git status --porcelain --untracked-files=all -- .github schema scripts vectors runner flake.nix flake.lock
+  )
   if [[ -n $dirty ]]; then
     printf 'refusing: the validate inputs differ from HEAD, so this is not the run CI would do.\n' >&2
     printf 'commit these paths first, then re-run:\n' >&2
