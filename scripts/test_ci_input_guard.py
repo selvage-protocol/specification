@@ -49,6 +49,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_SCRIPT = HERE / "ci-local.sh"
@@ -63,6 +64,22 @@ WORKDIR = Path(os.environ.get("TMPDIR") or (HERE.parent / ".tmp")) / "ci-input-g
 
 BASH = shutil.which("bash") or "/bin/bash"
 GIT = shutil.which("git")
+
+# A caller's Git repository and config selections are dropped, not inherited: a repository
+# selection overrides the fixture's working directory, and a config parameter changes what its
+# `git status` reports. A local-Git policy over these names, not a hostile-environment sanitizer.
+GIT_SELECTION = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_COMMON_DIR",
+    "GIT_INDEX_FILE",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG_GLOBAL",
+    "GIT_CONFIG_SYSTEM",
+    "GIT_CONFIG_COUNT",
+    "GIT_CONFIG_PARAMETERS",
+)
 
 # A commit needs an identity and, in a sandbox, a home inside the tree: nothing here reads or
 # writes the machine's own git config.
@@ -182,7 +199,7 @@ class Repo:
         path.chmod(0o755)
 
     def environment(self, **extra: str) -> dict[str, str]:
-        env = dict(os.environ)
+        env = {name: value for name, value in os.environ.items() if name not in GIT_SELECTION}
         env.update(IDENTITY)
         env["HOME"] = str(self.root)
         # Nothing here may reach a repository above the throwaway tree, whatever TMPDIR points
@@ -353,6 +370,101 @@ class ScriptTest(unittest.TestCase):
 
     def test_the_script_declares_the_checks_this_harness_expects_it_to_run(self):
         self.assertTrue(declared_checks(DEFAULT_SCRIPT.read_text(encoding="utf-8")))
+
+
+class GitSelectionIsolationTest(Harness):
+    """A caller's Git variables must not reach the throwaway tree.
+
+    A repository selection or a config parameter would change what the fixture's own `git` and the
+    script's `git status` read, so a dirty fixture could pass as clean. Each test names a throwaway
+    repository and shows the fixture still reads itself.
+    """
+
+    def decoy(self, repo: Repo) -> Path:
+        """A second throwaway repository, the one a leaked selection variable would point at."""
+        decoy = repo.root / "decoy"
+        decoy.mkdir()
+        (decoy / "decoy.txt").write_text("decoy\n")
+        repo.must(repo.git("init", "--quiet", cwd=decoy))
+        repo.must(repo.git("add", "--all", cwd=decoy))
+        repo.must(
+            repo.git(
+                "commit",
+                "--quiet",
+                "-m",
+                "the repository a leaked variable selects",
+                cwd=decoy,
+            )
+        )
+        return decoy
+
+    def caller_selection(self, decoy: Path) -> dict[str, str]:
+        """What a caller inside a repository has set, aimed at the decoy."""
+        return {
+            "GIT_DIR": str(decoy / ".git"),
+            "GIT_WORK_TREE": str(decoy),
+            "GIT_INDEX_FILE": str(decoy / ".git" / "index"),
+        }
+
+    def decoy_state(self, repo: Repo, decoy: Path) -> tuple[str, str, str]:
+        """The decoy's logical state: its HEAD, its status and the files it tracks."""
+        return (
+            repo.must(repo.git("rev-parse", "HEAD", cwd=decoy)).stdout.strip(),
+            repo.must(repo.git("status", "--porcelain", cwd=decoy)).stdout,
+            repo.must(repo.git("ls-files", cwd=decoy)).stdout,
+        )
+
+    def test_a_dirty_validate_is_not_masked_by_a_callers_git_selection(self):
+        repo = self.make()
+        decoy = self.decoy(repo)
+        repo.dirty("vectors")
+        caller = dict(os.environ)
+        with mock.patch.dict(os.environ, self.caller_selection(decoy), clear=False):
+            done = repo.run("validate")
+        self.assertNotEqual(
+            done.returncode, 0, f"a dirty validate exited 0:\n{done.stdout}{done.stderr}"
+        )
+        self.assertIn("refusing:", done.stderr)
+        self.assertIn("vectors/dirty.txt", done.stderr)
+        self.assertEqual(repo.calls(), [], "a refused validate went on to run a command")
+        self.assertEqual(dict(os.environ), caller, "the run changed the caller's environment")
+
+    def test_the_fixtures_git_calls_are_not_redirected_by_a_callers_git_selection(self):
+        repo = self.make()
+        decoy = self.decoy(repo)
+        repo.dirty("vectors")
+        before = self.decoy_state(repo, decoy)
+        with mock.patch.dict(os.environ, self.caller_selection(decoy), clear=False):
+            status = repo.git("status", "--porcelain")
+        self.assertEqual(status.returncode, 0, f"{status.stdout}{status.stderr}")
+        self.assertIn(
+            "vectors/dirty.txt",
+            status.stdout,
+            "the fixture's git read a repository the caller's environment named",
+        )
+        self.assertEqual(self.decoy_state(repo, decoy), before, "the run left the decoy changed")
+
+    def test_a_dirty_validate_is_not_masked_by_a_callers_git_config_parameters(self):
+        repo = self.make()
+        repo.dirty("vectors")
+        caller = dict(os.environ)
+        injected = {"GIT_CONFIG_PARAMETERS": "'status.showUntrackedFiles=no'"}
+        with mock.patch.dict(os.environ, injected, clear=False):
+            done = repo.run("validate")
+            status = repo.git("status", "--porcelain")
+        self.assertNotEqual(
+            done.returncode, 0, f"a dirty validate exited 0:\n{done.stdout}{done.stderr}"
+        )
+        self.assertIn("refusing:", done.stderr)
+        self.assertIn("vectors/dirty.txt", done.stderr)
+        self.assertEqual(repo.calls(), [], "a refused validate went on to run a command")
+        self.assertEqual(status.returncode, 0, f"{status.stdout}{status.stderr}")
+        self.assertIn(
+            "vectors/dirty.txt",
+            status.stdout,
+            "the fixture's git did not see its own untracked file",
+        )
+        self.assertEqual(dict(os.environ), caller, "the run changed the caller's environment")
 
 
 if __name__ == "__main__":
