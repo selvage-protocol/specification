@@ -466,6 +466,63 @@ class GitSelectionIsolationTest(Harness):
         )
         self.assertEqual(dict(os.environ), caller, "the run changed the caller's environment")
 
+    def test_a_dirty_validate_is_not_masked_by_a_raw_caller_git_selection(self):
+        """The script's own read drops a repository selection, not only the harness filter.
+
+        The tests above reach the script through `Repo.environment`, which removes the
+        selectors before it starts: they show the harness is isolated, not that the guard is.
+        Here the selection is handed to the script itself, the way a caller sitting in another
+        repository has it, and the guard must still refuse the dirty tree.
+        """
+        repo = self.make()
+        decoy = self.decoy(repo)
+        repo.dirty("vectors")
+        done = repo.run("validate", **self.caller_selection(decoy))
+        self.assertNotEqual(
+            done.returncode, 0, f"a dirty validate exited 0:\n{done.stdout}{done.stderr}"
+        )
+        self.assertIn("refusing:", done.stderr)
+        self.assertIn("vectors/dirty.txt", done.stderr)
+        self.assertEqual(repo.calls(), [], "a refused validate went on to run a command")
+
+    def test_a_dirty_validate_is_not_masked_by_raw_caller_config_parameters(self):
+        """A caller's command config must not hide the untracked file that makes the tree dirty."""
+        repo = self.make()
+        repo.dirty("vectors")
+        done = repo.run("validate", GIT_CONFIG_PARAMETERS="'status.showUntrackedFiles=no'")
+        self.assertNotEqual(
+            done.returncode, 0, f"a dirty validate exited 0:\n{done.stdout}{done.stderr}"
+        )
+        self.assertIn("refusing:", done.stderr)
+        self.assertIn("vectors/dirty.txt", done.stderr)
+        self.assertEqual(repo.calls(), [], "a refused validate went on to run a command")
+
+    def test_a_clean_validate_runs_every_check_with_a_raw_caller_git_selection(self):
+        """The same poison over a clean tree must reach every check: the fix is no blind refusal."""
+        repo = self.make()
+        decoy = self.decoy(repo)
+        done = repo.run("validate", **self.caller_selection(decoy))
+        self.assertEqual(done.returncode, 0, f"{done.stdout}{done.stderr}")
+        self.assertEqual(repo.calls(), [EVAL] + [build(name) for name in repo.checks] + [LINKS])
+
+    def test_a_dirty_validate_is_not_masked_by_a_local_untracked_visibility_setting(self):
+        """A repository-local untracked-visibility setting must not hide the untracked dirty file.
+
+        The caller's config parameters are dropped for the guard's read, but the setting can
+        also live in the discovered repository's own config, which no environment unset removes.
+        The read must ask for the untracked files it is there to see.
+        """
+        repo = self.make()
+        repo.must(repo.git("config", "--local", "status.showUntrackedFiles", "no"))
+        repo.dirty("vectors")
+        done = repo.run("validate")
+        self.assertNotEqual(
+            done.returncode, 0, f"a dirty validate exited 0:\n{done.stdout}{done.stderr}"
+        )
+        self.assertIn("refusing:", done.stderr)
+        self.assertIn("vectors/dirty.txt", done.stderr)
+        self.assertEqual(repo.calls(), [], "a refused validate went on to run a command")
+
 
 if __name__ == "__main__":
     unittest.main()
