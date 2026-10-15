@@ -27,6 +27,12 @@ frame layer is a **format** check and a **self-consistency** check rather than a
 implementation: it was written from the same prose as any client will be, so agreement between
 them is weak evidence.
 
+Finite reciprocal sync and viewer publication-history exclusion need retained
+multi-replica proofs, not just the current single-subject reports. The
+[reconnect contract recipes](reconnect-contract-recipes.md) give the loss,
+fresh-key, role-transition and bounded-count cases, and name the corpus seams
+that cannot express them yet.
+
 Client behaviour beyond that (renewal, expiry, reconnection, the adapter seam, the two clients'
 agreement) is tested in
 the reference server's [`crates/harness/tests/`](https://github.com/selvage-protocol/reference_server/tree/main/crates/harness/tests)

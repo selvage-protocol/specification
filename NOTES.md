@@ -2149,7 +2149,7 @@ on at all. Whether the binary should take the two clocks as flags, or the toolin
 shortened client clock as a test seam the prose names, is open; the requirement itself is not.
 
 **B.48 An update lost on the way out is never recovered.** `PROTOCOL.md` §7, §9.1, §13.1's step 6
-and §13.6. **Unresolved** (2026-10-04). An Update a client writes into a socket that is closing
+and §13.6. **Unresolved** (2026-10-04; historical status, current rule below). An Update a client writes into a socket that is closing
 never reaches the relay, and every later update from that client depends on it, so each one stays
 pending at every receiver (§7 has a receiver hold it rather than drop it) and the client's edits
 from then on are invisible to the room. Nothing in the protocol asks for it back. The sync handshake
@@ -2166,6 +2166,17 @@ with `abc`, with nothing refused and nothing reported. Open is which frame recov
 that sees `peer.joined` answering with a SyncStep1 of its own, a receiver that has held pending
 structs past a bound sending one, or both — and how often it may be sent, since a SyncStep1 is
 answered with a diff and §13.6 already bounds its own to one per `awareness_renew_ms`.
+
+**Current normative rule.** §7 and §13.6 now require finite bidirectional
+initial sync: the first correctly parsed, authenticated request from a committed
+writer key in each continuous write eligibility activates one reciprocal
+request, coalesced with refusal re-sync and each new already-handshaken local
+writer eligibility's readiness on the renewal clock. §9.1 and §13.1's step 6
+apply it to retained-history reconnect; §13.9 forbids exporting local viewer
+mutations after promotion or key replacement. This settles the frame
+and frequency choice above. The dated run and its observations remain historical
+failure evidence, not a claim that the revised rule or every implementation has
+passed the retained-history proof; §13.11 names that proof separately.
 
 **B.49 A yjs `Any` value nested without bound.** `PROTOCOL.md` §7 and `CANONICAL.md` §2.9.
 **Unresolved** (2026-10-04). §2.9 bounds the JSON of a frame and of a sealed payload, and not the
