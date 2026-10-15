@@ -116,6 +116,16 @@
           dry-run-gating =
             mkCheckWith pythonWithPyYaml [] "dry-run-gating"
               "python3 -B scripts/test_check_dry_run_gating.py && python3 -B scripts/check_dry_run_gating.py .github/workflows";
+          # The guard `scripts/ci-local.sh` runs before its checks: a `validate` whose inputs
+          # differ from HEAD must stop, not print its refusal and go on to run every check and
+          # report success. The mode arms invoked `job_validate` as the left operand of `&&`,
+          # which suppresses `errexit` for the whole function body; the same suppression also
+          # swallowed a check that failed in the middle of the list.
+          # `scripts/test_ci_input_guard.py` drives the real script in throwaway git
+          # repositories with a `nix` that records its calls, so it needs `git` and builds
+          # nothing.
+          ci-input-guard =
+            mkCheckUsing [pkgs.git] "ci-input-guard" "python3 -B scripts/test_ci_input_guard.py";
         };
       }
     );

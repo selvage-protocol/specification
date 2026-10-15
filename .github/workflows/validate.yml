@@ -107,6 +107,17 @@ jobs:
       - name: check the version bump
         run: python3 scripts/test_bump_version.py
 
+      # `scripts/ci-local.sh` refuses a `validate` whose inputs differ from HEAD, because CI
+      # checks out the committed ref and a local run does not. That refusal is the gate's
+      # precondition, and it has to stop the run: the mode arms invoked `job_validate` as the
+      # left operand of `&&`, which suppresses `errexit` for the whole function body, so the
+      # refusal (or a check that failed in the middle of the list) was printed and then
+      # swallowed and the script exited 0. `scripts/test_ci_input_guard.py` drives the real
+      # script in throwaway git repositories with a `nix` that records its calls, so it builds
+      # nothing and needs `git`.
+      - name: the ci-local input guard
+        run: python3 -B scripts/test_ci_input_guard.py
+
       # The reader-facing prose: `README.md` and the `docs` tree it links to, checked with the
       # `lychee.toml` a developer runs and the same pinned lychee release. The runner has no nix, so
       # the release archive is installed here and `scripts/ci-local.sh links` takes lychee from

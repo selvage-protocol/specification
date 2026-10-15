@@ -15,8 +15,8 @@
 # mistakes statically; the workflow has no actionlint step of its own, so that one is local-only.
 #
 # `validate` is `nix build .#checks.<system>.{schemas,runner,yprotocols,peer,peer-census,recipes,`
-# `workflows,bump-version,dry-run-gating}`, one check per step. `flake.nix` supplies the pinned
-# Python and the
+# `workflows,bump-version,dry-run-gating,ci-input-guard}`, one check per step. `flake.nix` supplies
+# the pinned Python and the
 # four packages the workflow installs with pip — at the versions that workflow pins — so this
 # needs no virtualenv, no `pip` and no network. The `dry_run` guard is the one check whose Python
 # carries PyYAML as well. Each
@@ -88,6 +88,7 @@ job_validate() {
   check workflows "the workflows' pins and the release-version guard"
   check bump-version "the version bump the release computes from its tags"
   check dry-run-gating "the workflows' dry_run gating"
+  check ci-input-guard "the guard that stops a dirty validate"
 }
 
 job_links() {
@@ -100,11 +101,15 @@ job_lint() {
   nix develop . -c actionlint
 }
 
+# The modes are statements rather than `&&` lists: a command that is not the last operand of `&&`
+# runs with `errexit` suppressed, and that suppression reaches into a function body, so a
+# `job_validate` there would print its refusal (or swallow a failing check) and return the status
+# of its last command.
 case "${1:-all}" in
-  validate) job_validate && job_links ;;
+  validate) job_validate; job_links ;;
   links) job_links ;;
   lint) job_lint ;;
-  all) job_lint && job_validate && job_links ;;
+  all) job_lint; job_validate; job_links ;;
   *)
     printf 'usage: %s [validate|links|lint|all]\n' "$0" >&2
     exit 2
