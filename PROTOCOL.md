@@ -1006,7 +1006,9 @@ Follows
 - **One `Y.Doc` per session, one `Y.Text` per document**, keyed by
   workspace-relative path. Document identity is the path, and it reaches the
   room in the frames a peer names it in — a hold, a listing, a content frame's
-  plaintext (§7.1, §13.7); it is not encoded inside the CRDT.
+  plaintext (§7.1, §13.7); it is not encoded inside the CRDT. This is the
+  replicated session document; display-only local history (§13.9) is not part
+  of it.
 - A binary frame is `varUint(message_type)`, then:
 
   | message_type | meaning         | body                                                                                                                                                                                                                                     |
@@ -1039,16 +1041,33 @@ Follows
   nothing after it in the frame can be read. A receiver stops there, and the
   messages before it stand. Whether such a frame should instead be refused is
   open ([`NOTES.md`](NOTES.md) §B.38, §B.40).
-- **Who sends what.** Each client sends a SyncStep1 with its state vector once a
-  state commits its own session key, because one sent before that is a frame
-  every conforming peer refuses `uncommitted_key` (§13.1's step 6). Every peer
-  that receives a SyncStep1 replies with a SyncStep2 containing what the sender
-  is missing. Local edits are broadcast as Update messages carrying only the
-  delta. The server relays each binary frame to every other participant in the
-  room, and to nobody else.
-- **Convergence.** Two replicas are converged when their texts are identical
-  **and** their state vectors agree. A client that has just joined is brought up
-  to date by this handshake; the server has nothing to replay.
+- **Who sends what.** Each client **MUST** send a SyncStep1 with its
+  publication-safe state vector once a state commits its own session key
+  (§13.1's step 6). A writer (`host` or `guest`) that receives a correctly
+  parsed, authenticated SyncStep1 **MUST** answer with a SyncStep2 containing
+  what the requester is missing from its permitted history. A receiver **MUST
+  NOT** compute or publish more than one SyncStep2 for one inbound frame,
+  however many requests its stream carries; it still reads the remaining
+  messages. A viewer sends requests and applies replies, but **MUST NOT** send
+  SyncStep2 or Update (§13.9).
+- **Initial sync is bidirectional and finite.** The first correctly parsed
+  SyncStep1 authenticated by a committed writer's full session public key
+  during that key's continuous write eligibility activates one reciprocal
+  SyncStep1 obligation at the receiver (§13.6). A SyncStep2 never activates
+  reciprocity. This exchange asks for history in both directions, including
+  permitted local writer history whose outbound Update was lost. It is not a
+  periodic full-sync loop, a delivery acknowledgement or a retry of an old
+  sealed frame.
+- **Publication history.** Every published SyncStep1 state vector, SyncStep2
+  and Update **MUST** describe only publication-safe history (§13.9): locally
+  disallowed viewer mutations cannot enter it, even under a later writer key.
+  Local writer edits are broadcast as Update messages carrying only the delta.
+  The server relays each binary frame to every other participant in the room,
+  and to nobody else.
+- **Convergence.** Two replicated room histories are converged when their
+  texts are identical **and** their state vectors agree; display-only local
+  history (§13.9) is outside that comparison. A client that has just joined is
+  brought up to date by this handshake; the server has nothing to replay.
 - **Ordering.** The server offers no cross-peer ordering guarantee (each peer
   has its own queue). yjs convergence does not require one, but an editor
   adapter **MUST NOT** assume ordering between documents or between peers.
@@ -1795,14 +1814,19 @@ closing it had already passed. What a client must know and do:
   place of methods: there is no server-held set for a hold to be added to, and a
   peer's holds are its own announcements.
 - **The server replays nothing.** It holds no CRDT (§3), so it has no document
-  to hand back and no history to replay: a reconnecting client gets the room's
-  content from its peers through the ordinary SyncStep1/SyncStep2 exchange,
-  exactly as a first-time joiner does (§7). Whether the client kept its own
-  `Y.Doc` across the drop or starts from an empty one is a local decision and
-  both work: a replica that kept its history asks for the delta it missed, and
-  an empty one is brought up to date from scratch. A client **MUST NOT**
-  conclude that the room is empty because it is: the server will not correct
-  that, and its peers only send what a SyncStep1 asks for.
+  to hand back and no history to replay. A reconnecting client obtains the
+  room's content through §7's finite bidirectional SyncStep1/SyncStep2
+  exchange, as a first-time joiner does. Whether it keeps its own session
+  history across the drop or starts empty is a local decision. If it keeps
+  history, it **MUST** preserve permitted offline writer mutations in its
+  publication history and **MUST NOT** export disallowed viewer mutations
+  (§13.9). Its initial request acquires what it missed; its answer to a peer's
+  reciprocal request supplies what that peer missed, without another local
+  edit. A client **MUST NOT** conclude that the room is empty because its own
+  replica is empty. There is no server correction, resume packet or replay of
+  sealed outbound bytes under the new key. The new connection begins its own
+  reciprocal accounting (§13.6); receiver replay and edition marks survive as
+  above.
 - **A reconnecting client SHOULD use a fresh awareness client id.** A library
   may remember a client id whose state was removed and drop the next publish
   from it, and a client whose first
@@ -2230,13 +2254,18 @@ is part of what follows:
    states by `issued`, so a state that verifies and arrives after one at or
    above its edition is refused `stale_issued` and the receiver keeps what it
    holds. Until a state is applied, §13.3's waiting rules hold.
-6. **Re-run the sync handshake, once.** Everything the relay handed this client
-   before that point was refused (§13.2), so a client **MUST** send a SyncStep1
-   (§7) once it applies a verified state that commits its own session key, and
-   apply the replies. Before that, a SyncStep1 of its own is a frame every
-   conforming peer refuses `uncommitted_key`, so it is a frame nobody answers. A
-   client that skips this step keeps what it dropped, which is divergence with
-   nothing to observe it.
+6. **Start the sync handshake once the local key is committed.** Everything
+   the relay handed this client before that point was refused (§13.2), so a
+   client **MUST** send its initial SyncStep1 (§7) once it applies a verified
+   state that commits its own session key, and apply the replies. This initial
+   local-key request is unchanged: it does not wait for another peer's request
+   or for the repair clock. Before commitment every conforming peer refuses it
+   `uncommitted_key`. §13.6 adds the bounded reciprocal request that makes the
+   exchange bidirectional, and the coalesced readiness request for each new local
+   writer eligibility after this initial handshake, including same-key
+   recommitment after absence. The first commitment uses only the immediate
+   initial request, not a redundant readiness request. Neither a join
+   notification nor an announcement starts that exchange.
 7. **Then for the rest of the session**: verify before applying (§13.2),
    attribute every frame (§13.4), apply only what the sender's role permits
    (§13.5), and re-send the state the room holds when a peer is seated while the
@@ -2497,38 +2526,81 @@ room's documents, and its edits are not part of the room's:
 
 ### 13.6 What a client owes the room's convergence
 
-Two obligations follow from §13.2's drops, and both are about what a client
-sends:
+These obligations concern requests and publication history, not delivery
+acknowledgements:
 
-- **A client that dropped frames re-syncs.** The rule is §13.1's step 6, applied
-  again after an interval in which content was refused: a replica that has been
-  refusing frames and one that has been applying them look the same from inside,
-  and only the handshake tells the room which it is. **The interval is the
-  client's own renewal clock.** What it runs from is the last `SyncStep1` the
-  client sent — the one §13.1's step 6 sends, or a re-sync of its own — and it
-  is closed by the next one: a client that has refused a `kind = 0` frame
-  carrying content since that moment **MUST** send another `SyncStep1`, on the
-  next renewal tick at the latest, and **MUST NOT** send more than one per
-  `awareness_renew_ms` however many such frames it refused. Two bounds are
-  stated rather than left to a client's judgement. The lower one is what keeps a
-  peer that floods a client with refused content from making it answer frame for
-  frame, which would be an amplification a hostile peer chooses; the upper one
-  is what keeps a refusal from going un-repaired for longer than the session's
-  own clock. A client that has refused nothing since its last `SyncStep1` has
-  nothing to re-sync, and a re-sync is a frame a peer answers only because the
-  client's key is committed, so one sent before that is still refused
-  `uncommitted_key` (§13.1's step 4). **What counts as a content refusal is the
-  envelope's `kind` and the step that refused the frame, and nothing else.** A
-  `kind = 0` frame refused at step 3 or later of [`CANONICAL.md`](CANONICAL.md)
-  §6.1's order is a content refusal — `unknown_epoch`, `uncommitted_key`,
-  `replayed_counter`, `bad_signature`, `bad_aead`, `bad_payload` and
-  `unauthorised_content` are all of them, and each is an example rather than the
-  list — because the frame carried content and none of it was applied. A frame
-  refused at step 1 or 2 is not: a malformed envelope and an unknown `kind` are
-  refusals of the bytes themselves, `kind = 0` is not readable from them, and no
-  client can say what such a frame carried. Nothing about the reason's _kind_ is
-  read here, so a client that re-syncs on a refusal the vocabulary gained later
-  is conforming without a rule being added for it.
+- **A client that dropped content re-syncs.** A `kind = 0` frame refused at
+  step 3 or later of [`CANONICAL.md`](CANONICAL.md) §6.1's order activates a
+  re-sync obligation: `unknown_epoch`, `uncommitted_key`, `replayed_counter`,
+  `bad_signature`, `bad_aead`, `bad_payload` and `unauthorised_content` are
+  examples. A refusal at step 1 or 2 is not a content refusal, because the
+  envelope's `kind = 0` cannot be read there. An accepted update held for
+  missing dependencies (§7) is not a refusal and does not activate this rule.
+- **A writer's first request activates reciprocal sync once.** For each full
+  session public key committed as `host` or `guest`, the receiver **MUST**
+  activate one reciprocal SyncStep1 obligation, and no more than one, on that
+  key's first correctly parsed, authenticated SyncStep1 during its continuous write
+  eligibility. The identity is the full key that verified the signature, not
+  the `key_id` index, seat label, announcement or name (§13.4). Eligibility
+  begins when an applied state commits the key as a writer; an applied state
+  removing it or giving it `viewer` ends that eligibility. A receiver **MUST**
+  retire the corresponding served or pending accounting then. Recommitment,
+  actual promotion from `viewer`, or a new key starts a new eligibility; a
+  repeated state, a newer edition retaining writer eligibility (including a
+  `host`/`guest` change), or a listing-only change does not. A `viewer`'s
+  SyncStep1 never activates this reciprocal obligation. No SyncStep2, Update,
+  awareness, hold, `peer.joined`,
+  key announcement or state application alone activates it. Reading many
+  requests in one frame **MUST NOT** create multiple obligations for its key.
+  A receiver **MUST** validate a Step1's inner state vector before treating
+  that message as readiness, even when no Step2 answer is permitted or the
+  frame's expensive-reply allowance has been used. A malformed inner vector
+  **MUST NOT** activate or consume this eligibility. A later malformed message
+  does not undo correctly parsed earlier messages or their reciprocal effect;
+  §7's valid-prefix rule still applies. Validation here requires no
+  room-sized diff computation.
+- **Each new local writer eligibility owes readiness.** For an already-handshaken
+  local session key, a client **MUST** activate one coalesced readiness SyncStep1
+  obligation when an applied state begins a new continuous writer eligibility.
+  This includes both `viewer`-to-writer promotion and writer-to-absent-to-writer
+  recommitment of the same key. The first local commitment uses §13.1's immediate
+  initial request and **MUST NOT** add a redundant readiness request. A state
+  preserving local writer eligibility, including a `host`/`guest` change, an
+  unchanged state or a listing-only edition, **MUST NOT** rearm readiness. If
+  that local eligibility ends before the readiness request is queued, the client
+  **MUST** retire this obligation; unrelated remote reciprocal and refusal
+  obligations remain applicable under their own rules. State application creates
+  local readiness, not remote reciprocal readiness: peers still need its valid
+  authenticated request.
+- **Repair requests share one clock.** Reciprocal and refusal obligations,
+  and local readiness obligations, **MUST** coalesce into at most
+  one locally generated SyncStep1 per `awareness_renew_ms`, measured from the
+  last authored SyncStep1 actually sealed and queued for transport (the initial
+  request included), not from an attempt to send one. A client
+  **MUST** retain an obligation that is too early to send, and **MUST** publish
+  the coalesced request at the first due renewal tick at the latest. One
+  request serves all obligations already pending at its publication, not one
+  request per key or refused frame. Only an actual publication discharges
+  them; a failed attempt is not a publication or evidence of delivery.
+  Actual queueing of session-key publications, including Step2 replies and
+  Updates, **MUST** be gated on attachment, local-key commitment, session life
+  and the frame budget (§13.1, §13.10), including after asynchronous sealing;
+  a receipt-side check alone does not satisfy these gates. The session-key
+  announcement retains its deliberate precommit exception (§13.1). While
+  temporarily gated, a client
+  **MUST** retain still-applicable obligations and serve them when publication
+  is possible and the clock is due. Ending a key's writer eligibility retires
+  its corresponding remote reciprocal or local readiness obligation even while
+  publication is gated; it does not retire unrelated work.
+- **The exchange settles.** Once served, a key's reciprocal obligation **MUST
+  NOT** reactivate during the same continuous write eligibility, even in a
+  later renewal window. A SyncStep2 **MUST NOT** be answered with a reciprocal
+  SyncStep1. A client with no pending obligation **MUST NOT** send periodic
+  full-sync requests merely because a renewal window passed. A fresh local
+  session key starts new connection-local reciprocal accounting; it does not
+  reset the receiver's replay marks or the room's frame count (§9.1). These
+  are local bounds: every writer may answer a broadcast request, so duplicate
+  room-sized replies and room-wide fanout remain possible.
 - **A client publishes what it is allowed to publish, and nothing else**: not
   until a state commits its session key (§13.1), its session-key announcement
   alone before that, no document content at all on a connection whose key the
@@ -2729,9 +2801,9 @@ is the thing the state names.**
   key and can produce such a frame, and what makes it a `viewer` is that it does
   not and that a conforming receiver will not apply one (§13.5's residual).
 - **What it still sends.** Its own **SyncStep1**, once it applies a verified
-  state that commits its session key and again after any interval in which it
-  refused a content frame — the interval §13.6 defines, with the same floor and
-  ceiling (§13.1's steps 4 and 6). A SyncStep1 is a state vector and a request
+  state that commits its session key, and for §13.6's coalesced refusal or
+  reciprocal obligations with the same floor and ceiling (§13.1's steps 4 and
+  6). A SyncStep1 is a state vector and a request
   rather than content, and it is how a `viewer` is sent anything at all: peers
   answer it with a SyncStep2 and the `viewer` receives the room. What a `viewer`
   re-syncs after is a content frame _it_ refused to apply; its own content being
@@ -2750,11 +2822,33 @@ is the thing the state names.**
   **MUST NOT** present the room as one it may write to. The protocol fixes that
   an edit is not sent as content and that a receiver refuses one; the words and
   the way the read-only state looks are the adapter's (`DESIGN.md` §4.3).
-- **A local edit is the client's, and not the room's.** Whether a client refuses
-  a `viewer`'s keystroke, keeps it in its own replica, or discards it is the
-  client's to decide; what it **MUST NOT** do is send it as content or treat it
-  as applied to the room. A client that lets a `viewer` edit its local replica
-  and then publishes the delta has broken the rule however it looks locally.
+- **A local viewer edit is never room history.** Whether a client refuses a
+  `viewer`'s keystroke, discards it, or retains it for display only is the
+  client's choice. In every case it **MUST NOT** send that mutation as content
+  or treat it as applied to the room. This is a history invariant, not only a
+  ban on immediate Update messages: a published SyncStep2 or other encoded
+  publication history **MUST NOT** contain such local insertions, deletions,
+  tombstones or dependencies on them. A publication state vector **MUST NOT**
+  describe a display-only fork as the room's history. Promotion to writer,
+  revocation and recommitment, or disconnect and reseating under a fresh key
+  **MUST NOT** turn these mutations into permitted history. An insertion later
+  deleted locally is still disallowed history, even if its visible text is gone.
+- **Speculation and role changes obey the same invariant.** A local mutation
+  is classified by the role in the applied state when it is made, not by a
+  role learned later at deferred publication. Local mutations made before the
+  key's role is known and subsequently assigned `viewer` **MUST** remain
+  outside publication history. Accepted remote room history and permitted
+  local writer history, including offline writer mutations, **MUST** remain
+  available if the client retains its history (§9.1); demotion does not
+  retroactively make those writer mutations viewer edits, nor permit their
+  publication while the local key is a viewer. Before
+  publishing as a promoted writer, a client **MUST** establish a
+  publication-safe history that excludes disallowed local mutations. It
+  **MUST** activate §13.6's coalesced readiness SyncStep1 request for each new
+  local writer eligibility after the initial handshake, including actual
+  `viewer`-to-writer promotion and same-key recommitment after absence, so peers
+  can perform reciprocal repair. A display-only history may remain visible
+  locally, but **MUST NOT** contaminate later writer publications.
 - **The invite does not say it.** A host's client telling a guest's client,
   across the link, that it will be a `viewer` is **presentation and not a wire
   rule**. §5.1 has a receiver ignore a query parameter it does not know, which
@@ -2878,9 +2972,10 @@ are the frames §13's rules are about: its session-key announcements, its
 document content, its holds messages, and the room states and closings a host
 publishes. Its **sync-handshake frames** are §7's — a `SyncStep1` or a
 `SyncStep2` — and are counted apart, because §13.1's step 6 obliges a client
-that applies a state committing its own key to send one and §13.6 obliges it to
-send another after a content refusal, so a publication count that folded the two
-together could not tell a republished request from a publication. Both are
+that applies a state committing its own key to send one, and §13.6 obliges it
+to send a coalesced request after a content refusal or a writer's first request,
+so a publication count that folded the two together could not distinguish them.
+Both are
 frames and both are visible to a test; which of the two a rule moved is what an
 assertion about them says.
 
@@ -2907,6 +3002,31 @@ assertion about them says.
 | §5.1's fragment names one of its two keys and not the other                              | the refusal, naming the missing key; no session seated behind it                                                                                                                                                                                                                                                                   | one link of each shape — `k` without `h`, and `h` without `k` — with the whole fragment beside them, which must join; the mutation that accepts a partial fragment must fail the refusal legs                                                                                                                                        |
 | §5.1's link repeats `room`, `token`, `k` or `h`                                           | the refusal, naming the repeated parameter; no session seated behind it                                                                                                                                                                                                                                                            | one page link of each shape — `room` twice and `token` twice — and a fragment that repeats `k` and one that repeats `h`, with the whole link beside them, which must join; the mutation that accepts a repeated key must fail the refusal legs                                                                                       |
 | The invite's `viewer` parameter is not authoritative (§13.9)                             | a subject handed the parameter, then a state committing it as `guest`, behaves as a `guest`                                                                                                                                                                                                                                        | a fixture state that contradicts the parameter; a client that trusts the URL must fail                                                                                                                                                                                                                                               |
+
+**Finite sync and safe history need behavioural proofs as well as bytes.** A
+single-subject count cannot prove retained-history recovery. A test **MUST**
+show two actual replicas recovering identical texts and state vectors through
+bounded reciprocal exchange after silent loss of a writer Update with a
+dependent update accepted as pending, and after a lost deletion set. Exercise
+both retained-history fresh-key reconnect and same-key local writer recommitment
+after absence, with no new edit or refusal trigger, including paths no longer
+listed or held. State-vector agreement alone does not prove deletion recovery.
+`applied` counts accepted inbound frames, including pending updates, not
+subsequently integrated structs.
+
+A three-peer test's separate outbound request/reply counts **MUST** show
+coalescing across new writer keys, local readiness and refusals, renewal-clock
+and successful-queue gates, one expensive Step2 per packed inbound frame,
+finite quiescence, retirement and rearming, and the permitted viewer request
+without viewer content. For §13.9, an independent recipient **MUST** gain no disallowed
+viewer or speculative structs, deletion sets or dependencies across promotion,
+recommitment or fresh-key reseating, while permitted writer and remote history
+survives. A conformance test **MUST NOT** require local discard if display-only
+retention cannot contaminate publications. Reciprocal activation, local readiness
+and history exclusion need separate red controls. The informative
+[implementation recipes](docs/reconnect-contract-recipes.md) give deterministic
+loss schedules, gate/trigger controls, history cases and harness requirements.
+The current corpus does not by itself provide these multi-replica proofs.
 
 **What a vector can pin.** The bytes: that a holds message is sealed and signed
 as §6.1 fixes, that a wrong key, a replay and a bad signature are refused with

@@ -1559,8 +1559,26 @@ class TestKeyIdCollision(unittest.TestCase):
         self.assertTrue(verdict.ok, f"refused {verdict.reason}")
         self.assertEqual(verdict.sender, FIXTURE.key("guest-1").hex_id)
         self.assertEqual(verdict.payload["holds"], ["src/main.rs"])
+        self.assertEqual(verdict.verified, sealed.b64url(FIXTURE.key("guest-2").public))
         # The set belongs to the key that verified, which is the one whose signature did.
         self.assertEqual(reader.holds[verdict.sender], ["src/main.rs"])
+
+    def test_sync_readiness_uses_the_verifying_full_key_under_a_collision(self):
+        from sync_requests import SyncRequests
+
+        reader = self.colliding_reader()
+        key = sealed.b64url(FIXTURE.key("guest-2").public)
+        reader.committed[key].role = "viewer"
+        clock = SyncRequests(sealed.b64url(FIXTURE.key("guest-1").public), 300)
+        clock.state({name: peer.role for name, peer in reader.committed.items()})
+        clock.published(0)
+        verdict = reader.read(sealed_frame(FIXTURE.key("guest-2"),
+                                          FIXTURE.key("guest-1").id, 0,
+                                          bytes.fromhex("00000100")))
+        self.assertTrue(verdict.ok)
+        self.assertEqual(clock.accepted(verdict), 1, "writers may answer viewer requests")
+        self.assertFalse(clock.due(300), "viewer request is not writer readiness")
+        self.assertEqual(clock.seen, set())
 
     def test_the_role_reads_from_the_key_that_verified_and_not_from_the_shared_id(self) -> None:
         # §13.4: the role is the state's, and it is a *key's*. An id cannot tell two colliding
@@ -1607,6 +1625,349 @@ class TestKeyIdCollision(unittest.TestCase):
         )
         self.assertFalse(verdict.ok)
         self.assertEqual(verdict.reason, "bad_signature")
+
+
+class TestFiniteSyncRequests(unittest.TestCase):
+    """Request decisions over real sealed fixtures, not CRDT recovery proofs."""
+
+    def setUp(self) -> None:
+        from sync_requests import SyncRequests
+
+        self.names = ("host-session", "guest-1", "guest-2")
+        self.keys = {name: sealed.b64url(FIXTURE.key(name).public) for name in self.names}
+        self.roles = {self.keys[name]: "guest" for name in self.names}
+        self.reader = sealed.Reader(FIXTURE)
+        self.clock = SyncRequests(self.keys["host-session"], 300)
+        self.counters = {}
+        self.state(self.roles)
+        self.assertTrue(self.clock.due(0))
+        self.clock.published(0)
+
+    def frame(self, name, plaintext):
+        import hashlib
+        counter = self.counters.get(name, 0) + 1
+        self.counters[name] = counter
+        return sealed.seal(FIXTURE, {
+            "sign": name, "kind": 0, "counter": counter,
+            "nonce": hashlib.sha256(FIXTURE.key(name).public + counter.to_bytes(8, "little")).digest()[:12].hex(),
+            "plaintext": plaintext.hex(),
+        }).bytes()
+
+    def state(self, roles, listing=()):
+        issued = self.reader.issued + 1
+        frame = sealed.seal(FIXTURE, {
+            "sign": "host-key", "kind": 1, "counter": issued,
+            "nonce": issued.to_bytes(12, "big").hex(),
+            "payload": {"issued": issued, "listing": list(listing), "peers": {
+                key: {"role": role, "peer_id": "p-same-label"}
+                for key, role in roles.items()
+            }},
+        }).bytes()
+        verdict = self.reader.read(frame)
+        self.assertTrue(verdict.ok)
+        self.clock.accepted(verdict)
+
+    def deliver(self, name, plaintext=bytes.fromhex("00000100")):
+        verdict = self.reader.read(self.frame(name, plaintext))
+        return verdict, self.clock.accepted(verdict)
+
+    def test_first_writer_request_and_refusals_coalesce_and_quiesce(self):
+        for name in ("guest-1", "guest-2", "guest-1"):
+            verdict, replies = self.deliver(name)
+            self.assertTrue(verdict.ok)
+            self.assertEqual(replies, 1)
+        self.clock.refusal(0, "bad_signature")
+        self.assertFalse(self.clock.due(299))
+        self.assertTrue(self.clock.due(300))
+        self.clock.published(300)
+        self.assertFalse(self.clock.due(301))
+        for now in (600, 900, 1200):
+            self.deliver("guest-1")
+            self.assertFalse(self.clock.due(now))
+        self.assertEqual(len(self.reader.applied), 7)
+        self.assertEqual(self.reader.dropped, [])
+
+    def test_step2_update_and_viewer_request_do_not_activate_reciprocity(self):
+        for payload in ("0001020000", "0002020000", "03"):
+            verdict, replies = self.deliver("guest-1", bytes.fromhex(payload))
+            self.assertTrue(verdict.ok)
+            self.assertEqual(replies, 0)
+            self.assertFalse(self.clock.due(300))
+        roles = {**self.roles, self.keys["guest-1"]: "viewer"}
+        self.state(roles)
+        verdict, replies = self.deliver("guest-1")
+        self.assertTrue(verdict.ok)
+        self.assertEqual(replies, 1)
+        self.assertFalse(self.clock.due(300))
+        self.state({**roles, self.keys["host-session"]: "viewer"})
+        verdict, replies = self.deliver("guest-2")
+        self.assertTrue(verdict.ok)
+        self.assertEqual(replies, 0)
+        self.assertTrue(self.clock.due(300), "local viewer may request writer history")
+
+    def test_packed_requests_have_one_reply_allowance_and_apply_trailing_update(self):
+        update = bytes.fromhex(
+            "00021b0101010004010b7372632f6d61696e2e72730761f09f9880626300"
+        )
+        verdict, replies = self.deliver("guest-1", bytes.fromhex("00000100") * 4096 + update)
+        self.assertTrue(verdict.ok)
+        self.assertEqual(replies, 1)
+        self.assertEqual(self.reader.replica.text_at("src/main.rs"), "a😀bc")
+        self.assertEqual(len(self.reader.applied), 2, "counts frames, not structs or requests")
+        self.assertTrue(self.clock.due(300))
+
+    def test_demotion_revocation_rearm_only_after_a_new_writer_request(self):
+        self.deliver("guest-1")
+        self.state({**self.roles, self.keys["guest-1"]: "viewer"})
+        self.assertFalse(self.clock.due(300), "demotion retires pending work")
+        self.state(self.roles)
+        self.assertFalse(self.clock.due(300), "promotion alone is not remote readiness")
+        self.deliver("guest-1")
+        self.assertTrue(self.clock.due(300))
+        self.clock.published(300)
+        self.state(self.roles)
+        self.deliver("guest-1")
+        self.assertFalse(self.clock.due(600), "equal writer set does not rearm")
+        self.state({key: role for key, role in self.roles.items() if key != self.keys["guest-1"]})
+        self.state(self.roles)
+        self.deliver("guest-1")
+        self.assertTrue(self.clock.due(600))
+
+    def test_local_same_key_recommitment_is_coalesced_readiness(self):
+        local = self.keys["host-session"]
+        self.state({key: role for key, role in self.roles.items() if key != local})
+        self.assertFalse(self.clock.due(300), "absent local key cannot publish")
+        self.state(self.roles)
+        self.assertFalse(self.clock.due(299), "recommitment shares the initial request clock")
+        self.assertTrue(self.clock.due(300), "already-handshaken local key owes readiness")
+        for gate in ({"attached": False}, {"ended": True}, {"budget": False}):
+            self.assertFalse(self.clock.due(300, **gate))
+        self.assertTrue(self.clock.due(301), "failed or gated attempts retain readiness")
+        self.clock.published(301)
+        for now in (600, 601, 901, 1201):
+            self.state(self.roles, listing=["new.rs"])
+            self.state({**self.roles, local: "host"})
+            self.state(self.roles)
+            self.assertFalse(self.clock.due(now), "unchanged eligibility must stay quiescent")
+
+    def test_local_readiness_retires_at_each_eligibility_end(self):
+        local = self.keys["host-session"]
+        for end_role in (None, "viewer"):
+            with self.subTest(end_role=end_role):
+                self.setUp()
+                self.state({key: role for key, role in self.roles.items() if key != local})
+                self.state(self.roles)
+                self.assertTrue(self.clock.due(300))
+                ended = {key: role for key, role in self.roles.items() if key != local}
+                if end_role is not None:
+                    ended[local] = end_role
+                self.state(ended)
+                self.assertFalse(self.clock.due(300, attached=False))
+                self.state({**ended, local: "viewer"})
+                self.assertFalse(self.clock.due(300), "ended local readiness must not leak to viewer")
+                self.state(self.roles)
+                self.assertTrue(self.clock.due(300), "a later writer interval owes new readiness")
+                self.clock.published(300)
+                self.assertFalse(self.clock.due(600))
+
+    def test_local_retirement_keeps_unrelated_work_and_one_shared_clock(self):
+        local = self.keys["host-session"]
+        for cause in ("remote", "refusal", "both"):
+            with self.subTest(cause=cause):
+                self.setUp()
+                self.state({**self.roles, local: "viewer"})
+                self.state(self.roles)
+                if cause in ("remote", "both"):
+                    self.deliver("guest-1")
+                if cause in ("refusal", "both"):
+                    self.clock.refusal(0, "bad_signature")
+                self.state({key: role for key, role in self.roles.items() if key != local})
+                self.assertFalse(self.clock.due(300), "commitment gate retains unrelated work")
+                self.state({**self.roles, local: "viewer"})
+                self.assertFalse(self.clock.due(299))
+                self.assertTrue(self.clock.due(300), "viewer can serve remote/refusal work")
+                self.state(self.roles)
+                self.clock.published(300)
+                self.assertFalse(self.clock.due(600), "one queue serves all three causes")
+                self.state({**self.roles, local: "viewer"})
+                self.state(self.roles)
+                self.assertFalse(self.clock.due(599))
+                self.assertTrue(self.clock.due(600))
+                self.clock.published(600)
+                self.assertFalse(self.clock.due(900))
+
+    def test_first_local_commitment_uses_only_the_immediate_initial_request(self):
+        local = self.keys["host-session"]
+        self.clock.reseat(local)
+        self.state({key: role for key, role in self.roles.items() if key != local})
+        self.assertFalse(self.clock.due(1))
+        self.state(self.roles)
+        self.assertTrue(self.clock.due(1), "first commitment does not wait for renewal")
+        self.assertFalse(self.clock.due(1, budget=False))
+        self.state({**self.roles, local: "host"}, listing=["new.rs"])
+        self.assertTrue(self.clock.due(2), "initial publication is still owed")
+        self.clock.published(2)
+        for now in (3, 301, 302, 602):
+            self.state(self.roles)
+            self.assertFalse(self.clock.due(now), "no redundant readiness after initial queue")
+
+    def test_gates_failed_publication_local_promotion_and_fresh_key(self):
+        self.deliver("guest-1")
+        for gate in ({"attached": False}, {"ended": True}, {"budget": False}):
+            self.assertFalse(self.clock.due(300, **gate))
+        self.assertTrue(self.clock.due(300), "failed attempts do not discharge work")
+        self.clock.published(300)
+        self.state({**self.roles, self.keys["host-session"]: "viewer"})
+        self.state(self.roles)
+        self.assertFalse(self.clock.due(599))
+        self.assertTrue(self.clock.due(600))
+        self.clock.published(600)
+        marks = dict(self.reader.marks)
+        applied = len(self.reader.applied)
+        self.clock.reseat(self.keys["guest-2"])
+        self.assertTrue(self.clock.due(601), "new local key initial handshake is immediate")
+        self.clock.published(601)
+        self.deliver("guest-1")
+        self.assertFalse(self.clock.due(900))
+        self.assertTrue(self.clock.due(901))
+        self.assertEqual(applied + 1, len(self.reader.applied))
+        self.assertGreaterEqual(self.reader.marks[FIXTURE.key("guest-1").hex_id],
+                                marks[FIXTURE.key("guest-1").hex_id])
+
+    def test_uncommitted_replayed_bad_and_malformed_requests_are_not_readiness(self):
+        raw = self.frame("guest-1", bytes.fromhex("00000100"))
+        verdict = self.reader.read(raw)
+        self.clock.accepted(verdict)
+        self.clock.published(300)
+        bad_signature = bytearray(self.frame("guest-2", bytes.fromhex("00000100")))
+        bad_signature[-1] ^= 1
+        for frame in (raw, bytes(bad_signature),
+                      self.frame("mallory-1", bytes.fromhex("00000100")),
+                      self.frame("guest-2", bytes.fromhex("00000500"))):
+            verdict = self.reader.read(frame)
+            self.assertFalse(verdict.ok)
+            self.clock.accepted(verdict)
+        self.assertEqual(self.clock.seen, {self.keys["guest-1"]})
+        self.assertTrue(self.clock.due(600), "content refusals still activate repair")
+        self.clock.published(600)
+        self.clock.refusal(None, "bad_envelope")
+        self.clock.refusal(9, "unknown_kind")
+        self.assertFalse(self.clock.due(900))
+
+    def test_announcement_stale_state_and_listing_only_state_are_not_readiness(self):
+        self.state(self.roles)
+        announcement = sealed.seal(FIXTURE, {
+            "sign": "guest-1", "kind": 4, "counter": 1, "nonce": "05" * 12,
+            "payload": {"key": self.keys["guest-1"], "role": "guest"},
+        }).bytes()
+        self.assertEqual(self.clock.accepted(self.reader.read(announcement)), 0)
+        stale = sealed.seal(FIXTURE, {
+            "sign": "host-key", "kind": 1, "counter": 3, "nonce": "06" * 12,
+            "payload": {"issued": self.reader.issued, "listing": ["new.rs"],
+                        "peers": {key: {"role": role, "peer_id": "p-new"}
+                                  for key, role in self.roles.items()}},
+        }).bytes()
+        self.assertEqual(self.clock.accepted(self.reader.read(stale)), 0)
+        self.assertFalse(self.clock.due(300))
+        self.assertEqual(self.clock.seen, set())
+        self.state(self.roles, listing=["new.rs"])
+        self.assertFalse(self.clock.due(300))
+
+    def test_invalid_state_vector_does_not_activate_request_accounting(self):
+        verdict, replies = self.deliver("guest-1", bytes.fromhex("000000"))
+        self.assertTrue(verdict.ok, "frame reader checks framing, not the vector encoder")
+        self.assertEqual(replies, 0)
+        self.assertFalse(self.clock.due(300))
+
+    def test_suppressed_invalid_inner_vector_preserves_later_readiness_and_valid_prefix(self):
+        self.state({**self.roles, self.keys["host-session"]: "viewer"})
+        verdict, replies = self.deliver("guest-1", bytes.fromhex("00000180"))
+        self.assertTrue(verdict.ok)
+        self.assertEqual(replies, 0)
+        self.assertEqual(self.clock.seen, set())
+        self.assertFalse(self.clock.due(300))
+        verdict, replies = self.deliver("guest-1", bytes.fromhex("00000100"))
+        self.assertTrue(verdict.ok)
+        self.assertEqual(replies, 0)
+        self.assertTrue(self.clock.due(300), "invalid request did not consume eligibility")
+        self.clock.published(300)
+        verdict, replies = self.deliver("guest-2", bytes.fromhex("0000010000000180"))
+        self.assertTrue(verdict.ok)
+        self.assertEqual(replies, 0)
+        self.assertTrue(self.clock.due(600), "earlier valid request still counts")
+
+    def test_invalid_prefix_cannot_reach_a_later_request(self):
+        self.state({**self.roles, self.keys["host-session"]: "viewer"})
+        for prefix in ("00000180", "00090100"):
+            with self.subTest(prefix=prefix):
+                verdict, replies = self.deliver(
+                    "guest-1", bytes.fromhex(prefix + "00000100")
+                )
+                self.assertTrue(verdict.ok)
+                self.assertEqual(replies, 0)
+                self.assertEqual(self.clock.seen, set())
+                self.assertFalse(self.clock.due(300))
+        verdict, _ = self.deliver("guest-1", bytes.fromhex("0000010000090100"))
+        self.assertTrue(verdict.ok)
+        self.assertTrue(self.clock.due(300), "valid prefix survives an undefined subtype")
+
+    def test_fresh_local_key_retains_actual_fixture_struct_history(self):
+        update = bytes.fromhex(
+            "00021b0101010004010b7372632f6d61696e2e72730761f09f9880626300"
+        )
+        verdict, _ = self.deliver("guest-1", update)
+        self.assertTrue(verdict.ok)
+        replica = self.reader.replica
+        items = tuple(replica.items)
+        self.assertEqual(replica.state(), ((1, 5),))
+        self.clock.reseat(self.keys["guest-2"])
+        self.assertIs(self.reader.replica, replica)
+        self.assertEqual(tuple(replica.items), items)
+        self.assertEqual(replica.text_at("src/main.rs"), "a😀bc")
+        self.assertEqual(len(self.reader.applied), 2)
+
+    def test_three_empty_replicas_have_bounded_requests_and_replies(self):
+        from sync_requests import SyncRequests
+
+        readers = {name: sealed.Reader(FIXTURE) for name in self.names}
+        clocks = {name: SyncRequests(self.keys[name], 300) for name in self.names}
+        for name in self.names:
+            readers[name].committed = dict(self.reader.committed)
+            clocks[name].state(self.roles)
+        counts = {name: [0, 0] for name in self.names}
+        queue = []
+
+        def request(name, now):
+            if clocks[name].due(now):
+                queue.append((name, self.frame(name, bytes.fromhex("00000100"))))
+                counts[name][0] += 1
+                clocks[name].published(now)
+
+        def drain():
+            delivered = 0
+            while queue:
+                sender, raw = queue.pop(0)
+                for name in self.names:
+                    if name == sender:
+                        continue
+                    verdict = readers[name].read(raw)
+                    self.assertTrue(verdict.ok)
+                    if clocks[name].accepted(verdict):
+                        # The full V1 history of an empty fixture is two zero varints.
+                        queue.append((name, self.frame(name, bytes.fromhex("0001020000"))))
+                        counts[name][1] += 1
+                    delivered += 1
+                    self.assertLessEqual(delivered, 100, "exchange must terminate")
+
+        for now in (0, 299, 300, 301, 600, 900, 1200):
+            for name in self.names:
+                request(name, now)
+            drain()
+        self.assertEqual(counts, {name: [2, 4] for name in self.names})
+        for reader in readers.values():
+            self.assertEqual(reader.replica.state(), ())
+            self.assertEqual(len(reader.applied), 12)
+            self.assertEqual(reader.dropped, [])
 
 
 class TestVaruintBound(unittest.TestCase):

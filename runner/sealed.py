@@ -602,6 +602,8 @@ class Verdict:
     `sender` is the key id that verified, which is what §6.1 makes a frame's attribution —
     and not a value the frame carries. `payload` is the plaintext read, for the kinds whose
     plaintext is an object; `message` is the y-protocols message a `kind = 0` plaintext is.
+    `verified` carries the full verifying public key for request accounting without
+    changing the historical key-id report in `sender`.
     """
 
     ok: bool
@@ -612,6 +614,7 @@ class Verdict:
     plaintext: bytes = b""
     payload: object = None
     message: object = None
+    verified: str | None = None
 
     def __str__(self) -> str:
         if self.ok:
@@ -840,7 +843,8 @@ class Reader:
             if self.role_of_key(key) == "viewer" and "no-roles" not in mutations:
                 return self._refuse(envelope, kind, "unauthorised_content")
 
-        return self._accept(envelope, kind, key.hex_id, plaintext, payload, message)
+        return self._accept(envelope, kind, key.hex_id, plaintext, payload, message,
+                            verified=b64url(key.public))
 
     # -- the pieces the read leans on ------------------------------------------
 
@@ -874,6 +878,7 @@ class Reader:
         plaintext: bytes,
         payload: object,
         message: object,
+        verified: str | None = None,
     ) -> Verdict:
         verdict = Verdict(
             ok=True,
@@ -883,6 +888,7 @@ class Reader:
             plaintext=plaintext,
             payload=payload,
             message=message,
+            verified=verified,
         )
         self.applied.append(verdict)
         if sender is not None and "no-mark" not in self.mutations:
