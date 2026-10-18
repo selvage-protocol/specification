@@ -27,6 +27,7 @@ corpus declares. The subject is a **stub that runs from this file** — `python3
 from __future__ import annotations
 
 import contextlib
+import gc
 import io
 import json
 import pathlib
@@ -34,6 +35,7 @@ import sys
 import tempfile
 import time
 import unittest
+import warnings
 from dataclasses import dataclass
 from unittest import mock
 
@@ -1525,6 +1527,21 @@ class TestServerProcess(unittest.TestCase):
             self.server("fails").start()
         self.assertIn("unknown option", str(caught.exception))
         self.assertIn("usage: selvaged", str(caught.exception))
+
+    def test_stop_closes_the_drained_log_pipe(self) -> None:
+        # The log pipe is read and dropped for as long as the server runs; once the drain
+        # thread has finished, its buffer still has to be closed, or its finalization warns
+        # about an unclosed file.
+        server = self.server("noisy")
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            server.start()
+            self.assertEqual(server.host_port, "127.0.0.1:9")
+            server.stop()
+            gc.collect()
+        self.assertEqual(
+            [w for w in caught if issubclass(w.category, ResourceWarning)], []
+        )
 
 
 class TestKeyIdCollision(unittest.TestCase):

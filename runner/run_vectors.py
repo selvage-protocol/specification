@@ -700,9 +700,17 @@ class Server:
             except subprocess.TimeoutExpired:
                 self.process.kill()
                 self.process.wait()
+        # Close after the join: the drain thread reads this pipe through its fileno, so
+        # closing it before it has finished would drop the fd under a live reader. A drain
+        # that outlived the deadline keeps the pipe instead — the process is gone, so its
+        # next read is EOF, and the buffer closes when the thread's own reference is dropped.
+        drain_live = self._drain is not None
         if self._drain is not None:
             self._drain.join(timeout=1.0)
+            drain_live = self._drain.is_alive()
             self._drain = None
+        if not drain_live:
+            self.process.stdout.close()
         self.process = None
 
 
