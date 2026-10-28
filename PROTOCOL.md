@@ -1004,9 +1004,10 @@ Follows
 [`y-protocols/PROTOCOL.md`](https://github.com/yjs/y-protocols/blob/v1.0.7/PROTOCOL.md).
 
 - **One `Y.Doc` per session, one `Y.Text` per document**, keyed by
-  workspace-relative path. Document identity is the path, and it reaches the
-  room in the frames a peer names it in — a hold, a listing, a content frame's
-  plaintext (§7.1, §13.7); it is not encoded inside the CRDT. This is the
+  workspace-relative path. Document identity is the path: its `Y.Text` root
+  name in the session document (§8.1). Listings and holds also name paths
+  (§13.7). Content updates identify their roots through the CRDT encoding
+  (§7.1); the envelope has no separate per-document address. This is the
   replicated session document; display-only local history (§13.9) is not part
   of it.
 - A binary frame is `varUint(message_type)`, then:
