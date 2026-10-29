@@ -108,6 +108,10 @@ silent, without reading the Rust.
 - [Adding a peer vector](docs/adding-a-peer-vector.md): the layer, the mutation in `catches`, and
   the seating leg.
 - [Why each one exists](docs/why-each-one-exists.md): what each piece is for.
+- [Implementing a client](docs/implementing-a-client.md): the stages a client is built in, from
+  transport to an editor-IO test, with the commands that check each one.
+- [A case study](docs/case-study.md): why a few of the protocol's shapes are what they are, and what
+  the public tests cover.
 
 ## Licence
 
