@@ -23,7 +23,8 @@
   from an implementation. They are kept apart from `PROTOCOL.md` so that nothing in the
   specification has to be read twice to find out whether it binds.
 
-`DESIGN.md` §7 asks for "CC-BY prose plus JSON Schema", and §13.4 asks for the machine-readable
-model to be built early because prose drifts. This repository is that, plus the two things prose
-alone cannot carry: a byte-level rule and a suite.
+`PROTOCOL.md` §1.1 defines conformance, while the schemas make the frame shapes machine-readable.
+The prose, schemas, and vectors are published under CC-BY 4.0 (see the [license](../LICENSE)).
+The canonical byte-level rule and the executable suite keep those descriptions testable rather
+than relying on prose alone.
 

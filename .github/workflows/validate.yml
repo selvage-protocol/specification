@@ -118,6 +118,12 @@ jobs:
       - name: the ci-local input guard
         run: python3 -B scripts/test_ci_input_guard.py
 
+      - name: public workspace contracts and wire-token checks
+        run: |
+          python3 -B scripts/test_check_workspace.py
+          python3 -B scripts/test_check_wire_token.py
+          python3 -B scripts/check-wire-token.py
+
       # The reader-facing prose: `README.md` and the `docs` tree it links to, checked with the
       # `lychee.toml` a developer runs and the same pinned lychee release. The runner has no nix, so
       # the release archive is installed here and `scripts/ci-local.sh links` takes lychee from

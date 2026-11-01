@@ -222,24 +222,22 @@ event is needed to report either.
 
 ### A.7 The second client
 
-**Status: what is superseded is the `DESIGN.md` §14.2 deferral, not the whole account.** The
-independent JetBrains implementation named in this document's introduction answers the deferral the
-account below cites; the account's own fact, that `nvim_client` drives a byte-identical vendored
-copy of the TypeScript engine, remains current. Client conformance is defined by `PROTOCOL.md`
-§1.1 and §13, with checkability in §13.11, regardless of implementation language.
+The independent JetBrains implementation named in this document's introduction answers the
+originally deferred question of whether a second session engine should exist. Its differential
+tests compare the Kotlin engine with the TypeScript engine. Client conformance is defined by
+`PROTOCOL.md` §1.1 and §13, with checkability in §13.11, regardless of implementation language.
 
-`nvim_client` exists and is a second *editor* client, but it drives a byte-identical vendored copy
-of the same TypeScript engine rather than an independent implementation. What `DESIGN.md` §14.2
-defers (whether the conformance harness should carry a genuinely independent second client) is
-still undecided, and this draft exists so that it can be one.
+`nvim_client` is a second *editor* client, but it drives a byte-identical vendored copy of the
+same TypeScript engine rather than an independent implementation. It tests a different adapter,
+not a second interpretation of the session engine's rules.
 
-### A.8 Where a decision's provenance is recorded
+### A.8 Where a decision's rationale is recorded
 
-The project keeps an unpublished design record (`DESIGN.md`) that some of these decisions were
-taken in. Citations to it are kept here rather than in `PROTOCOL.md`, because a reader of the
-specification cannot obtain it: `PROTOCOL.md` §1's profile reservation (`DESIGN.md` §4.1, the
-`terminal/1` name and the "named optional profile" shape) and §10.1's `x.` namespace (§4.7). The
-rest of the design's reasoning is inline in `PROTOCOL.md` or in `B` below.
+The public specification carries the facts needed to implement the protocol: `PROTOCOL.md` §1
+reserves `terminal/1` as a named optional profile, and §10.1 defines the `x.` namespace for
+extensions. Neither reservation adds a requirement to implement that profile or an extension.
+Normative rules and their rationale are inline in `PROTOCOL.md`; implementation tradeoffs and
+historical alternatives are recorded in the numbered decisions in `B` below.
 
 ### A.9 The one value a `v` may name
 
@@ -423,7 +421,7 @@ refuses document content by (`PROTOCOL.md` §13.5); what the invite says about i
 between the host's client and the client that joins rather than a wire rule (§5.1 has a receiver
 ignore an unknown query parameter, which is the whole of what such a parameter can be), and a client
 learns its own role authoritatively from the state. It is implemented when the revision's
-implementations land; until then `DESIGN.md` §4.2's inversion stands in full — every holder of the
+implementations land; until then the historical bearer-token model stands — every holder of the
 invite token edits the session CRDT — and the page's claim gate keeps refusing "guests are read-only"
 for the reason it gives (`site/docs/must-not-say.md`).
 
@@ -474,7 +472,8 @@ frame asks the host for a path, and a document's content arrives because the sin
 `Y.Doc` syncs as a whole. That mechanism is unchanged, and `B.23`'s grant does not touch it, since
 a listing carries paths and never content. What the grant changes is *which* paths a client opens:
 the room carries a listing of the host's working tree, a client mirrors its shape and fetches a
-file's content only when something needs it (`DESIGN.md` §4.2), so a guest no longer inherits the
+file's content only when something needs it (the lazy introduction and materialization now
+specified in `PROTOCOL.md` §13.3), so a guest no longer inherits the
 union of what its peers happen to hold open. The question this item left open (whether the
 protocol wants a real "serve me this path" exchange) is **superseded rather than answered** for
 `selvage/1`: a fetch stays a `doc.open` plus the ordinary sync exchange (§7) and no frame is

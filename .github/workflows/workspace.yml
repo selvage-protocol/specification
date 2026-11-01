@@ -1,0 +1,87 @@
+name: workspace contracts
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+  schedule:
+    - cron: "23 5 * * *"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: workspace-contracts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  census:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      # The candidate (including a PR merge ref), never this repository's published main.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: specification
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: selvage-protocol/vscode_client
+          ref: main
+          path: vscode_client
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: selvage-protocol/nvim_client
+          ref: main
+          path: nvim_client
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: selvage-protocol/mcp
+          ref: main
+          path: mcp
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: selvage-protocol/web_client
+          ref: main
+          path: web_client
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: selvage-protocol/jetbrains_client
+          ref: main
+          path: jetbrains_client
+          persist-credentials: false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: selvage-protocol/reference_server
+          ref: main
+          path: reference_server
+          persist-credentials: false
+
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: "3.14.7"
+
+      - name: test the revision and inventory checks
+        run: python3 -B specification/scripts/test_check_workspace.py
+
+      - name: compare the candidate with public mains and log full revisions
+        run: |
+          python3 -B specification/scripts/check-workspace.py --workspace "$GITHUB_WORKSPACE" \
+            --revision specification=HEAD \
+            --revision vscode_client=HEAD \
+            --revision nvim_client=HEAD \
+            --revision mcp=HEAD \
+            --revision web_client=HEAD \
+            --revision jetbrains_client=HEAD \
+            --revision reference_server=HEAD

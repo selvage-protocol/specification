@@ -33,8 +33,7 @@ name: release
 # The wire version string is `selvage/2` and the canonical form is `SJ-C/1`.
 # Both are protocol CONSTANTS, not release versions; the release version is
 # what `scripts/bump-version.sh` computes on a dispatch, or the tag name on a
-# tag push. The typo guard names the near-homophone `salvage/`, one keystroke
-# away.
+# tag push. The public wire-token scan also runs during ordinary validation.
 on:
   workflow_dispatch:
     inputs:
@@ -147,12 +146,11 @@ jobs:
       - name: check the workflows and the release-version guard
         run: python3 scripts/check-workflows.py
 
-      - name: reject the wire-version typo
+      - name: public workspace contracts and wire-token checks
         run: |
-          if grep -rn "salvage/" PROTOCOL.md CANONICAL.md NOTES.md README.md docs schema vectors runner; then
-            printf 'found the near-homophone salvage/; the wire version is selvage/2\n' >&2
-            exit 1
-          fi
+          python3 -B scripts/test_check_workspace.py
+          python3 -B scripts/test_check_wire_token.py
+          python3 -B scripts/check-wire-token.py
 
       # The same link check as `validate.yml`, over the same two paths and with the same pinned
       # release. The runner has no nix, so lychee is installed here and `scripts/ci-local.sh links`

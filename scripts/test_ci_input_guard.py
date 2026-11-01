@@ -97,6 +97,8 @@ SYSTEM = "x86_64-linux"
 EVAL = "nix eval --raw --impure --expr builtins.currentSystem"
 LINT = "nix develop . -c actionlint"
 LINKS = "lychee --config lychee.toml --no-progress README.md docs"
+PUBLIC_CHECKS = [f"python3 -B scripts/{name}" for name in (
+    "test_check_workspace.py", "test_check_wire_token.py", "check-wire-token.py")]
 
 # `check <name> "<description>"`, the one place `job_validate` declares a step. The clean tests
 # read the list back from the script rather than repeating it, so they hold for the script before
@@ -136,6 +138,14 @@ case "$1" in
     printf '%s\\n' "$MOCK_REPORTS/$name"
     ;;
 esac
+"""
+
+PYTHON_MOCK = """#!@BASH@
+set -euo pipefail
+printf 'python3 %s\\n' "$*" >> "$MOCK_LOG"
+if [[ -n ${MOCK_FAIL_PYTHON:-} && $* == "${MOCK_FAIL_PYTHON}" ]]; then
+  exit 1
+fi
 """
 
 LYCHEE_MOCK = """#!@BASH@
@@ -189,6 +199,7 @@ class Repo:
         self.bin.mkdir()
         self.mock("nix", NIX_MOCK.replace("@BASH@", BASH).replace("@SYSTEM@", SYSTEM))
         self.mock("lychee", LYCHEE_MOCK.replace("@BASH@", BASH))
+        self.mock("python3", PYTHON_MOCK.replace("@BASH@", BASH))
         self.must(self.git("init", "--quiet"))
         self.must(self.git("add", "--all"))
         self.must(self.git("commit", "--quiet", "-m", "the layout CI would check out"))
@@ -310,14 +321,14 @@ class CleanRunTest(Harness):
         repo = self.make()
         done = repo.run("validate")
         self.assertEqual(done.returncode, 0, f"{done.stdout}{done.stderr}")
-        self.assertEqual(repo.calls(), [EVAL] + [build(name) for name in repo.checks] + [LINKS])
+        self.assertEqual(repo.calls(), [EVAL] + [build(name) for name in repo.checks] + PUBLIC_CHECKS + [LINKS])
 
     def test_a_clean_all_runs_lint_then_every_declared_check_then_the_link_check(self):
         repo = self.make()
         done = repo.run("all")
         self.assertEqual(done.returncode, 0, f"{done.stdout}{done.stderr}")
         self.assertEqual(
-            repo.calls(), [LINT, EVAL] + [build(name) for name in repo.checks] + [LINKS]
+            repo.calls(), [LINT, EVAL] + [build(name) for name in repo.checks] + PUBLIC_CHECKS + [LINKS]
         )
 
     def test_links_runs_only_the_link_check(self):
@@ -357,6 +368,16 @@ class FailingCheckTest(Harness):
             [EVAL] + [build(name) for name in repo.checks[:2]],
             "the run did not stop at the failing check",
         )
+
+
+    def test_public_python_failures_stop_before_links(self):
+        for index, command in enumerate(PUBLIC_CHECKS):
+            with self.subTest(command=command):
+                repo = self.make()
+                done = repo.run("validate", MOCK_FAIL_PYTHON=command.removeprefix("python3 "))
+                self.assertNotEqual(done.returncode, 0, done.stdout + done.stderr)
+                self.assertEqual(repo.calls(), [EVAL] + [build(name) for name in repo.checks]
+                                 + PUBLIC_CHECKS[:index + 1])
 
 
 class ScriptTest(unittest.TestCase):
@@ -503,7 +524,7 @@ class GitSelectionIsolationTest(Harness):
         decoy = self.decoy(repo)
         done = repo.run("validate", **self.caller_selection(decoy))
         self.assertEqual(done.returncode, 0, f"{done.stdout}{done.stderr}")
-        self.assertEqual(repo.calls(), [EVAL] + [build(name) for name in repo.checks] + [LINKS])
+        self.assertEqual(repo.calls(), [EVAL] + [build(name) for name in repo.checks] + PUBLIC_CHECKS + [LINKS])
 
     def test_a_dirty_validate_is_not_masked_by_a_local_untracked_visibility_setting(self):
         """A repository-local untracked-visibility setting must not hide the untracked dirty file.
