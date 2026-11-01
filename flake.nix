@@ -2,7 +2,7 @@
   description = "The Selvage protocol: its schemas, its vectors and the checks that hold them";
 
   inputs = {
-    nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
+    nixpkgs.url = "github:NixOS/nixpkgs/nixpkgs-unstable";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -15,20 +15,21 @@
       system: let
         pkgs = nixpkgs.legacyPackages.${system};
 
-        # What the validator and the runner import, which is what `.github/workflows/validate.yml`
-        # installs with pip and what `scripts/ci-local.sh` used to install into a venv. The
-        # workflow pins jsonschema 4.26.0, referencing 0.37.0, websockets 16.1 and cryptography
-        # 50.0.0; these are the versions nixpkgs ships, so the sandbox runs what the runner runs.
-        #
-        # `cryptography` is the peer layer's one dependency: AES-256-GCM, HKDF-SHA256 and Ed25519
-        # for `runner/sealed.py`. nixpkgs ships it as a wheel for this interpreter and the binary
-        # cache has it, so the sandbox substitutes rather than building a Rust extension; and the
-        # wire half still needs only the three above, which is what `schema/validate.py` says when
-        # it prints its own dependency.
+        websockets = pkgs.python3Packages.websockets.overridePythonAttrs {
+          version = "17.4";
+          src = pkgs.fetchFromGitHub {
+            owner = "python-websockets";
+            repo = "websockets";
+            tag = "17.4";
+            hash = "sha256-AO96jIF9l9/Z2GIgDlWTXjOGpipgu6PHy6Wcx36EpvA=";
+          };
+        };
+
+        # Keep the validator and runner on the versions pinned by the workflows.
         python = pkgs.python3.withPackages (ps: [
           ps.jsonschema
           ps.referencing
-          ps.websockets
+          websockets
           ps.cryptography
         ]);
 
