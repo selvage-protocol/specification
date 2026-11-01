@@ -7,8 +7,8 @@ without reading the reference implementation in
 [`selvage-protocol/reference_server`](https://github.com/selvage-protocol/reference_server) or the
 editor clients in
 [`selvage-protocol/vscode_client`](https://github.com/selvage-protocol/vscode_client) and
-[`selvage-protocol/nvim_client`](https://github.com/selvage-protocol/nvim_client). The design
-record, `DESIGN.md`, is not published; it is cited below by section.
+[`selvage-protocol/nvim_client`](https://github.com/selvage-protocol/nvim_client). Protocol rules
+and the rationale needed to implement them are published here.
 
 ## Get it working
 
@@ -63,16 +63,22 @@ a server](docs/replaying-the-wire-vectors.md).
 
 `scripts/ci-local.sh` runs the same commands as `.github/workflows/validate.yml`, one flake check per
 step, plus the link check over this file and the `docs` tree with `lychee`, and actionlint over the
-workflow files. It needs `nix`:
+workflow files. The lightweight workspace-checker tests and wire-token scan run with stdlib
+Python. It needs `nix` and `python3`:
 
 ```
 scripts/ci-local.sh all      # lint + validate
 scripts/ci-local.sh validate # the flake checks and the link check
 ```
 
-Its `validate` half refuses to run when `schema/`, `vectors/`, `runner/` or the flake files differ
+Its `validate` half refuses to run when `.github/`, `scripts/`, `schema/`, `vectors/`, `runner/` or the flake files differ
 from `HEAD`, because CI checks out the committed ref. Commit before running it; staging is not
 enough.
+
+The [public workspace contracts](docs/workspace-contracts.md) document the vendored copies,
+CRDT version pins, and shared workflow guards. `.github/workflows/workspace.yml` checks the
+candidate specification against the other public repositories' main branches on pull requests,
+main pushes, manual runs, and a daily schedule. It logs every full revision and performs no builds.
 
 ## What lives here
 
@@ -116,7 +122,7 @@ silent, without reading the Rust.
 ## Licence
 
 The prose, the canonicalisation rule, the schemas and the vectors are **CC-BY 4.0**
-([`LICENSE`](LICENSE)), as `DESIGN.md` §7 asks; the tooling (`schema/validate.py` and
+([`LICENSE`](LICENSE)); the tooling (`schema/validate.py` and
 `runner/`) is **MIT OR Apache-2.0** ([`LICENSE-MIT`](LICENSE-MIT),
 [`LICENSE-APACHE`](LICENSE-APACHE)), the same pair the
 reference server carries for its code. Reuse the specification with attribution, and the tooling

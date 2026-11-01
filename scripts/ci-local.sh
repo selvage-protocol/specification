@@ -23,6 +23,8 @@
 # check's store path is the report of the command it ran, which is what is printed here: a check
 # that had to be built says nothing until it is done, and a cached one still says what it found.
 # A failure exits this script with the check's own report, which nix prints as the log tail.
+# The public workspace-checker tests and wire-token scan run directly with stdlib Python from
+# PATH after the flake checks; the cross-repository census itself is workspace.yml's job.
 #
 # `links` is not a flake check: it is `lychee` over `README.md` and `docs/`, the reader-facing prose
 # this repository writes itself (`PROTOCOL.md` and `NOTES.md` are read as documents rather than
@@ -102,6 +104,10 @@ job_validate() {
   check bump-version "the version bump the release computes from its tags"
   check dry-run-gating "the workflows' dry_run gating"
   check ci-input-guard "the guard that stops a dirty validate"
+  say "validate: public workspace contracts and wire-token checks (stdlib Python)"
+  python3 -B scripts/test_check_workspace.py
+  python3 -B scripts/test_check_wire_token.py
+  python3 -B scripts/check-wire-token.py
 }
 
 job_links() {

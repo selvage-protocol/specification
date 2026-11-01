@@ -2822,7 +2822,8 @@ is the thing the state names.**
   person does not type into a buffer whose edits the room does not take, and
   **MUST NOT** present the room as one it may write to. The protocol fixes that
   an edit is not sent as content and that a receiver refuses one; the words and
-  the way the read-only state looks are the adapter's (`DESIGN.md` §4.3).
+  the way the read-only state looks are the adapter's. The receiver's authorization
+  rule is §13.5; it does not depend on an editor's read-only UI.
 - **A local viewer edit is never room history.** Whether a client refuses a
   `viewer`'s keystroke, discards it, or retains it for display only is the
   client's choice. In every case it **MUST NOT** send that mutation as content
