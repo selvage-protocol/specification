@@ -45,6 +45,14 @@ class WireTokenTest(unittest.TestCase):
         self.assertIn("docs/protocol.md:3:", done.stdout)
         self.assertIn("3 typos", done.stdout)
 
+    def test_non_utf8_text_still_reports_typos(self):
+        self.track("PROTOCOL.md", b"selvage/2\n")
+        self.track("docs/legacy.txt", b"\xff\nsalvage/2\n")
+        done = self.run_check()
+        self.assertEqual(done.returncode, 1)
+        self.assertIn("docs/legacy.txt:2:", done.stdout)
+        self.assertIn("1 typos", done.stdout)
+
     def test_scanner_and_test_are_the_only_exemptions(self):
         self.track("scripts/check-wire-token.py", b"salvage/\n")
         self.track("scripts/test_check_wire_token.py", b"salvage/\n")

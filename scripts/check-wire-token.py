@@ -29,10 +29,7 @@ def check(root: Path) -> int:
             data = path.read_bytes()
             if b"\0" in data:
                 continue
-            try:
-                text = data.decode("utf-8")
-            except UnicodeDecodeError:
-                continue
+            text = data.decode("utf-8", errors="replace")
             if not text.strip():
                 continue
             text_files += 1

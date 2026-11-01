@@ -141,7 +141,7 @@ class WorkspaceTest(unittest.TestCase):
         self.assertIn("mcp/scripts/sync-engine.sh vscode_client", output)
         (self.workspace / "mcp/vendor/engine/nested/fixture.json").unlink()
         self.commit("mcp")
-        self.assert_code(1, consumer="mcp")
+        self.assertIn("nested/fixture.json", self.assert_code(1, consumer="mcp"))
 
     def test_missing_required_guard_does_not_disappear_from_inventory(self):
         (self.workspace / "jetbrains_client" / checker.GUARD).unlink()

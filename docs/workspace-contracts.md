@@ -48,8 +48,8 @@ python3 specification/scripts/check-workspace.py --workspace . \
   --revision specification=HEAD --revision vscode_client=HEAD
 ```
 
-The checker needs only Python 3 and Git. Run its regression suite with
-`python3 -B specification/scripts/test_check_workspace.py`. The specification's
+The checker and its regression suite need Python 3.8 or later and Git. Run the
+suite with `python3 -B specification/scripts/test_check_workspace.py`. The specification's
 normal validation job runs that suite too. Exit status is `0` for agreement,
 `1` for drift, and `2` when evidence cannot be checked. Both nonzero statuses
 fail CI. A successful comparison is not a successful product integration test;
