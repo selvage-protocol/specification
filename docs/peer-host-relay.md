@@ -34,6 +34,37 @@ exactly as it carries a standalone server's address today.
   router port forward is then the host's own choice, and the invite exposes that address
   to anyone who holds the link.
 
+## Tailcat without a tailnet
+
+Tailcat carries the relay over WireGuard through DERP and NAT traversal. An editor or agent guest
+uses the wire invite, the `ws://…/session?…` form. A page guest uses the same forward and keeps the
+invite's `/page/` path.
+
+Host:
+
+1. Start the room in the host client. Copy the invite URL.
+2. Read the port from the invite. In `ws://host:8080/session?…` it is `8080`.
+3. Run `tailcat serve 8080` with that port.
+4. Send the guest the printed `tc...` address, the port `8080`, and the full invite URL.
+
+The invite ends with a fragment such as `#k=<room-key>&h=<host-key>`. It is part of the URL. The
+guest must copy it unchanged.
+
+Guest:
+
+1. Run `tailcat forward <tc-addr> 18080:8080`.
+2. Insert `127.0.0.1:18080` in place of the invite's `host:port`. Keep `/session`, the `?room=…&token=…`
+   query and the `#k=…&h=…` fragment.
+3. Open the new URL in the client:
+
+```
+ws://127.0.0.1:18080/session?room=<room-id>&token=<token>#k=<room-key>&h=<host-key>
+```
+
+Treat the `tc...` address and the invite as one secret. Rate-limit the relay. Restrict inbound
+access to the host with a firewall.
+
+
 Every invite leaks the address it carries. Treat the invite as the secret it already is:
 the room key, the host public key and now the host's reachable address travel together.
 
