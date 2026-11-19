@@ -19,14 +19,17 @@ exactly as it carries a standalone server's address today.
 - **Tailscale (recommended).** Install Tailscale on the host and every guest, and join
   them to the same tailnet. Bind the relay's listener to `127.0.0.1` and run
   `tailscale serve <port>` in front of it, with `<port>` replaced by that listener port.
-  A numeric Serve target proxies to loopback, so a LAN bind does not work here. Advertise the
-  device's fully qualified tailnet DNS name and Serve's TLS port. Its `wss://` URL is what
-  an https guest page can dial (§12), and the certificate is for that DNS name, not for a
-  numeric `tailscale ip -4` address. No router configuration or public port is needed, and
-  the invite keeps working when the host moves between networks while its tailnet name stays
-  the same.
-- **Same LAN.** The client can use the host's LAN address instead. Guests must be on the
-  same network. This needs no extra software, but it does not work across networks.
+  A numeric Serve target proxies to loopback, so a LAN bind does not work here. Keep the
+  terminal open for the room's life, or use `tailscale serve --bg <port>` and stop it with
+  `tailscale serve reset` when the room ends. Advertise the device's fully qualified tailnet
+  DNS name and Serve's TLS port. Its `wss://` URL is what an https guest page can dial (§12),
+  and the certificate is for that DNS name, not for a numeric `tailscale ip -4` address. No
+  router configuration or public port is needed, and the invite keeps working when the host
+  moves between networks while its tailnet name stays the same.
+- **Same LAN.** The client can use the host's LAN address instead. The relay or its
+  terminator must listen on that address; the loopback bind above is for Serve only. Guests
+  must be on the same network. This needs no extra software, but it does not work across
+  networks.
 - **Public address.** A host with a reachable address can advertise it directly. A
   router port forward is then the host's own choice, and the invite exposes that address
   to anyone who holds the link.
