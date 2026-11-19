@@ -17,12 +17,12 @@ A guest needs an address it can dial. The invite carries that address in its bas
 exactly as it carries a standalone server's address today.
 
 - **Tailscale (recommended).** Install Tailscale on the host and every guest, and join
-  them to the same tailnet. The host client reads `tailscale ip -4` and uses that address
-  in the invite. Guests dial the invite over the tailnet. No router configuration or
-  public port is needed, and the invite keeps working when the host moves between
-  networks as long as its tailnet address stays the same. Run `tailscale serve` in front of
-  the relay and hand out its `wss://` URL, which is the form an https guest page can dial
-  (§12).
+  them to the same tailnet. Run `tailscale serve` in front of the relay and advertise the
+  device's fully qualified tailnet DNS name and Serve's TLS port. Its `wss://` URL is what
+  an https guest page can dial (§12), and the certificate is for that DNS name, not for a
+  numeric `tailscale ip -4` address. No router configuration or public port is needed, and
+  the invite keeps working when the host moves between networks while its tailnet name stays
+  the same.
 - **Same LAN.** The client can use the host's LAN address instead. Guests must be on the
   same network. This needs no extra software, but it does not work across networks.
 - **Public address.** A host with a reachable address can advertise it directly. A
