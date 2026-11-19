@@ -17,8 +17,9 @@ A guest needs an address it can dial. The invite carries that address in its bas
 exactly as it carries a standalone server's address today.
 
 - **Tailscale (recommended).** Install Tailscale on the host and every guest, and join
-  them to the same tailnet. Run `tailscale serve <port>` in front of the relay, with `<port>` replaced by
-  the relay's local listener port, and advertise the
+  them to the same tailnet. Bind the relay's listener to `127.0.0.1` and run
+  `tailscale serve <port>` in front of it, with `<port>` replaced by that listener port.
+  A numeric Serve target proxies to loopback, so a LAN bind does not work here. Advertise the
   device's fully qualified tailnet DNS name and Serve's TLS port. Its `wss://` URL is what
   an https guest page can dial (§12), and the certificate is for that DNS name, not for a
   numeric `tailscale ip -4` address. No router configuration or public port is needed, and
