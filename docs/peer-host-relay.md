@@ -36,8 +36,9 @@ exactly as it carries a standalone server's address today.
 
 ## Tailcat without a tailnet
 
-Tailcat carries the relay over WireGuard through DERP and NAT traversal. Use a wire invite, the
-`ws://…/session?…` form, for these steps. A browser guest needs Tailscale Serve instead.
+Tailcat carries the relay over WireGuard through DERP and NAT traversal. An editor or agent guest
+uses the wire invite, the `ws://…/session?…` form. A page guest uses the same forward and keeps the
+invite's `/page/` path.
 
 Host:
 
