@@ -34,42 +34,34 @@ exactly as it carries a standalone server's address today.
   router port forward is then the host's own choice, and the invite exposes that address
   to anyone who holds the link.
 
-Tailcat is an alternative when the host has no tailnet. It carries WireGuard-encrypted traffic
-through DERP and NAT traversal. Put rate limiting in front of the relay. If a TLS terminator is
-also used, its certificate must name the host that appears in the invite. Run
-`tailcat serve <protected-port>` against the protected endpoint. Tailcat prints a `tc...` address.
+## Tailcat without a tailnet
 
-Send the guest three things: the `tc...` address, the protected port, and the complete invite URL
-the host's client copied. A wire invite looks like this, with real values in place of the angle
-brackets:
+Tailcat carries the relay over WireGuard through DERP and NAT traversal. Use a wire invite, the
+`ws://…/session?…` form, for these steps. A browser guest needs Tailscale Serve instead.
 
-```
-ws://<host-address>:<protected-port>/session?room=<room-id>&token=<token>#k=<room-key>&h=<host-key>
-```
+Host:
 
-The part after `#` is the fragment. It holds `k`, the room key, and `h`, the host public key. Copy
-it exactly. It never travels in an HTTP request, but the client needs it to read and verify the
-room's frames.
+1. Start the room in the host client. Copy the invite URL.
+2. Read the port from the invite. In `ws://host:8080/session?…` it is `8080`.
+3. Run `tailcat serve 8080` with that port.
+4. Send the guest the printed `tc...` address, the port `8080`, and the full invite URL.
 
-The guest forwards the protected port to a local port. If the host sent the URL above and the
-protected port is `8080`:
+The invite ends with a fragment such as `#k=<room-key>&h=<host-key>`. It is part of the URL. The
+guest must copy it unchanged.
 
-```sh
-tailcat forward <tc-addr> 18080:8080
-```
+Guest:
 
-Then the guest changes only the invite's host and port:
+1. Run `tailcat forward <tc-addr> 18080:8080`.
+2. Insert `127.0.0.1:18080` in place of the invite's `host:port`. Keep `/session`, the `?room=…&token=…`
+   query and the `#k=…&h=…` fragment.
+3. Open the new URL in the client:
 
 ```
 ws://127.0.0.1:18080/session?room=<room-id>&token=<token>#k=<room-key>&h=<host-key>
 ```
 
-Keep the invite's path, the whole query and the whole fragment. Change nothing else. A page-link
-invite keeps its `/page/` path. For a `wss://` invite, keep the hostname in the certificate and
-route it to `127.0.0.1` locally; replacing it with the IP would fail certificate verification.
-Browsers cannot use a `tc...` address as a hostname, so use Tailscale Serve when the guest is a
-page. Treat the tailcat address and the invite as one secret. Anyone who holds both can reach the
-room.
+Treat the `tc...` address and the invite as one secret. Rate-limit the relay. Restrict inbound
+access to the host with a firewall.
 
 
 Every invite leaks the address it carries. Treat the invite as the secret it already is:
