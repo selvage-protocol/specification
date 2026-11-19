@@ -35,12 +35,36 @@ exactly as it carries a standalone server's address today.
   to anyone who holds the link.
 
 Tailcat is an alternative when the host has no tailnet. Put the TLS terminator and rate limit in
-front of the relay and run `tailcat serve <port>` against that protected port. Hand the guest the
-printed `tc...` address and the relay port. The guest runs
-`tailcat forward <tc-addr> 18080:<port>` and replaces only the invite's host and port with
-`127.0.0.1:18080`, keeping the `/session` path, query and fragment. Tailcat carries
-WireGuard-encrypted traffic over DERP and NAT traversal. The address is a capability, so keep it
-with the rest of the invite. Browsers cannot use a `tc...` address as a hostname.
+front of the relay and run `tailcat serve <port>` against that protected port. Tailcat prints a
+`tc...` address. Send the guest three things: that address, the protected port, and the complete
+invite URL the host's client copied. The invite URL looks like this, with real values in place of
+the angle brackets:
+
+```
+ws://<host-address>:<relay-port>/session?room=<room-id>&token=<token>#k=<room-key>&h=<host-key>
+```
+
+The part after `#` is the fragment. It holds `k`, the room key, and `h`, the host public key. The
+guest must copy it exactly. It never travels in an HTTP request, but the client needs it to read
+and verify the room's frames.
+
+The guest forwards Tailcat to a local port and changes only the invite's host and port. If the
+host sent the URL above and the protected port is `8080`:
+
+```sh
+tailcat forward <tc-addr> 18080:8080
+```
+
+The guest then joins with this URL:
+
+```
+ws://127.0.0.1:18080/session?room=<room-id>&token=<token>#k=<room-key>&h=<host-key>
+```
+
+Keep `/session`, the whole `?room=…&token=…` query and the whole `#k=…&h=…` fragment. Change
+nothing else. A browser cannot use a `tc...` address as a hostname, so use Tailscale Serve when
+the guest is a page. Treat the tailcat address and the invite as one secret. Anyone who holds
+both can reach the room.
 
 
 Every invite leaks the address it carries. Treat the invite as the secret it already is:
