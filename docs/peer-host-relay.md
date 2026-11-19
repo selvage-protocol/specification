@@ -33,15 +33,20 @@ the room key, the host public key and now the host's reachable address travel to
 ## What stays on the host
 
 The host must stay online for the room. That was already true: only the host writes the
-room's text to the working copy, and a client ends its session after the host-away
-window in §13.8. A host-run relay makes the same fact visible in the transport. When
-the host process ends, the relay ends, `peer.left` reaches the room and the room follows
-the grace in §9.
+room's text to the working copy. When the relay runs in the host's own process, the host's
+departure closes every guest's socket with it. A guest reconnects under §9.1 and finds
+either a refused connection or `room_unknown`, because the room was relay state and died
+with the relay. There is no `peer.left` and no grace to run after the relay is gone. A
+relay that outlives the host's session, such as a standalone relay or a separate companion,
+leaves the roster to report the host's absence; clients then run the host-away window in
+§13.8.
 
 The relay's bounds are the host's bounds. A host applies the finite configured limits
 from §2.1 before it seats a peer: frame size, envelope size, queue bytes, peers per
-room and inbound budget. A public address needs the same terminator and rate limiting a
-deployment needs today. A tailnet keeps the listener off the public internet.
+room and inbound budget, and serves `GET /meta` on the same listener (§2). A relay reachable
+by anyone else needs a TLS terminator and rate limiting, whether the address it advertises
+is public, a tailnet address or a LAN address (§12). A browser guest on an https page dials
+the `wss://` form of that address; an http page may dial `ws://`.
 
 ## What does not change
 
@@ -53,5 +58,5 @@ deployment needs today. A tailnet keeps the listener off the public internet.
 ## Browser hosting
 
 A page cannot open a listening socket, so a browser tab cannot run the relay. Browser
-clients still join a room from an invite. A room that needs a browser-hosted working
-copy runs the relay in an editor client or an agent on the same machine as the folder.
+clients join a room from an invite. The relay runs in a host process on the machine that
+holds the working copy, in an editor client or through the MCP server.

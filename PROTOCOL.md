@@ -456,7 +456,7 @@ worth stating here rather than left to be inferred from §12:
 _(informative)_ The relay need not be a separate deployment. A host client can run it for its
 own room, with the same frames, bounds and duties described above. Guests reach that
 relay at the address the host advertises in the invite, commonly a Tailscale address or
-a LAN address, and the host's own client stops the relay when the room ends. See
+a LAN address, and the relay ends when the host's own client stops it. See
 [`docs/peer-host-relay.md`](docs/peer-host-relay.md). The word "server" in this document
 names the relay role whoever implements it.
 
