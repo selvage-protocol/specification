@@ -118,6 +118,7 @@ silent, without reading the Rust.
   transport to an editor-IO test, with the commands that check each one.
 - [A case study](docs/case-study.md): why a few of the protocol's shapes are what they are, and what
   the public tests cover.
+- [Host-run relay](docs/peer-host-relay.md): running the relay in the host client, reaching guests over Tailscale or a LAN, and what stays unchanged on the wire.
 
 ## Licence
 
