@@ -34,6 +34,13 @@ exactly as it carries a standalone server's address today.
   router port forward is then the host's own choice, and the invite exposes that address
   to anyone who holds the link.
 
+Tailcat is an alternative when the host has no tailnet. Run `tailcat serve <port>` in front of
+a loopback relay and hand out the printed `tc...` address. A guest runs
+`tailcat forward <tc-addr> 18080:<port>` and joins the room through the local port. Tailcat
+carries WireGuard-encrypted traffic over DERP and NAT traversal. The address is a capability,
+so keep it with the rest of the invite. Browsers cannot use a `tc...` address as a hostname.
+
+
 Every invite leaks the address it carries. Treat the invite as the secret it already is:
 the room key, the host public key and now the host's reachable address travel together.
 
