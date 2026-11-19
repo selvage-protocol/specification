@@ -44,7 +44,7 @@ leaves the roster to report the host's absence; clients then run the host-away w
 §13.8.
 
 The relay's bounds are the host's bounds. A host applies the finite configured limits
-from §2.1 before it seats a peer: frame size, envelope size, queue bytes, peers per
+from §2.1 on every connection, before and after it seats a peer: frame size, envelope size, queue bytes, peers per
 room and inbound budget, and serves `GET /meta` on the same listener (§2). A relay reachable
 by anyone else needs a TLS terminator and rate limiting, whether the address it advertises
 is public, a tailnet address or a LAN address (§12). A browser guest on an https page dials
