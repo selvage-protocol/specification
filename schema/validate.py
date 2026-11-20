@@ -569,6 +569,10 @@ def registry() -> Registry:
 # builds a fresh one per case — rebuilds rather than reuses.
 _VALIDATORS: dict[str, tuple[Registry, Draft202012Validator]] = {}
 
+# An instance repeated across the corpus is checked again for its own `where`, but its errors
+# against a given registry and ref never change. The key is the instance's own JSON spelling.
+_VALIDATION_ERRORS: dict[tuple[str, str], tuple[Registry, tuple[str, ...]]] = {}
+
 
 def validator_for(reg: Registry, ref: str) -> Draft202012Validator:
     """The validator for one `$ref` in this registry, built once and reused.
@@ -588,19 +592,32 @@ def validator_for(reg: Registry, ref: str) -> Draft202012Validator:
 def check(reg: Registry, ref: str, instance: object, where: str, label: str) -> None:
     global CHECKS
     CHECKS += 1
-    # The ref is resolved through the registry, never by extracting a subschema: a
-    # relative `#/$defs/...` inside it must keep the base URI of the file it lives in.
-    validator = validator_for(reg, ref)
-    errors = sorted(
-        validator.iter_errors(instance),
-        key=lambda error: (
-            "/".join(str(part) for part in error.absolute_path),
-            error.message,
-        ),
-    )
+    try:
+        key = json.dumps(instance, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+    except (TypeError, ValueError):
+        key = None
+    cache_key = (ref, key) if key is not None else None
+    cached = _VALIDATION_ERRORS.get(cache_key) if cache_key is not None else None
+    if cached is not None and cached[0] is reg:
+        errors = cached[1]
+    else:
+        # The ref is resolved through the registry, never by extracting a subschema: a
+        # relative `#/$defs/...` inside it must keep the base URI of the file it lives in.
+        validator = validator_for(reg, ref)
+        errors = tuple(
+            f"{'/'.join(str(part) for part in error.absolute_path) or '<root>'}: {error.message}"
+            for error in sorted(
+                validator.iter_errors(instance),
+                key=lambda error: (
+                    "/".join(str(part) for part in error.absolute_path),
+                    error.message,
+                ),
+            )
+        )
+        if cache_key is not None:
+            _VALIDATION_ERRORS[cache_key] = (reg, errors)
     for error in errors:
-        at = "/".join(str(part) for part in error.absolute_path) or "<root>"
-        fail(where, f"{label}: {at}: {error.message}")
+        fail(where, f"{label}: {error}")
 
 
 def plain_integer(digits: str) -> int:
