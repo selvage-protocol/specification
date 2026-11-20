@@ -593,7 +593,7 @@ def check(reg: Registry, ref: str, instance: object, where: str, label: str) -> 
     global CHECKS
     CHECKS += 1
     try:
-        key = json.dumps(instance, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        key = json.dumps(instance, separators=(",", ":"), ensure_ascii=False)
     except (TypeError, ValueError):
         key = None
     cache_key = (ref, key) if key is not None else None
